@@ -1,0 +1,15 @@
+﻿url        http://localhost:3000/
+http       200
+load       9667ms
+title      "EnggWrite"
+bodyChars  152
+patchright C:\Users\eeyei\.vscode\extensions\danielsanmedium.dscodegpt-3.24.75\standalone/
+text       Datum Written Solution Engineering Drawing Submitted Written Solution LaTeX Source Code Rendered Solution Upload a handwritten solution Update Output
+script     {
+ "done": true
+}
+screenshot c:\Users\eeyei\OneDrive\Desktop\Assignment_Marker - Copy\bodies.png  (read this file to look at it)
+
+console errors/warnings (0):
+
+requests failed (0):

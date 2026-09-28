@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EnggWrite</title>
+
+    <script
+        id="MathJax-script"
+        async
+        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    ></script>
+
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/engineering-drawing.css">
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            --app-ui-font: Arial, sans-serif;
+            margin: 0;
+            font-family: var(--app-ui-font);
+            background: #f5f6f8;
+            color: #222;
+        }
+
+        /* =========================
+           HEADER
+        ========================= */
+
+        .header {
+            background: #ffffff;
+            border-bottom: 1px solid #d9dce1;
+            padding: 22px 40px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+
+        /* =========================
+           PAGE
+        ========================= */
+
+        .page {
+            max-width: 1500px;
+            margin: 0 auto;
+            padding: 30px 40px;
+        }
+
+
+        /* =========================
+           TABS
+        ========================= */
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+
+            border-bottom: 1px solid #cfd3d8;
+
+            margin-bottom: 25px;
+        }
+
+        .tab {
+            padding: 14px 30px;
+
+            border: none;
+            background: transparent;
+
+            font-size: 17px;
+            font-weight: 600;
+
+            color: #666;
+
+            cursor: pointer;
+
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab:hover {
+            color: #222;
+        }
+
+        .tab.active {
+            color: #1f5c38;
+            border-bottom: 3px solid #1f5c38;
+        }
+
+
+        /* =========================
+           REVIEW CONTENT
+        ========================= */
+
+        .review-content {
+            display: none;
+        }
+
+        .review-content.active {
+            display: block;
+        }
+
+
+        /* =========================
+           COLUMN HEADERS
+        ========================= */
+
+        .column-headings {
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr 1fr;
+
+            gap: 20px;
+
+            margin-bottom: 10px;
+        }
+
+        .column-heading {
+            font-size: 16px;
+            font-weight: 600;
+
+            color: #555;
+
+            padding-left: 5px;
+        }
+
+
+        /* =========================
+           REVIEW GRID
+        ========================= */
+
+        .review-grid {
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr 1fr;
+
+            gap: 20px;
+        }
+
+
+        /* =========================
+           PANELS
+        ========================= */
+
+        .panel {
+            background: #ffffff;
+
+            border: 1px solid #d8dce1;
+
+            border-radius: 10px;
+
+            min-height: 430px;
+
+            padding: 15px;
+
+            box-shadow:
+                0 2px 6px rgba(0,0,0,0.05);
+        }
+
+
+        /* =========================
+           HANDWRITING
+        ========================= */
+
+        .handwritten-area {
+            width: 100%;
+            height: 395px;
+
+            display: flex;
+
+            justify-content: center;
+            align-items: center;
+
+            background: #fafafa;
+
+            border-radius: 6px;
+
+            overflow: hidden;
+        }
+
+        .handwritten-area img {
+            max-width: 100%;
+            max-height: 100%;
+
+            object-fit: contain;
+        }
+
+
+        /* =========================
+           CODE EDITOR
+        ========================= */
+
+        .code-editor {
+            width: 100%;
+            height: 395px;
+
+            resize: none;
+
+            border: none;
+
+            border-radius: 6px;
+
+            padding: 18px;
+
+            background: #1e1e1e;
+
+            color: #e6e6e6;
+
+            font-family:
+                Consolas,
+                "Courier New",
+                monospace;
+
+            font-size: 14px;
+
+            line-height: 1.5;
+
+            outline: none;
+        }
+
+
+        /* =========================
+           OUTPUT
+        ========================= */
+
+        .output {
+            width: 100%;
+            height: 395px;
+            padding: 20px;
+            overflow: auto;
+            background: #ffffff;
+            border-radius: 6px;
+        }
+
+        #writingOutput mjx-container[display="true"] {
+            margin: 0 0 18px 0 !important;
+        }
+
+
+        /* =========================
+           BUTTON
+        ========================= */
+
+        .update-button {
+            margin-top: 15px;
+
+            padding: 10px 20px;
+
+            background: #1f5c38;
+
+            color: white;
+
+            border: none;
+
+            border-radius: 6px;
+
+            cursor: pointer;
+
+            font-size: 14px;
+        }
+
+        .update-button:hover {
+            background: #17472b;
+        }
+
+
+        /* =========================
+           MOBILE
+        ========================= */
+
+        @media (max-width: 900px) {
+
+            .review-grid,
+            .column-headings {
+                grid-template-columns: 1fr;
+            }
+
+            .page {
+                padding: 20px;
+            }
+
+        }
+        
+
+        /* Keep the application shell inside the browser viewport. */
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .header {
+            flex: 0 0 auto;
+            padding: 10px 20px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .page {
+            display: flex;
+            flex: 1 1 auto;
+            flex-direction: column;
+            min-height: 0;
+            max-width: none;
+            padding: 0 20px 10px;
+            width: 100%;
+        }
+
+        .tabs {
+            flex: 0 0 auto;
+            margin-bottom: 6px;
+        }
+
+        .review-content.active {
+            min-height: 0;
+        }
+
+        #writing.review-content.active {
+            overflow: auto;
+        }
+
+        #drawing.review-content.active {
+            display: flex;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        
+    </style>
+</head>
+
+
+<body>
+
+
+    <!-- HEADER -->
+
+    <header class="header">
+
+        <h1>
+            Datum
+        </h1>
+
+    </header>
+
+
+    <main class="page">
+
+
+        <!-- =========================
+             TABS
+        ========================= -->
+
+        <!-- =================================================
+             ENGINEERING DRAWING TAB
+        ================================================== -->
+
+        <div class="tabs">
+
+            <button
+                class="tab active"
+                onclick="showTab('writing', this)"
+            >
+                Written Solution
+            </button>
+
+            <button
+                class="tab"
+                onclick="showTab('drawing', this)"
+            >
+                Engineering Drawing
+            </button>
+
+        </div>
+
+
+        <!-- =================================================
+             WRITTEN SOLUTION TAB
+        ================================================== -->
+
+        <section
+            id="writing"
+            class="review-content active"
+        >
+
+            <div class="column-headings">
+
+                <div class="column-heading">
+                    Submitted Written Solution
+                </div>
+
+                <div class="column-heading">
+                    LaTeX Source Code
+                </div>
+
+                <div class="column-heading">
+                    Rendered Solution
+                </div>
+
+            </div>
+
+
+            <div class="review-grid">
+
+
+                <!-- HANDWRITING -->
+
+                <div class="panel">
+
+                    <div class="handwritten-area">
+
+                        <img
+                            id="writingImage"
+                            alt="Uploaded handwritten solution"
+                            style="display: none;"
+                        >
+
+                        <p id="writingImageMessage">
+                            Upload a handwritten solution
+                        </p>
+
+                    </div>
+
+                    <input
+                        type="file"
+                        id="writingImageUpload"
+                        accept="image/*"
+                    >
+
+                </div>
+
+
+                <!-- CODE -->
+
+                <div class="panel">
+
+                    <textarea
+                        class="code-editor"
+                        id="writingCode"
+                    ></textarea>
+
+                    <button
+                        class="update-button"
+                        onclick="updateWriting()"
+                    >
+                        Update Output
+                    </button>
+
+                </div>
+
+
+                <!-- OUTPUT -->
+
+                <div class="panel">
+
+                    <div
+                        class="output"
+                        id="writingOutput"
+                    >
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             DRAWING TAB
+        ================================================== -->
+
+        <section
+            id="drawing"
+            class="review-content"
+        >
+            <!-- Shared CAD workspace: toolsets change, canvas and inspector persist. -->
+            <div class="drawing-workspace">
+                <div class="drawing-app-toolbar" aria-label="Global drawing tools">
+                    <div class="drawing-app-toolbar-group" aria-label="File">
+                        <span class="drawing-app-toolbar-group-label">File</span>
+                        <button id="drawingFileNew" type="button" title="Create a new drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5zM12 3v4h4M8 12h4M10 10v4"/></svg>New</button>
+                        <button id="drawingFileOpen" type="button" title="Open a drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3zM3 6V4h5l2 2"/></svg>Open</button>
+                        <button id="drawingFileSave" type="button" title="Save the drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h11l2 2v12H4zM7 3v5h7V3M7 17v-5h6v5"/></svg>Save</button>
+                    </div>
+                    <div class="drawing-app-toolbar-group" aria-label="History">
+                        <span class="drawing-app-toolbar-group-label">History</span>
+                        <button id="drawingUndo" type="button" title="Undo"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6L3 10l4 4M4 10h7a5 5 0 0 1 5 5"/></svg>Undo</button>
+                        <button id="drawingRedo" type="button" title="Redo"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 6l4 4-4 4M16 10H9a5 5 0 0 0-5 5"/></svg>Redo</button>
+                    </div>
+                    <div class="drawing-app-toolbar-group" aria-label="Modify">
+                        <span class="drawing-app-toolbar-group-label">Modify</span>
+                        <button type="button" data-global-tool="move" title="Move selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Move</button>
+                        <button type="button" data-global-tool="rotate" title="Rotate selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-2-4.5M16 4v3h-3"/></svg>Rotate</button>
+                        <button type="button" data-global-tool="mirror" title="Mirror selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M7 6L3 10l4 4M13 6l4 4-4 4"/></svg>Mirror</button>
+                        <button type="button" data-global-tool="trim" title="Trim geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M5 15L15 5M4 4l3 1-1 3"/></svg>Trim</button>
+                        <button type="button" data-global-tool="extend" title="Extend geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h9M9 7l3 3-3 3M15 4v12"/></svg>Extend</button>
+                    </div>
+                    <div class="drawing-app-toolbar-group" aria-label="View">
+                        <span class="drawing-app-toolbar-group-label">View</span>
+                        <button type="button" data-global-tool="pan" title="Pan the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Pan</button>
+                        <button type="button" data-global-tool="zoom" title="Zoom the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M9 4a5 5 0 1 1 0 10A5 5 0 0 1 9 4zM13 13l4 4M7 9h4M9 7v4"/></svg>Zoom</button>
+                        <button type="button" data-global-tool="fit" title="Fit the drawing in view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>Fit</button>
+                    </div>
+                    <div id="drawingGlobalToolGroups" class="drawing-app-toolbar-groups"></div>
+                </div>
+
+                <nav class="drawing-toolbar" aria-label="Engineering toolsets">
+                    <span class="drawing-workspace-title">EnggDraw</span>
+                    <button class="drawing-category active" data-category="GEOMETRY">GEOMETRY</button>
+                    <button class="drawing-category" data-category="ANNOTATE">ANNOTATE</button>
+                    <button class="drawing-category" data-category="STATICS">STATICS</button>
+                    <button class="drawing-category" data-category="DYNAMICS">DYNAMICS</button>
+                    <button class="drawing-category" data-category="FLUIDS">FLUIDS</button>
+                    <button class="drawing-category" data-category="THERMODYNAMICS">THERMODYNAMICS</button>
+                    <button class="drawing-category" data-category="HEAT TRANSFER">HEAT TRANSFER</button>
+                    <button class="drawing-category" data-category="SOLID MECHANICS">SOLID MECHANICS</button>
+                    <button class="drawing-category" data-category="MECHANICAL DESIGN">MECHANICAL DESIGN</button>
+                    <button class="drawing-category" data-category="CONTROLS">CONTROLS</button>
+                    <button class="drawing-category" data-category="MATH / ANALYSIS">MATH / ANALYSIS</button>
+                </nav>
+
+                <div class="drawing-style-strip" aria-label="Drawing style controls">
+                    <label>Thickness <select id="drawingThickness"><option value="0.25">0.25 mm</option><option value="0.5" selected>0.50 mm</option><option value="0.75">0.75 mm</option><option value="1">1.00 mm</option></select></label>
+                    <label>Color <input id="drawingColor" type="color" value="#000000" aria-label="Drawing color"></label>
+                    <label>Line Type <select id="drawingLineType"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="center">Center</option><option value="construction">Construction</option></select></label>
+                    <button class="drawing-status-toggle active" id="drawingGridToggle" type="button" aria-pressed="true">Grid ON</button>
+                    <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" aria-pressed="true">Snap ON</button>
+                </div>
+
+                <aside class="drawing-tool-panel" aria-label="Tools">
+                    <h2 class="drawing-panel-heading" id="drawingToolHeading">GEOMETRY TOOLS</h2>
+                    <div class="drawing-tool-list" id="drawingToolList"></div>
+                </aside>
+
+                <div class="drawing-canvas-area">
+                    <div class="drawing-canvas" aria-label="Engineering drawing canvas">
+                    </div>
+                </div>
+
+                <aside class="drawing-inspector" aria-label="Features inspector">
+                    <h2 class="drawing-panel-heading">FEATURES</h2>
+                    <button class="drawing-components-back" id="drawingFeaturesBack" type="button">&lt;- Features</button>
+                    <div class="drawing-inspector-message" id="drawingProperties">No feature selected</div>
+                </aside>
+
+                <footer class="drawing-status-bar" aria-label="Workspace status">
+                    <div class="drawing-status-meta">
+                        <span>Ready</span>
+                        <span id="drawingCoordinates">X: 0.0 Y: 0.0 mm</span>
+                        <span id="drawingToolMessage">Ready</span>
+                    </div>
+                    <div class="drawing-zoom-controls" aria-label="Zoom controls">
+                        <button id="drawingZoomOut" type="button" aria-label="Zoom out">-</button>
+                        <input id="drawingZoomValue" type="text" inputmode="decimal" aria-label="Zoom percentage" autocomplete="off" spellcheck="false" value="100%">
+                        <button id="drawingZoomIn" type="button" aria-label="Zoom in">+</button>
+                    </div>
+                </footer>
+            </div>
+
+        </section>
+
+
+    </main>
+
+
+
+    <!-- =========================
+         JAVASCRIPT
+    ========================= -->
+
+    <script src="js/script.js"></script>
+    <script src="js/engineering-drawing/tools.js"></script>
+    <script src="js/engineering-drawing/drawing-state.js"></script>
+    <script src="js/engineering-drawing/feature-geometry.js"></script>
+    <script src="js/engineering-drawing/renderer.js"></script>
+    <script src="js/engineering-drawing/object-snap.js"></script>
+    <script src="js/engineering-drawing/drawing.js"></script>
+    <script src="js/engineering-drawing/drawing-delete.js"></script>
+    <script src="js/engineering-drawing/toolbar.js"></script>
+
+
+</body>
+
+</html>
