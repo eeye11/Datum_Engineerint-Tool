@@ -161,7 +161,7 @@
       },
       grid: {
         visible: true,
-        spacing: 5
+        spacing: 10
       },
       ...overrides
     };

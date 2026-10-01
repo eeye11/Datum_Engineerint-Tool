@@ -808,6 +808,7 @@ function renderToolButton(tool) {
             class="drawing-tool${active ? " active" : ""}"
             type="button"
             data-tool-id="${tool.id}"
+            ${tool.menuAction ? `data-menu-action="${tool.menuAction}"` : ""}
             title="${accessibleLabel}"
             aria-label="${accessibleLabel}"
             aria-pressed="${active}"
@@ -1646,7 +1647,7 @@ function isReferenceArcTool(toolId) {
     ) === "reference-arc";
 }
 
-let expandedStaticsMenuId = null;
+let expandedToolMenuId = null;
 
 const STATICS_TOOL_MENUS = {
     "sfd-menu": [
@@ -1690,6 +1691,22 @@ const STATICS_TOOL_MENUS = {
     ]
 };
 
+const TOOLBAR_INLINE_MENUS = {
+    ...STATICS_TOOL_MENUS,
+    polygon: [
+        { id: "polygon-by-sides", label: "By Sides", menuAction: "polygon-sides" },
+        { id: "polygon-by-centre", label: "By Centre", menuAction: "polygon-centre" }
+    ],
+    arc: [
+        { id: "arc-centrepoint", label: "Centrepoint Arc", menuAction: "arc-centrepoint" },
+        { id: "arc-three-point", label: "3-Point Arc", menuAction: "arc-three-point" }
+    ],
+    "coordinate-system": [
+        { id: "coordinate-system-2d", label: "2D Coordinate System", menuAction: "coordinate-system-2d" },
+        { id: "coordinate-system-3d", label: "3D Coordinate System", menuAction: "coordinate-system-3d" }
+    ]
+};
+
 /*
  * Every Statics feature tool, with the label shown in the
  * status line and the authoritative feature type it creates.
@@ -1708,7 +1725,7 @@ const STATICS_CHILD_TOOLS = {
     cable: { label: "Cable", type: "cable" },
     shaft: { label: "Shaft", type: "shaft" },
 
-    "point-force": { label: "Point Force", type: "force" },
+    "point-force": { label: "Point Load", type: "force" },
 
     /*
      * The three analysis templates.
@@ -3443,8 +3460,8 @@ function renderEngineeringTools(
                             ${group.tools
                                 .map(
                                     tool => {
-                                        const submenuItems = STATICS_TOOL_MENUS[tool.id];
-                                        const submenuExpanded = expandedStaticsMenuId === tool.id;
+                                        const submenuItems = TOOLBAR_INLINE_MENUS[tool.id];
+                                        const submenuExpanded = expandedToolMenuId === tool.id;
 
                                         return `
                                             ${renderToolButton({ ...tool, submenuExpanded })}
@@ -3505,39 +3522,55 @@ function renderEngineeringTools(
                             button.dataset
                                 .toolId;
 
-                        if (
-                            toolId ===
-                            "coordinate-system"
-                        ) {
+                        const menuAction = button.dataset.menuAction;
+                        if (menuAction) {
                             event.preventDefault();
                             event.stopPropagation();
 
-                            openCoordinateSystemMenu(
-                                button
-                            );
+                            expandedToolMenuId = null;
+
+                            if (menuAction.startsWith("polygon-")) {
+                                enggDrawingState.setActiveTool(drawingState, "polygon");
+                                drawingState.interaction.polygonMode =
+                                    menuAction === "polygon-by-sides" ? "sides" : "centre";
+                                setToolMessage(
+                                    drawingState.interaction.polygonMode === "sides"
+                                        ? "Specify first point"
+                                        : "Specify polygon centre"
+                                );
+                                renderEngineeringTools(activeCategory());
+                                renderCurrentDrawing();
+                            } else if (menuAction.startsWith("arc-")) {
+                                const mode =
+                                    menuAction === "arc-three-point"
+                                        ? "three-point"
+                                        : "centrepoint";
+                                enggDrawingState.setActiveTool(drawingState, "arc");
+                                drawingState.interaction.arcMode = mode;
+                                setToolMessage(
+                                    mode === "three-point"
+                                        ? "Specify first point"
+                                        : "Specify arc centre"
+                                );
+                                renderEngineeringTools(activeCategory());
+                                renderCurrentDrawing();
+                            } else if (menuAction === "coordinate-system-2d") {
+                                activate2DCoordinateSystemTool();
+                            } else if (menuAction === "coordinate-system-3d") {
+                                renderEngineeringTools(activeCategory());
+                                setToolMessage(
+                                    "3D Coordinate System is not available on the 2D drawing canvas"
+                                );
+                            }
 
                             return;
                         }
 
-                        if (
-                            toolId ===
-                            "polygon"
-                        ) {
+                        if (TOOLBAR_INLINE_MENUS[toolId]) {
                             event.preventDefault();
                             event.stopPropagation();
-
-                            openPolygonMenu(
-                                button
-                            );
-
-                            return;
-                        }
-
-                        if (toolId === "sfd-menu") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            expandedStaticsMenuId =
-                                expandedStaticsMenuId === toolId
+                            expandedToolMenuId =
+                                expandedToolMenuId === toolId
                                     ? null
                                     : toolId;
                             renderEngineeringTools(activeCategory());
@@ -5355,7 +5388,7 @@ const STATICS_PLACEMENT_TOOLS = Object.fromEntries(
  * Tools that span two points, so they need a second click.
  */
 const STATICS_SPAN_TOOLS = {
-    "point-force": "Point Force",
+    "point-force": "Point Load",
     beam: "Beam",
     cable: "Cable",
     shaft: "Shaft",
@@ -31478,9 +31511,29 @@ document
 
       if (action) {
         action();
+                button.closest(".drawing-file-menu")?.removeAttribute("open");
       }
     });
   });
+
+document.addEventListener("click", event => {
+        const fileMenu = document.querySelector(".drawing-file-menu[open]");
+        if (fileMenu && !fileMenu.contains(event.target)) {
+                fileMenu.removeAttribute("open");
+        }
+});
+
+document.addEventListener("keydown", event => {
+        if (event.key !== "Escape") {
+                return;
+        }
+
+        const fileMenu = document.querySelector(".drawing-file-menu[open]");
+        if (fileMenu) {
+                fileMenu.removeAttribute("open");
+                fileMenu.querySelector("summary")?.focus();
+        }
+});
 
 if (drawingFileNew) {
     drawingFileNew.addEventListener(

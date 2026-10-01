@@ -78,7 +78,7 @@
             },
             grid: {
                 visible: true,
-                spacing: 5
+                spacing: 10
             },
             snap: {
                 enabled: true,
@@ -225,7 +225,7 @@
             truss: "Truss",
             cable: "Cable",
             shaft: "Shaft",
-            force: "Point Force",
+            force: "Point Load",
             resultant: "Resultant",
             "force-components": "Force Components",
 

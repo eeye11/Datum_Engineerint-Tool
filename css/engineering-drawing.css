@@ -53,7 +53,7 @@
     border-bottom: 1px solid var(--cad-border);
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 8px;
     grid-column: 1 / -1;
     min-width: 0;
 
@@ -78,8 +78,8 @@
      * not the fixed 30px it was; a fixed height would clip the
      * wrapped second line rather than accommodating it.
      */
-    padding: 2px 5px;
-    row-gap: 2px;
+    padding: 4px 8px;
+    row-gap: 4px;
 }
 
 .drawing-app-toolbar-group,
@@ -87,13 +87,66 @@
     align-items: center;
     display: flex;
     flex: 0 0 auto;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
 }
 
 .drawing-app-toolbar-group {
     border-right: 1px solid #d4dde1;
-    padding-right: 5px;
+    padding-right: 8px;
+}
+
+.drawing-file-menu {
+    display: block;
+    position: relative;
+    z-index: 20;
+}
+
+.drawing-app-toolbar-file-trigger {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    font-size: 11px;
+    gap: 7px;
+    height: 24px;
+    list-style: none;
+    padding: 0 7px;
+}
+
+.drawing-app-toolbar-file-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.drawing-app-toolbar-file-trigger:hover {
+    background: #e1ebe6;
+}
+
+.drawing-file-menu-caret {
+    font-size: 10px;
+    line-height: 1;
+    transition: transform .12s ease;
+}
+
+.drawing-file-menu[open] .drawing-file-menu-caret {
+    transform: rotate(180deg);
+}
+
+.drawing-app-toolbar-file-options {
+    background: #ffffff;
+    border: 1px solid #cbd8dc;
+    box-shadow: 0 4px 14px rgba(38, 52, 59, .14);
+    display: grid;
+    gap: 2px;
+    left: 0;
+    min-width: 164px;
+    padding: 4px;
+    position: absolute;
+    top: calc(100% + 2px);
+}
+
+.drawing-app-toolbar-file-options button {
+    justify-content: flex-start;
+    width: 100%;
 }
 
 .drawing-app-toolbar-groups {
@@ -102,10 +155,10 @@
 
 .drawing-app-toolbar-group-label {
     color: var(--cad-muted);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: .05em;
-    margin-right: 2px;
+    margin-right: 4px;
     text-transform: uppercase;
     white-space: nowrap;
 }
@@ -118,10 +171,10 @@
     cursor: pointer;
     display: inline-flex;
     flex: 0 0 auto;
-    font-size: 10px;
-    gap: 4px;
-    height: 21px;
-    padding: 0 7px;
+    font-size: 11px;
+    gap: 6px;
+    height: 24px;
+    padding: 0 9px;
 }
 
 /*
@@ -200,7 +253,7 @@
     border-bottom: 1px solid var(--cad-border);
     display: flex;
     flex-wrap: wrap;
-    gap: 2px;
+    gap: 4px;
     grid-column: 1 / -1;
     min-width: 0;
 
@@ -221,8 +274,8 @@
      * function: every tab is named, and the product name is in the
      * tab title. It goes before the tabs need the space.
      */
-    padding: 4px 5px 0;
-    row-gap: 2px;
+    padding: 5px 8px 0;
+    row-gap: 4px;
 }
 
 .drawing-style-strip {
@@ -272,9 +325,9 @@
     color: var(--cad-muted);
     display: flex;
     flex: 0 0 auto;
-    font-size: 10px;
-    letter-spacing: .01em;
-    margin: 0 14px 0 5px;
+    font-size: 11px;
+    letter-spacing: .02em;
+    margin: 0 16px 0 6px;
     white-space: nowrap;
     align-self: center;
 }
@@ -293,12 +346,12 @@
     color: var(--cad-muted);
     cursor: pointer;
     flex: 0 0 auto;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: .06em;
-    min-height: 27px;
+    min-height: 29px;
     margin-top: 3px;
-    padding: 4px 8px;
+    padding: 5px 10px;
     white-space: nowrap;
 }
 
@@ -2100,8 +2153,8 @@
     }
 
     .drawing-workspace-title {
-        font-size: 9px;
-        margin-right: 8px;
+        font-size: 10px;
+        margin-right: 10px;
     }
 
     .drawing-app-toolbar button {
@@ -2116,9 +2169,9 @@
     }
 
     .drawing-category {
-        font-size: 8px;
-        padding-left: 4px;
-        padding-right: 4px;
+        font-size: 9px;
+        padding-left: 5px;
+        padding-right: 5px;
     }
 
     .drawing-tool {
@@ -2143,10 +2196,10 @@
     }
 
     .drawing-category {
-        font-size: 7px;
-        letter-spacing: 0;
-        padding-left: 2px;
-        padding-right: 2px;
+        font-size: 8px;
+        letter-spacing: .01em;
+        padding-left: 3px;
+        padding-right: 3px;
     }
 
     .drawing-tool-panel,

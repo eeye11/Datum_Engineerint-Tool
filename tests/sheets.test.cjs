@@ -43,7 +43,7 @@ check(
   /^sheet_[0-9a-f]+$/.test(doc.sheets[0].id),
   true
 );
-check("and a grid", doc.sheets[0].grid, { visible: true, spacing: 5 });
+check("and a larger default grid", doc.sheets[0].grid, { visible: true, spacing: 10 });
 check("and a viewport", doc.sheets[0].viewport, { zoom: 1, panX: 0, panY: 0 });
 
 console.log("\nCreating sheets");
@@ -52,6 +52,7 @@ check("there are two", doc.sheets.length, 2);
 check("named in order", second.name, "Sheet 2");
 check("and the new one is active", doc.activeSheetId, second.id);
 check("with a different id", second.id !== doc.sheets[0].id, true);
+check("with the larger default grid", second.grid, { visible: true, spacing: 10 });
 const third = s.addSheet(doc);
 check("the next one follows the numbering", third.name, "Sheet 3");
 

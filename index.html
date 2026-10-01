@@ -555,15 +555,20 @@
                 </nav>
 
                 <div class="drawing-app-toolbar" aria-label="Global drawing tools">
-                    <div class="drawing-app-toolbar-group" aria-label="File">
-                        <span class="drawing-app-toolbar-group-label">File</span>
-                        <button type="button" data-file-action="new" title="New drawing (Ctrl+N)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5"/></svg>New</button>
-                        <button type="button" data-file-action="open" title="Open an .enggdraw file"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3z"/></svg>Open</button>
-                        <button type="button" data-file-action="save" title="Save (Ctrl+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5"/></svg>Save</button>
-                        <button type="button" data-file-action="save-as" title="Save as (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
-                        <button type="button" data-file-action="export" title="Export as PNG, JPG or SVG (Ctrl+Shift+E)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M10 12l-3-3M10 12l3-3M4 15v2h12v-2"/></svg>Export</button>
-                        <button type="button" data-file-action="print" title="Print the drawing (Ctrl+Shift+P)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 7V3h8v4M6 14H4V9h12v5h-2M6 12h8v5H6z"/></svg>Print</button>
-                    </div>
+                    <details class="drawing-app-toolbar-group drawing-file-menu">
+                        <summary class="drawing-app-toolbar-file-trigger">
+                            File
+                            <span class="drawing-file-menu-caret" aria-hidden="true">▾</span>
+                        </summary>
+                        <div class="drawing-app-toolbar-file-options" aria-label="File actions">
+                            <button type="button" data-file-action="new" title="New drawing (Ctrl+N)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5"/></svg>New</button>
+                            <button type="button" data-file-action="open" title="Open an .enggdraw file"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3z"/></svg>Open</button>
+                            <button type="button" data-file-action="save" title="Save (Ctrl+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5"/></svg>Save</button>
+                            <button type="button" data-file-action="save-as" title="Save as (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
+                            <button type="button" data-file-action="export" title="Export as PNG, JPG or SVG (Ctrl+Shift+E)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M10 12l-3-3M10 12l3-3M4 15v2h12v-2"/></svg>Export</button>
+                            <button type="button" data-file-action="print" title="Print the drawing (Ctrl+Shift+P)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 7V3h8v4M6 14H4V9h12v5h-2M6 12h8v5H6z"/></svg>Print</button>
+                        </div>
+                    </details>
                     <div class="drawing-app-toolbar-group" aria-label="History">
                         <span class="drawing-app-toolbar-group-label">History</span>
                         <button id="drawingUndo" type="button" title="Undo"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6L3 10l4 4M4 10h7a5 5 0 0 1 5 5"/></svg>Undo</button>
