@@ -670,9 +670,9 @@
      * takes over. Growing and being able to shrink are not in
      * conflict; they are what `1 1` means.
      *
-     * It also puts the submenu marker after the LAST word, on the
-     * word it belongs to, because the label is now wide enough to hold
-     * the final word and its marker together.
+    * The submenu caret is a separate, fixed-width flex item, so it
+    * stays at the right edge while this label uses the remaining
+    * width for wrapping.
      */
     flex: 1 1 auto;
 
@@ -773,8 +773,33 @@
  * affordance matches the existing menu buttons.
  */
 .drawing-tool-caret {
-    font-size: 8px;
-    opacity: 0.7;
+    align-self: center;
+    flex: 0 0 15px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: auto;
+    opacity: 0.95;
+    text-align: center;
+    transition: transform .12s ease;
+}
+
+.drawing-tool-caret.expanded {
+    transform: rotate(180deg);
+}
+
+.drawing-tool-submenu {
+    border-left: 1px solid var(--cad-border);
+    display: grid;
+    gap: 1px;
+    margin: 1px 0 3px 9px;
+    min-width: 0;
+    padding-left: 4px;
+}
+
+.drawing-tool-submenu .drawing-tool {
+    font-size: 10px;
+    min-height: 23px;
+    padding: 2px 4px;
 }
 
 .drawing-canvas-area {

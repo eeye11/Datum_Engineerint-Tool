@@ -233,6 +233,7 @@ const toolIcons = {
 	Vector: drawingIcon(`<path ${iconStroke} d="M4 15L15 4M10 4h5v5"/>`),
 	Graph: drawingIcon(`<path ${iconStroke} d="M4 16V4M4 16h12M7 13l3-4 2 2 3-5"/>`),
 	"Graph Plotter": drawingIcon(`<path ${iconStroke} d="M3 16V4M3 16h14M5 13c2-7 4 4 6-2s3-5 6-7"/>`),
+	"Manual Drawing": drawingIcon(`<path ${iconStroke} d="M4 16l1-4L13.5 3.5l3 3L8 15zM11.5 5.5l3 3M4 16l4-1"/>`),
 	Diagrams: drawingIcon(`<path ${iconStroke} d="M3 16V4M3 16h14M5 13h3V9h3V6h4"/>`),
 	Equation: drawingIcon(`<path ${iconStroke} d="M4 6h4M6 4v4M10 10h6M4 15h4"/>`)
 };

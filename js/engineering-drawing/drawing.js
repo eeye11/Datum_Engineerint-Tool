@@ -780,22 +780,27 @@ function renderToolButton(tool) {
         tool.shortcut
             ? ` (${tool.shortcut})`
             : "";
+    const disabled = tool.disabled === true;
+    const accessibleLabel = `${tool.label}${shortcut}${disabled ? " (Coming soon)" : ""}`;
 
     /*
      * Tools that open a submenu advertise it, so the
      * affordance matches the existing coordinate-system
      * and polygon buttons.
      */
+    const submenuExpanded =
+        tool.submenuExpanded === true;
+
     const coordinateAttributes =
         tool.id ===
             "coordinate-system" ||
         tool.submenu
-            ? ' aria-haspopup="menu" aria-expanded="false"'
+            ? ` aria-haspopup="menu" aria-expanded="${submenuExpanded}"${tool.submenu ? ` aria-controls="drawing-submenu-${tool.id}"` : ""}`
             : "";
 
     const submenuCaret =
         tool.submenu
-            ? ' <span class="drawing-tool-caret" aria-hidden="true">▾</span>'
+            ? `<span class="drawing-tool-caret${submenuExpanded ? " expanded" : ""}" aria-hidden="true">▾</span>`
             : "";
 
     return `
@@ -803,9 +808,10 @@ function renderToolButton(tool) {
             class="drawing-tool${active ? " active" : ""}"
             type="button"
             data-tool-id="${tool.id}"
-            title="${tool.label}${shortcut}"
-            aria-label="${tool.label}${shortcut}"
+            title="${accessibleLabel}"
+            aria-label="${accessibleLabel}"
             aria-pressed="${active}"
+            ${disabled ? "disabled" : ""}
             ${coordinateAttributes}
         >
             <span class="drawing-tool-icon" aria-hidden="true">
@@ -829,7 +835,8 @@ function renderToolButton(tool) {
                 back under the icon, where it would read as
                 belonging to the row above.
             -->
-            <span class="drawing-tool-label">${tool.label}${submenuCaret}</span>
+            <span class="drawing-tool-label">${tool.label}</span>
+            ${submenuCaret}
         </button>
     `;
 }
@@ -1639,10 +1646,12 @@ function isReferenceArcTool(toolId) {
     ) === "reference-arc";
 }
 
+let expandedStaticsMenuId = null;
+
 const STATICS_TOOL_MENUS = {
     "sfd-menu": [
         { id: "graph-plotter", label: "Graph Plotter" },
-        { id: "shear-force-diagram", label: "Place Diagram" }
+        { id: "manual-diagram", label: "Manual Drawing", disabled: true }
     ],
 
     body: [
@@ -3433,7 +3442,19 @@ function renderEngineeringTools(
 
                             ${group.tools
                                 .map(
-                                    renderToolButton
+                                    tool => {
+                                        const submenuItems = STATICS_TOOL_MENUS[tool.id];
+                                        const submenuExpanded = expandedStaticsMenuId === tool.id;
+
+                                        return `
+                                            ${renderToolButton({ ...tool, submenuExpanded })}
+                                            ${submenuItems && submenuExpanded
+                                                ? `<div class="drawing-tool-submenu" id="drawing-submenu-${tool.id}" role="group" aria-label="${tool.label} tools">
+                                                    ${submenuItems.map(renderToolButton).join("")}
+                                                </div>`
+                                                : ""}
+                                        `;
+                                    }
                                 )
                                 .join("")}
                         </section>
@@ -3509,6 +3530,20 @@ function renderEngineeringTools(
                                 button
                             );
 
+                            return;
+                        }
+
+                        if (toolId === "sfd-menu") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            expandedStaticsMenuId =
+                                expandedStaticsMenuId === toolId
+                                    ? null
+                                    : toolId;
+                            renderEngineeringTools(activeCategory());
+                            toolList
+                                .querySelector(`[data-tool-id="${toolId}"]`)
+                                ?.focus();
                             return;
                         }
 
