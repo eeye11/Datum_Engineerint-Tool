@@ -1,0 +1,16 @@
+{
+  "name": "enggdraw",
+  "version": "1.0.0",
+  "description": "EnggDraw - engineering drawing and statics tool (geometry, statics, dimensions, analysis, sheets).",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node backend/server.js",
+    "serve": "node backend/server.js",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "node-tikzjax": "^1.0.5"
+  }
+}

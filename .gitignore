@@ -16,11 +16,22 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+.qodo/
 
-# Test/QA artifacts
+# QA artifacts (regenerable screenshots)
+shots/
 qa-shot.png
 *.png.tmp
+
+# Scratch output from ad-hoc QA runs
+*.tmp
+pc.txt
+pl.txt
+sb.txt
+z.txt
+ui.txt
 
 # Build output
 dist/
 build/
+coverage/
