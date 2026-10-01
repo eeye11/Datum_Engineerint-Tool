@@ -2712,36 +2712,28 @@ function beginAnalysisDiagram(
             selectedStaticsFeatures()
         );
 
-    if (!source) {
-        setToolMessage(
-            "Select a Beam, Truss or member first - the diagram is measured against it"
-        );
-
-        return;
-    }
-
     const span =
-        enggAnalysisDependencies.spanOf(
-            source
-        );
-
-    if (!span) {
-        setToolMessage(
-            "The selected feature has no span to measure against"
-        );
-
-        return;
-    }
+        source
+            ? enggAnalysisDependencies.spanOf(
+                  source
+              )
+            : null;
 
     /*
-     * The interaction, armed but not yet placed.
+     * THE BODY IS CHOSEN ON THE FIRST CLICK, NOT BEFORE THE BUTTON.
      *
-     * `sourceId` is what the axis is derived from on every frame
-     * of the preview and again when it is committed, so the axis
-     * is never held as a fixed pair of points that could go stale
-     * between now and the click. `placementY` is the one number
-     * the cursor owns, and it is the student's answer to "how far
-     * below your drawing?".
+     * A body that happens to be selected when the tool is chosen is used,
+     * because it is right and saves a click. But requiring one is not: it
+     * made the two tools unreachable in practice, because a diagram tool
+     * cannot select anything - it is not the Select tool - so the student
+     * was told to select a beam, clicked the beam, and nothing happened.
+     * The instruction was impossible to satisfy from inside the tool that
+     * gave it.
+     *
+     * So the interaction is armed either way, and with no source yet it
+     * simply waits for one. That is the same two-stage shape every other
+     * body-attached Statics tool uses - select the tool, click the body,
+     * place it - rather than a rule of its own.
      */
     enggDrawingState.setInteraction(
         drawingState,
@@ -2749,22 +2741,51 @@ function beginAnalysisDiagram(
             phase: "analysis-axis",
 
             analysisKind: diagramType,
-            sourceId: source.id,
+            sourceId: source?.id ?? null,
 
             /*
-             * The starting height is the suggested offset below
-             * the source, so the first frame appears somewhere
-             * readable rather than on top of the beam.
+             * The starting height is the suggested offset below the
+             * source, so the first frame appears somewhere readable
+             * rather than on top of the beam. With no source yet there is
+             * nothing to measure from, and the cursor's own height is the
+             * only sensible answer until the body is picked.
              */
-            placementY:
-                span.start.y +
-                enggAnalysisDependencies
-                    .DEFAULT_ANALYSIS_OFFSET,
+            placementY: span
+                ? span.start.y +
+                    enggAnalysisDependencies
+                        .DEFAULT_ANALYSIS_OFFSET
+                : null,
 
             startPoint: null,
             currentPoint: null
         }
     );
+
+    if (!source) {
+        setToolMessage(
+            "Click the Beam, Truss or member the diagram belongs to"
+        );
+
+        renderCurrentDrawing();
+
+        return;
+    }
+
+    /*
+     * A body that exists but has no span cannot carry a diagram, and
+     * saying so is better than arming a placement whose axis can never be
+     * built. The offset is measured from the span's start, so without one
+     * there is nothing to measure from and the placement would sit at no
+     * height at all - the click would be swallowed and the tool would stay
+     * armed with nothing to show for it.
+     */
+    if (!span) {
+        setToolMessage(
+            "That feature has no span to measure a diagram against"
+        );
+
+        return;
+    }
 
     setToolMessage(
         "Move the pointer up or down to position the diagram, then click to place it"
@@ -10484,6 +10505,114 @@ function beginOrCompleteGeometry(
         resolution.effectiveConstructionPoint;
 
     if (!point) {
+        return;
+    }
+
+    /*
+     * STAGE ONE OF A DIAGRAM: NAME THE BODY.
+     *
+     * The diagram tools are armed with no source - the student is asked
+     * for the body they belong to rather than required to have selected
+     * one first. So the first click answers that question, and the second
+     * places the diagram.
+     *
+     * This is the same two-stage shape as a support or a load: tool, then
+     * body, then placement. What makes it worth handling here is that the
+     * stage is decided by whether a source is ALREADY on the interaction,
+     * so a student who had a beam selected before pressing SFD gets the
+     * single-click version and is never asked twice.
+     *
+     * The body is found by the ordinary hit test and kept by its real
+     * feature id. It is never the nearest line, an index or a name, so a
+     * diagram cannot end up attached to the wrong member.
+     */
+    if (
+        interaction.phase === "analysis-axis" &&
+        !interaction.sourceId
+    ) {
+        /*
+         * THE BODY COMES FROM THE SHARED SNAP, NOT FROM A HIT TEST ALONE.
+         *
+         * A member is a thin thing, and a hit test that has to land inside
+         * a drawn outline is a poor way to ask "which beam is that?". The
+         * snap candidates already publish every body's centreline as a
+         * span, so the question is asked of them - the same candidates a
+         * support, a load or a connection is attached through. That is
+         * also what makes the diagram behave like the rest of Statics: the
+         * student aims at the beam, the same way they always do, and the
+         * same tolerance decides what counts as close enough.
+         *
+         * The candidate is resolved to the object it names and stored by
+         * its real feature id, so nothing downstream depends on where the
+         * pointer happened to be.
+         */
+        const snappedId =
+            staticsAttachmentId(
+                resolution.snapCandidate
+            );
+
+        const body =
+            analysisSourceBody(
+                snappedId
+                    ? [
+                          drawingState.objects.find(
+                              candidate =>
+                                  candidate.id ===
+                                  snappedId
+                          )
+                      ].filter(Boolean)
+                    : [objectAtPoint(point)]
+            ) ||
+            analysisSourceBody(
+                selectedStaticsFeatures()
+            );
+
+        if (!body) {
+            setToolMessage(
+                "Click the Beam, Truss or member the diagram belongs to"
+            );
+
+            renderCurrentDrawing();
+
+            return;
+        }
+
+        const span =
+            enggAnalysisDependencies.spanOf(body);
+
+        if (!span) {
+            setToolMessage(
+                "That feature has no span to measure a diagram against"
+            );
+
+            return;
+        }
+
+        enggDrawingState.setInteraction(
+            drawingState,
+            {
+                ...interaction,
+
+                sourceId: body.id,
+
+                /*
+                 * The suggested starting height, measured from the body
+                 * that was just chosen rather than from whatever happened
+                 * to be selected.
+                 */
+                placementY:
+                    span.start.y +
+                    enggAnalysisDependencies
+                        .DEFAULT_ANALYSIS_OFFSET
+            }
+        );
+
+        setToolMessage(
+            "Move the pointer up or down to position the diagram, then click to place it"
+        );
+
+        renderCurrentDrawing();
+
         return;
     }
 
@@ -21920,6 +22049,70 @@ function handleCanvasClick(
      * and no category needs its own rule: a tool that was never
      * thought about when this was written still gets it.
      */
+    /*
+     * THE ANALYSIS AXIS PLACEMENT, BEFORE ANY SELECTION.
+     *
+     * The comment below used to describe this branch as sitting ahead of
+     * the construction tools and the selection test, and it was written
+     * with the reasoning in full: a click on an existing feature during a
+     * placement is a PLACEMENT click, not a selection, because the
+     * student is being asked where the diagram goes and the only thing
+     * that answers that is where the pointer is.
+     *
+     * The code said the opposite. The selection test ran first, so a click
+     * on the beam was taken as a selection and returned before this branch
+     * was ever reached - the diagram stayed unplaced and the tool stayed
+     * armed, which is the one outcome that comment calls a half-finished
+     * sheet.
+     *
+     * So the order is what the comment always claimed. A running analysis
+     * placement owns the pointer, and that is decided by the interaction
+     * phase rather than by what happens to be under it.
+     */
+    if (
+        drawingState.interaction.phase ===
+            "analysis-axis"
+    ) {
+        /*
+         * WHICH STAGE THIS CLICK IS.
+         *
+         * The placement is two clicks: the first names the body the
+         * diagram belongs to, the second puts it where the student wants
+         * it. Whether THIS click is the second one is decided by whether a
+         * source was already chosen when it arrived - read BEFORE the
+         * first stage runs, because that stage sets the source and would
+         * otherwise make both clicks look like the committing one.
+         */
+        const hadSource =
+            Boolean(
+                drawingState.interaction.sourceId
+            );
+
+        if (hadSource) {
+            commitAnalysisAxis();
+
+            return;
+        }
+
+        /*
+         * No source yet, so this click NAMES the body. That is the first
+         * stage of the placement and it is handled by the ordinary
+         * construction entry point, which already owns the "click a body
+         * to act on" rule every body-attached Statics tool uses.
+         *
+         * It is deliberately NOT called once a source exists. A
+         * construction entry point is for BUILDING something, and with a
+         * source already chosen this click commits a placement rather than
+         * starting a new one - running both would leave a stray span armed
+         * behind the diagram.
+         */
+        beginOrCompleteGeometry(
+            resolvePointerEvent(event)
+        );
+
+        return;
+    }
+
     if (
         shouldClickSelectExistingObject(
             event
@@ -21928,31 +22121,6 @@ function handleCanvasClick(
         selectFromCanvasClick(
             event
         );
-
-        return;
-    }
-
-    /*
-     * THE ANALYSIS AXIS PLACEMENT.
-     *
-     * Checked before the construction tools, because the diagram tools
-     * are no longer construction tools - choosing one of them puts the
-     * sheet into this placement rather than arming a span - and a click
-     * here is the COMMITMENT of a preview the student has already
-     * been looking at, not the selection of something on the sheet.
-     *
-     * A click on an existing feature during placement is a placement
-     * click, not a selection: the student is being asked where the
-     * diagram goes, and the only thing that answers that is where the
-     * pointer is. Selecting instead would let a click on the beam
-     * leave the diagram unplaced and the tool still armed, which is
-     * the one outcome that leaves the sheet in a half-finished state.
-     */
-    if (
-        drawingState.interaction.phase ===
-            "analysis-axis"
-    ) {
-        commitAnalysisAxis();
 
         return;
     }
