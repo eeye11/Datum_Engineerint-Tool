@@ -312,16 +312,33 @@ console.log("\nThe drawn path traces the sweep that is stored\n");
  * So the path is parsed back and the arc it actually describes is
  * recovered from its flags, rather than trusting the string to mean
  * what the geometry says.
+ *
+ * The command is
+ *
+ *     A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+ *
+ * and the ROTATION is part of the command - it is not optional. Parsing
+ * only two flags after the radius pair reads the rotation as the
+ * large-arc flag and slides everything one place along, which describes
+ * an arc the drawing never asked for.
+ *
+ * That is not hypothetical: the path was emitted without the rotation
+ * for a while, every flag was individually correct, and the browser
+ * rejected the result - so both moment tools created their features and
+ * drew nothing at all. The rotation is read and asserted below so the
+ * command cannot lose that parameter again.
  */
 function describedSweep(path) {
-    const flags = path.match(
-        /A\s+[\d.]+\s+[\d.]+\s+([01])\s+([01])\s/
+    const parsed = path.match(
+        /A\s+[-\d.e+]+\s+[-\d.e+]+\s+([-\d.e+]+)\s+([01])\s+([01])\s/
     );
 
-    const large = flags[1] === "1";
-    const clockwise = flags[2] === "1";
+    const rotation = Number(parsed[1]);
+    const large = parsed[2] === "1";
+    const clockwise = parsed[3] === "1";
 
     return {
+        rotation,
         large,
         clockwise,
 
@@ -335,12 +352,19 @@ function describedSweep(path) {
     };
 }
 
-[
-    ["anticlockwise", ccw],
-    ["clockwise", cw]
-].forEach(([label, arc]) => {
-    const described =
-        describedSweep(R.arcPath(arc));
+    [
+        ["anticlockwise", ccw],
+        ["clockwise", cw]
+    ].forEach(([label, arc]) => {
+        const described =
+            describedSweep(R.arcPath(arc));
+
+    check(
+        described.rotation === 0,
+        label + ": the path states its rotation, rather than letting " +
+            "the flags slide into the wrong slots",
+        String(described.rotation)
+    );
 
     check(
         described.large === true,

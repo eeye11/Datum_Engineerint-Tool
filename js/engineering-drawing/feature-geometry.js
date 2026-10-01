@@ -781,10 +781,16 @@
                 return;
             }
 
+            /*
+             * Where the attachment currently is, on the member as it is
+             * NOW. Asked for as a world point because the drag below
+             * works in world space; the stored fraction is what makes the
+             * drag survive a resize.
+             */
             const attachment =
-                frames.pointAt(
+                frames.attachmentPoint(
                     frame,
-                    Number(g.attachment?.distance) || 0
+                    g.attachment
                 );
 
             if (!attachment) {
@@ -792,8 +798,8 @@
             }
 
             /*
-             * Where the drag would put the attachment, measured
-             * ALONG the body and clamped to it.
+             * Where the drag would put the attachment, measured ALONG the
+             * body and clamped to it.
              */
             const target = {
                 x: attachment.x + deltaX,
@@ -824,7 +830,16 @@
                     g.flipped === true
                 );
 
-            g.attachment = { distance };
+            /*
+             * Stored as the FRACTION the drag landed on, not as the
+             * millimetres travelled. That is what keeps a drag fixed-
+             * distance on a member while still surviving a later resize.
+             */
+            g.attachment =
+                frames.attachmentFor(
+                    frame,
+                    moved
+                );
 
             if (placement) {
                 g.position = placement.render;

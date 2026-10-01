@@ -84,6 +84,23 @@
                 enabled: true,
                 spacing: 1
             },
+
+            /*
+             * THE STATICS ENVIRONMENT'S DISPLAY SETTINGS.
+             *
+             * One block for the whole Statics workspace, held at
+             * drawing level rather than on any individual feature. The
+             * Vector Scale in here is the single shared value that every
+             * force and load arrow is drawn through.
+             *
+             * It is a DISPLAY setting and nothing else. It changes how
+             * big the arrows look and never how big the forces are: a
+             * 100 N force drawn at 4x is still 100 N, and the analysis
+             * that reads it never sees this value at all.
+             */
+            statics: {
+                vectorScale: 1
+            },
             objectSnap: {
                 enabled: true,
                 tolerancePx: 10,
@@ -1972,6 +1989,9 @@
                 },
                 grid: {
                     ...state.grid
+                },
+                statics: {
+                    ...state.statics
                 },
                 snap: {
                     ...state.snap

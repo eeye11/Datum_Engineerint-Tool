@@ -1,4 +1,4 @@
-/* Engineering drawing body frames - the local geometry every attachment reads. */
+﻿/* Engineering drawing body frames - the local geometry every attachment reads. */
 /*
  * A support is attached to a BODY at a point on its centreline, and is
  * drawn on the OUTSIDE of that body. Both halves of that sentence
@@ -287,6 +287,160 @@
      * two positions are different numbers stored in different places,
      * and the symbol is genuinely attached to the centreline.
      */
+
+    /*
+     * ATTACHMENTS ARE STORED AS A FRACTION OF THE MEMBER.
+     *
+     * One rule, and it is a FRACTION - "0.5 is halfway along" - rather
+     * than a distance in millimetres. That single choice is what makes
+     * every operation behave:
+     *
+     *   - a RESIZE keeps the attachment at the same place on the member,
+     *     because half of a longer member is still half of it;
+     *   - a DRAG rewrites the fraction from where the pointer went, so
+     *     the attachment still sits under the load it was placed for;
+     *   - a member that moves or rotates carries its attachments with no
+     *     arithmetic at all.
+     *
+     * It used to be stored as an ABSOLUTE distance. That was chosen so
+     * that a drag would keep the support under its load, and it did - but
+     * it made a resize wrong in a way nothing could fix: doubling a beam
+     * left a support that had been at the halfway point stranded a
+     * quarter of the way along the longer beam. Preserving the fraction
+     * had to be bolted on as a special case, which is the sign that the
+     * stored value was the wrong shape.
+     *
+     * So a fraction is stored, and these two functions are the only
+     * places the two representations meet. A caller reading an attachment
+     * asks for the world point; a caller writing one asks for the
+     * fraction. Nothing else needs to know which is which, and a document
+     * written before this change is converted when it is read.
+     */
+
+    /*
+     * The stored fraction for a point on the member.
+     *
+     * Anything unrecognised reads as 0 - the start - rather than being
+     * trusted, because an attachment is drawn at whatever this returns and
+     * a corrupt value would place it somewhere arbitrary.
+     */
+    function attachmentFraction(frame, attachment) {
+        if (!frame || !attachment || typeof attachment !== "object") {
+            return 0;
+        }
+
+        /*
+         * A DOCUMENT WRITTEN BEFORE FRACTIONS.
+         *
+         * An older attachment carries `attachmentType: "distance"` and a
+         * distance in millimetres. It is divided through once, here, on
+         * the way in, so a saved sheet opens with its supports where they
+         * were put instead of jammed against the far end. The flag is not
+         * cleared: re-reading the same value on the same member gives the
+         * same fraction, so the conversion is idempotent even though the
+         * old marker stays put.
+         */
+        const stored = attachment.unit === "fraction"
+            ? attachment.fraction
+            : attachmentTypeIsDistance(attachment)
+                ? distanceToFraction(
+                    frame,
+                    attachment
+                )
+                : attachment.fraction;
+
+        const value = Number(stored);
+
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+
+        return Math.min(
+            1,
+            Math.max(0, value)
+        );
+    }
+
+    /*
+     * The world POINT an attachment is at, on the member as it is now.
+     *
+     * This is the read every drawing path goes through, so a support, a
+     * connection and a load all resolve their place on the member from
+     * one place and cannot disagree about it.
+     */
+    function attachmentPoint(frame, attachment) {
+        const fraction =
+            attachmentFraction(frame, attachment);
+
+        if (!frame) {
+            return null;
+        }
+
+        return {
+            x:
+                frame.start.x +
+                frame.tangent.x *
+                    frame.length *
+                    fraction,
+            y:
+                frame.start.y +
+                frame.tangent.y *
+                    frame.length *
+                    fraction
+        };
+    }
+
+    /*
+     * The stored attachment for a point on the member.
+     *
+     * Written as a FRACTION and marked as one, so nothing downstream -
+     * including a later read of this same object - can mistake it for the
+     * millimetre distances this field used to hold.
+     */
+    function attachmentFor(frame, point) {
+        if (!frame) {
+            return { fraction: 0, unit: "fraction" };
+        }
+
+        const fraction =
+            frame.length > 1e-9
+                ? positionOn(frame, point) / frame.length
+                : 0;
+
+        return {
+            fraction: Math.min(
+                1,
+                Math.max(0, fraction)
+            ),
+            unit: "fraction"
+        };
+    }
+
+    function distanceToFraction(frame, attachment) {
+        const distance = Number(attachment?.distance);
+
+        if (!Number.isFinite(distance) || frame.length <= 1e-9) {
+            return 0;
+        }
+
+        return Math.min(
+            1,
+            Math.max(0, distance / frame.length)
+        );
+    }
+
+    function attachmentTypeIsDistance(attachment) {
+        /*
+         * The old marker, or the absence of the new one. A plain
+         * `distance` with no `unit` is an old attachment: everything
+         * written since carries `unit: "fraction"`.
+         */
+        return (
+            attachment.unit !== "fraction" &&
+            Number.isFinite(Number(attachment.distance))
+        );
+    }
+
     function supportPlacement(
         parent,
         attachment,
@@ -369,6 +523,9 @@
     window.enggBodyFrames = {
         DEFAULT_MEMBER_HALF_DEPTH,
         SUPPORT_CLEARANCE,
+        attachmentFor,
+        attachmentFraction,
+        attachmentPoint,
         frameOf,
         centrelineOf,
         defaultSide,

@@ -295,6 +295,22 @@
     min-height: 30px;
     padding: 4px 8px;
     white-space: nowrap;
+
+    /*
+     * THE BORDER IS DRAWN, NOT EARNED.
+     *
+     * Every category carries a transparent border so that the ACTIVE one
+     * can gain an outline without the row changing size. Without this the
+     * border sits INSIDE the button's declared width while the row still
+     * advanced by the full width, so adjacent categories overlapped by a
+     * pixel - a hairline seam where one button's edge sat on top of its
+     * neighbour's, and which read as the buttons covering each other.
+     *
+     * Drawing the border inside the box makes the declared width and the
+     * occupied width the same number, so the row lays out exactly as
+     * measured and no two categories can intersect.
+     */
+    box-sizing: border-box;
 }
 
 .drawing-category:hover,
@@ -551,6 +567,56 @@
     min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
+
+    /*
+     * A SCROLLBAR YOU CAN SEE.
+     *
+     * The list scrolls because the tool set is genuinely taller than a
+     * short window - a 640px-tall laptop shows about two thirds of the
+     * STATICS tools and hides the rest. Scrolling is the right behaviour;
+     * scrolling SILENTLY is not, because nothing on screen says there is
+     * anything below. The analysis tools in particular - AFD, SFD and BMD
+     * - simply did not exist as far as the user could tell, and that is
+     * what "the buttons are missing" actually meant.
+     *
+     * So the scrollbar is given the platform's thin form rather than the
+     * default fat overlay, and painted in the panel's own ink so it
+     * reads as part of the panel rather than as a stray overlay that
+     * appears and vanishes with the pointer. Firefox is honoured through
+     * `scrollbar-width` for the same reason.
+     *
+     * `scrollbar-gutter: stable` reserves the space whether or not the
+     * list is currently overflowing, so the column of tools does not
+     * shift sideways the moment the list becomes scrollable.
+     */
+    scrollbar-color: #b9c9ce transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+}
+
+.drawing-tool-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.drawing-tool-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/*
+ * The thumb is always painted. A transparent-until-hover scrollbar is
+ * the default on some platforms and is exactly what made the content
+ * below look as though it did not exist.
+ */
+.drawing-tool-list::-webkit-scrollbar-thumb {
+    background: #b9c9ce;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    background-clip: content-box;
+}
+
+.drawing-tool-list::-webkit-scrollbar-thumb:hover {
+    background: #93a8b0;
+    background-clip: content-box;
 }
 
 .drawing-tool-group {

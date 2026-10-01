@@ -625,11 +625,31 @@
             geometry?.position ||
             { x: 0, y: 0 };
 
+        /*
+         * The stored tip when there is one, and otherwise the vector
+         * rebuilt from the stored magnitude AND angle.
+         *
+         * The angle used to be ignored here, so a force with no stored
+         * tip was read as pointing along +x whatever its angle said. The
+         * two representations therefore disagreed: a force carrying
+         * `angle: 90` reported a direction of 0.
+         *
+         * Both are written together by setForceVector, so this only
+         * arises on hand-authored or older geometry - but it matters
+         * because reverseForceDirection reads the direction through this
+         * function. A force with no tip would have been turned through a
+         * half turn from the wrong starting angle.
+         */
+        const magnitude = finite(geometry?.magnitude);
+
+        const vector =
+            unitVector(finite(geometry?.angle));
+
         const end =
             geometry?.end ||
             {
-                x: start.x + finite(geometry?.magnitude),
-                y: start.y
+                x: start.x + vector.x * magnitude,
+                y: start.y + vector.y * magnitude
             };
 
         const fx = finite(end.x) - finite(start.x);
@@ -645,12 +665,243 @@
         };
     }
 
+    /*
+     * The same force, pointing the other way.
+     *
+     * This is what turns a push into a pull. The arrow stops pointing
+     * away from where the force acts and points towards it instead, and
+     * the two are the same load read the other way round.
+     *
+     * THE APPLICATION POINT DOES NOT MOVE. It is where the force acts,
+     * and that is the one thing a change of sense must not touch: a
+     * force reversed in place is the same force acting at the same
+     * place, only drawn the other way round. Sliding the application
+     * point would make it a different load at a different location
+     * rather than the same load seen from the other side.
+     *
+     * The vector is therefore mirrored through the application point,
+     * which puts the tip at the same distance on the opposite side.
+     * Nothing is re-drawn elsewhere, no length is changed, and the
+     * segment is simply read in the opposite direction.
+     *
+     * THE MAGNITUDE is carried through unchanged and stays positive. It
+     * is a physical magnitude, not a signed quantity - the sense of the
+     * force lives in the direction, which is why this is a rotation by
+     * 180 degrees rather than a negation.
+     *
+     * Written through setForceVector so the application point, the
+     * stored magnitude, the stored angle and the drawn tip are all
+     * rewritten together by the one function that already owns that
+     * relationship, and no field can be left disagreeing with another.
+     */
+    function reverseForceDirection(geometry) {
+        if (!geometry) {
+            return geometry;
+        }
+
+        const vector = forceVector(geometry);
+
+        return setForceVector(
+            geometry,
+            vector.magnitude,
+            vector.angle + 180
+        );
+    }
+
+    /*
+     * THE VECTOR SCALE.
+     *
+     * One shared, presentational multiplier for every Statics arrow. It
+     * decides how BIG the arrows are drawn and nothing else.
+     *
+     * The offered values are DECADES, not fractions. An engineering arrow
+     * has to survive forces that differ by orders of magnitude - a 5 N
+     * reaction beside a 50 kN load - and a scale that only ever doubled
+     * could not put both of them on one readable sheet. Halving is not
+     * much use for that either, so the steps are powers of ten in each
+     * direction, with 1 as the middle: the true length, and the value
+     * every sheet starts at, so opening an older document changes
+     * nothing about how it looks.
+     *
+     * They are listed shrinking-first and then growing, which is the order
+     * a user reaches for them in: "too big, smaller" down to a tenth,
+     * then "too small, larger" up to a thousand times.
+     *
+     * A CUSTOM value is offered alongside them, because the decades are a
+     * starting point rather than a cage - there is no reason a sheet
+     * should not want 1.5x or 250x, and a list that cannot express a
+     * number the user already has in mind is a list that gets worked
+     * around by editing the file.
+     *
+     * It is stored once, on the drawing's Statics settings, and NOT on
+     * any individual force or load. There is deliberately no per-feature
+     * copy: one setting that every vector obeys is the thing a user can
+     * reason about, and per-feature scales would let a sheet end up with
+     * arrows that cannot be compared by eye.
+     */
+    const VECTOR_SCALE_OPTIONS = [
+        { value: 1, label: "1.0×" },
+        { value: 0.1, label: "0.1×" },
+        { value: 0.01, label: "0.01×" },
+        { value: 0.001, label: "0.001×" },
+        { value: 10, label: "10×" },
+        { value: 100, label: "100×" },
+        { value: 1000, label: "1000×" }
+    ];
+
+    const DEFAULT_VECTOR_SCALE = 1;
+
+    /*
+     * The sentinel the panel offers for "let me type my own".
+     *
+     * It is not a scale. It is the value the dropdown holds while the
+     * custom field is showing, chosen so it can never be mistaken for a
+     * real one - a negative number is not a length multiplier.
+     */
+    const CUSTOM_VECTOR_SCALE = "custom";
+
+    /*
+     * The widest range a custom scale may take.
+     *
+     * A scale is a length multiplier, so it has to be positive - a
+     * negative one would draw every arrow backwards. The ceiling is not
+     * about taste: it stops a mistyped entry such as 1e9 from producing an
+     * arrow that swallows the whole sheet, and a floor stops 0 collapsing
+     * every vector to a dot. Beyond them the value is refused and the
+     * default is used, because an arrow that cannot be seen or read is
+     * worse than one drawn at true length.
+     */
+    const MIN_VECTOR_SCALE = 0.0001;
+    const MAX_VECTOR_SCALE = 10000;
+
+    /*
+     * Read the shared scale off the drawing state.
+     *
+     * A CUSTOM scale is a real scale, not a special case: the panel
+     * offers the decades for speed and a typed value for everything else,
+     * and both store the same number in the same place. That is why a
+     * custom value is accepted here on the same terms as a listed one -
+     * the alternative, letting the list decide what is real, would mean
+     * the dropdown had to be told which values it did not know about.
+     *
+     * What is refused is anything that is not a usable LENGTH
+     * multiplier: not a number, not positive, or outside the range a
+     * drawing can show. Those fall back to the default rather than being
+     * trusted, because this value decides how large an arrow is drawn and
+     * a corrupt one must not produce an invisible arrow or one that
+     * swallows the sheet.
+     */
+    function vectorScaleFor(state) {
+        const value = Number(state?.statics?.vectorScale);
+
+        if (!Number.isFinite(value)) {
+            return DEFAULT_VECTOR_SCALE;
+        }
+
+        if (
+            value < MIN_VECTOR_SCALE ||
+            value > MAX_VECTOR_SCALE
+        ) {
+            return DEFAULT_VECTOR_SCALE;
+        }
+
+        return value;
+    }
+
+    /*
+     * The length to DRAW a magnitude at, which is the engineering
+     * magnitude multiplied by the shared display scale.
+     *
+     * These are deliberately two separate numbers. The magnitude is the
+     * force; this is how long its arrow happens to be. Every caller that
+     * needs an arrow length goes through here, so no caller can
+     * accidentally scale one, skip another, or scale the stored value
+     * instead of the drawn one.
+     */
+    function vectorScale(state, magnitude) {
+        return (
+            Math.abs(Number(magnitude) || 0) *
+            vectorScaleFor(state)
+        );
+    }
+
+    /*
+     * WHERE A FORCE'S ARROWHEAD IS DRAWN.
+     *
+     * A force's stored `end` is its ENGINEERING vector - it sits exactly
+     * magnitude away from the application point, because that is the
+     * force. The arrow, however, is drawn at the shared display scale, so
+     * at 4x the arrowhead is four times further out than the stored end.
+     *
+     * That gap matters because the end is also a handle. A handle drawn
+     * at the stored end while the arrow runs past it leaves a dot
+     * floating in the middle of its own arrow, and grabbing that dot
+     * would shorten the force by three quarters of what the user can see.
+     *
+     * So anything that needs to know where the force LOOKS like it ends
+     * asks here, rather than reading `geometry.end` and drawing at a
+     * different place from the renderer.
+     */
+    function drawnForceEnd(state, geometry) {
+        const vector = forceVector(geometry);
+
+        const scale = vectorScaleFor(state);
+
+        return {
+            x: vector.x + vector.fx * scale,
+            y: vector.y + vector.fy * scale
+        };
+    }
+
+    /*
+     * The ENGINEERING force a drawn point describes.
+     *
+     * The inverse of `drawnForceEnd`, and what a drag of the arrowhead
+     * goes through. The point grabbed is on a scaled drawing, so the
+     * scale has to come back off before the value is stored - otherwise
+     * dragging the head to where it currently sits would silently
+     * quarter the force at a 4x display scale.
+     */
+    function forceVectorFromDrawnPoint(state, geometry, point) {
+        const vector = forceVector(geometry);
+
+        const length = Math.hypot(
+            point.x - vector.x,
+            point.y - vector.y
+        );
+
+        const scale = vectorScaleFor(state);
+
+        if (length <= 1e-9 || scale <= 1e-9) {
+            return {
+                magnitude: vector.magnitude,
+                angle: vector.angle
+            };
+        }
+
+        const radians = Math.atan2(
+            point.y - vector.y,
+            point.x - vector.x
+        );
+
+        return {
+            magnitude: length / scale,
+            angle: radians * 180 / Math.PI
+        };
+    }
+
     root.enggLoadProfile = {
         DEFAULT_LOAD_DIRECTION,
         DEFAULT_LOAD_INTERVAL,
+        CUSTOM_VECTOR_SCALE,
+        MAX_VECTOR_SCALE,
+        MIN_VECTOR_SCALE,
+        VECTOR_SCALE_OPTIONS,
         arrowSamples,
         clampInterval,
+        drawnForceEnd,
         forceVector,
+        forceVectorFromDrawnPoint,
         fractionAlong,
         isLoadReversed,
         loadBodyNormal,
@@ -661,11 +912,14 @@
         pointAlong,
         profilePointPositions,
         profilePoints,
+        reverseForceDirection,
         reverseLoadDirection,
         setForceVector,
         setLoadDirection,
         setLoadInterval,
         setProfilePoints,
-        unitVector
+        unitVector,
+        vectorScale,
+        vectorScaleFor
     };
 })(window);

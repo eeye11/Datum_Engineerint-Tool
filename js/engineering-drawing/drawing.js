@@ -1954,6 +1954,41 @@ const STATICS_BODY_ATTACHED_TOOLS = [
 ];
 
 /*
+ * The Statics tools that can be placed as FREE MOMENTS, with no body
+ * to act on.
+ *
+ * A moment is a free-standing action at a point rather than something
+ * that only means something against a body: an applied moment is a
+ * moment at a point and a couple is two opposite moments acting on the
+ * same rigid body, and both are perfectly meaningful on blank sheet.
+ * Requiring a body first would mean a student could not place a moment
+ * anywhere until they had drawn something to put it on - which is the
+ * opposite of how moments are used in statics, where they are applied
+ * at joints and in free space as often as anywhere else.
+ *
+ * A click in empty space therefore places one directly. A click ON a
+ * body still goes through the attachment path, so the moment is parented
+ * to the body it was drawn on and the Features panel can show it
+ * relative to that body.
+ *
+ * Both tools are listed because both are moments. Couple was missing
+ * from the free-space rule even though the rule's own comment claimed it
+ * was covered, so a Couple could not be drawn at all until some other
+ * body already existed on the sheet.
+ */
+const STATICS_FREE_MOMENT_TOOLS = [
+    "applied-moment",
+    "couple"
+];
+
+function isFreeMomentTool(toolId) {
+    return STATICS_FREE_MOMENT_TOOLS.includes(
+        toolId ??
+        drawingState.activeTool
+    );
+}
+
+/*
  * How many points a body-attached tool needs before it can be
  * confirmed.
  *
@@ -5268,15 +5303,43 @@ const STATICS_SINGLE_CLICK_TOOLS = [
     "reference-point"
 ];
 
-const STATICS_PLACEMENT_TOOLS = Object.fromEntries(
-    STATICS_SINGLE_CLICK_TOOLS.map(id => [
-        id,
-        STATICS_CHILD_TOOLS[id] || {
-            label: id,
-            type: id
-        }
-    ])
-);
+const STATICS_PLACEMENT_TOOLS = {
+    ...Object.fromEntries(
+        STATICS_SINGLE_CLICK_TOOLS.map(id => [
+            id,
+            STATICS_CHILD_TOOLS[id] || {
+                label: id,
+                type: id
+            }
+        ])
+    ),
+
+    /*
+     * AN APPLIED MOMENT PLACED IN FREE SPACE IS A SINGLE-CLICK CREATION.
+     *
+     * The tool reaches this table from the free-moment rule in
+     * beginOrCompleteGeometry: a click in empty space places the moment
+     * straight away, exactly as a couple does, rather than refusing and
+     * demanding a body to apply it to.
+     *
+     * It was missing here, and the table was built from the single-click
+     * list alone - so the lookup returned undefined and
+     * createStaticsFeature returned on its first line without creating
+     * anything. The Applied Moment tool therefore armed correctly, showed
+     * its instruction, and did nothing at all on a click, with no error
+     * anywhere: a moment could only ever be placed by picking its way
+     * through the body-attached route.
+     *
+     * It is added here rather than to STATICS_SINGLE_CLICK_TOOLS because
+     * that list describes tools that are FINISHED by one click. An
+     * applied moment on a body is not: it is a two-stage construction
+     * that fixes its application point and is then sized by the cursor.
+     * Listing it as single-click would misdescribe the tool, and the
+     * body-attached branch is still what runs first, so the two-stage
+     * flow on a body is unaffected.
+     */
+    "applied-moment": STATICS_CHILD_TOOLS["applied-moment"]
+};
 
 /*
  * Tools that span two points, so they need a second click.
@@ -7175,6 +7238,29 @@ function createStaticsFeature(
         return;
     }
 
+    /*
+     * Dispatch on the feature type the child tool creates,
+     * not on the old parent ids, so every submenu item
+     * builds the right shape with the right arguments.
+     *
+     * Declared HERE, before any branch below reads it. It used to be
+     * declared further down, just above the factory dispatch, which
+     * left the support branch above it referring to a binding that
+     * did not exist yet. `const` has no hoisted value, so that
+     * reference threw a ReferenceError on EVERY single-click
+     * Statics creation, not only on the supports.
+     *
+     * The error was thrown from inside the placement branch of
+     * handleCanvasClick, so nothing created the feature and nothing
+     * reported a failure either: the tool armed correctly, the
+     * status line showed its instruction, and the click silently
+     * did nothing. Particle and Rigid Body were the visible
+     * casualties because they are the two bodies a student places
+     * first, and both go through this function.
+     */
+    const type =
+        definition.type;
+
     const previous =
         enggDrawingState.snapshotDrawing(
             drawingState
@@ -7314,9 +7400,34 @@ function createStaticsFeature(
              * support would quietly stop being under the load it was
              * put under.
              */
-            object.geometry.attachment = {
-                distance: placement.distance
-            };
+            /*
+             * A FRACTION ALONG the member rather than a world point or
+             * an absolute distance.
+             *
+             * The fraction is what makes the support stay where the
+             * student put it under every change to the member. A stored
+             * world x drifts on a longer beam, and an absolute distance
+             * pins a midpoint support a quarter of the way along a beam
+             * that has since been stretched.
+             *
+             * `placement.distance` is still measured in millimetres,
+             * because that is what the placement code works in, so it is
+             * turned back into a point on the member and then stored as
+             * the fraction that point represents.
+             */
+            const memberFrame =
+                enggBodyFrames.frameOf(parent);
+
+            object.geometry.attachment =
+                enggBodyFrames.attachmentFor(
+                    memberFrame,
+                    memberFrame
+                        ? enggBodyFrames.pointAt(
+                              memberFrame,
+                              placement.distance
+                          )
+                        : null
+                );
 
             /*
              * Which side. TRUE is the opposite of the body's default
@@ -7333,9 +7444,6 @@ function createStaticsFeature(
      * not on the old parent ids, so every submenu item
      * builds the right shape with the right arguments.
      */
-    const type =
-        definition.type;
-
     if (type === "force") {
         /*
          * The heavier default weight comes from
@@ -10497,8 +10605,7 @@ function beginOrCompleteGeometry(
              * it relative to that body.
              */
             if (
-                drawingState.activeTool ===
-                    "applied-moment" &&
+                isFreeMomentTool() &&
                 !staticsBodyAtPoint(point)
             ) {
                 createStaticsFeature(
@@ -15312,7 +15419,26 @@ function renderProperties() {
     drawingComponentsBack.style.display =
         "block";
 
-    drawingProperties.innerHTML = featurePropertyMarkup(object);
+    /*
+     * THE STATICS DISPLAY SECTION, ABOVE THE FEATURE BEING EDITED.
+     *
+     * The Vector Scale belongs to the Statics environment rather than to
+     * any one feature: it decides how large every force and load arrow on
+     * the sheet is drawn, so putting it inside the Point Force's own
+     * panel - or the load's - would be a lie about what it controls. It
+     * is stated once, here, where it reads as a sheet-wide setting.
+     *
+     * It is rendered ABOVE the feature's properties and is present
+     * whenever a Statics feature is being edited. A non-Statics feature
+     * has no arrows to scale, so the section is simply not drawn.
+     *
+     * This markup is the display half only. The engineering half - the
+     * magnitude, unit, direction and attachment of the feature below it -
+     * is unchanged by anything chosen here.
+     */
+    drawingProperties.innerHTML =
+        staticsDisplayMarkup(object) +
+        featurePropertyMarkup(object);
     drawingProperties.dataset.selectedObjectId = object.id;
     drawingProperties.dataset.geometrySignature = JSON.stringify({
         geometry: object.geometry,
@@ -16634,6 +16760,133 @@ function relativeCoordinateRows(
 }
 
 /*
+ * THE STATICS DISPLAY SECTION.
+ *
+ * A single Vector Scale control, drawn above whichever Statics feature
+ * is being edited. It appears once - never inside an individual force or
+ * load - because it is a property of the Statics environment and not of
+ * any feature on the sheet.
+ *
+ * Only features that are actually drawn as arrows have one: a Point
+ * Force, a Resultant, and the two distributed loads. A beam has no arrow
+ * to size, so nothing is offered for it and the panel is unchanged.
+ */
+/*
+ * Whether the CUSTOM box is showing.
+ *
+ * This is view state, not part of the drawing, and it has to exist
+ * separately because the panel is rebuilt from scratch every time it is
+ * rendered. Without it, choosing "Custom…" would re-render the panel from
+ * the stored scale - which is a listed value - and the dropdown would
+ * snap straight back to it, so the custom box could never be opened at
+ * all.
+ *
+ * It is cleared as soon as a scale is chosen or applied, so it never
+ * outlives the reason it was opened.
+ */
+let staticsCustomScaleOpen = false;
+
+const STATICS_VECTOR_FEATURE_TYPES = [
+    "force",    "resultant",
+    "load",
+    "varying-load"
+];
+
+function usesStaticsVectors(object) {
+    return STATICS_VECTOR_FEATURE_TYPES.includes(
+        object?.type
+    );
+}
+
+function staticsDisplayMarkup(object) {
+    if (!usesStaticsVectors(object)) {
+        return "";
+    }
+
+    const current =
+        enggLoadProfile.vectorScaleFor(
+            drawingState
+        );
+
+    /*
+     * The dropdown carries the decades for speed, and a CUSTOM entry at
+     * the bottom for everything else.
+     *
+     * The custom value is stored in exactly the same place as a listed
+     * one and read back the same way, so choosing it is not a different
+     * kind of setting - it is the same setting, typed. The entry is only
+     * shown as selected when the current value is NOT one of the offered
+     * magnitudes; otherwise the real value is selected and the custom box
+     * is hidden, so the control never claims a scale the sheet is not
+     * using.
+     */
+    const isListed =
+        enggLoadProfile.VECTOR_SCALE_OPTIONS.some(
+            option => option.value === current
+        );
+
+    const options =
+        enggLoadProfile.VECTOR_SCALE_OPTIONS
+            .map(
+                option => `
+                    <option
+                        value="${option.value}"${
+                            option.value === current
+                                ? " selected"
+                                : ""
+                        }
+                    >${option.label}</option>
+                `
+            )
+            .join("");
+
+    const customField =
+        isListed && !staticsCustomScaleOpen
+            ? ""
+            : `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">Custom Scale</span>
+                <input type="number" step="any" min="0"
+                    data-statics-vector-custom
+                    aria-label="Custom vector scale"
+                    value="${isListed ? current : current}">
+                <span class="drawing-property-unit">×</span>
+                <button type="button"
+                    class="drawing-property-action"
+                    data-statics-vector-apply>Apply</button>
+            </div>
+        `;
+
+    return `
+        <div class="drawing-properties-block drawing-statics-display">
+            <div class="drawing-properties-title">STATICS DISPLAY</div>
+
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">Vector Scale</span>
+                <span class="drawing-property-grid-value">
+                    <select data-statics-vector-scale
+                        aria-label="Vector Scale">
+                        ${options}
+                        <option
+                            value="${
+                                enggLoadProfile
+                                    .CUSTOM_VECTOR_SCALE
+                            }"${
+                                isListed && !staticsCustomScaleOpen
+                                    ? ""
+                                    : " selected"
+                            }
+                        >Custom…</option>
+                    </select>
+                </span>
+            </div>
+
+            ${customField}
+        </div>
+    `;
+}
+
+/*
  * The Reverse Direction control for a load.
  *
  * Turning a load around is a single, frequent adjustment - a
@@ -17094,21 +17347,43 @@ function supportPanelRows(
     `);
 
     /*
-     * Position X IS HOW FAR ALONG THE BODY, and the label says so.
+     * WHERE ALONG THE BODY, in millimetres, and the label says so.
      *
-     * Calling it simply "Position X" invited the reading that it is an
+     * Calling this simply "Position X" invited the reading that it is an
      * x coordinate in its own right, and the value a student would then
      * expect to type to move the support to a particular x on the
-     * sheet. It is not: it is a distance along the body, which is why
-     * the support stays put when the body is resized.
+     * sheet. It is not: it is a distance along the body.
+     *
+     * WHAT IS STORED IS THE FRACTION, and what is SHOWN is the distance
+     * that fraction currently represents. Those are different on purpose.
+     * The distance is the number a student thinks in - "300mm along this
+     * 600mm beam" - while the fraction is what survives the beam being
+     * resized underneath it. Showing the distance and storing the
+     * fraction is the translation made once, here, rather than by every
+     * other part of the application guessing which one it is holding.
      */
+    const parentFrame = parent
+        ? enggBodyFrames.frameOf(parent)
+        : null;
+
+    const attachmentFraction = parentFrame
+        ? enggBodyFrames.attachmentFraction(
+              parentFrame,
+              geometry.attachment
+          )
+        : 0;
+
+    const alongBody = parentFrame
+        ? attachmentFraction * parentFrame.length
+        : 0;
+
     rows.push(`
         <div class="drawing-property-grid drawing-property-grid-value">
             <span class="drawing-property-grid-label">Position Along Body</span>
             <input type="number" step="1"
                 data-support-distance
                 aria-label="Position Along Body"
-                value="${number(geometry.attachment?.distance || 0)}">
+                value="${number(alongBody)}">
             <span class="drawing-property-unit">mm</span>
             <span></span>
         </div>
@@ -17143,12 +17418,12 @@ function supportPanelRows(
      * type into would be writing to a value that the next redraw
      * overwrites - and they would see their entry spring back.
      */
-    const placement = parent
+    const placement = parentFrame
         ? enggBodyFrames.supportPlacement(
             parent,
-            enggBodyFrames.pointAt(
-                enggBodyFrames.frameOf(parent),
-                Number(geometry.attachment?.distance) || 0
+            enggBodyFrames.attachmentPoint(
+                parentFrame,
+                geometry.attachment
             ),
             geometry.flipped === true
         )
@@ -17874,8 +18149,19 @@ function featurePropertyMarkup(object) {
              * Height are read live off the drawn structure, because
              * the members are what define the extent and a truss whose
              * span disagreed with its own members would be lying.
+             *
+             * Span is editable and moves the structure's far end along
+             * its existing direction, exactly as a beam's Length does.
              */
-            rows.push(derived("Span", length));
+            rows.push(
+                scalar(
+                    "Span",
+                    "length",
+                    length,
+                    "mm"
+                )
+            );
+
             rows.push(scalar("Height", "height",
                 Number(geometry.height) || 0, "mm"));
 
@@ -17902,7 +18188,18 @@ function featurePropertyMarkup(object) {
             `);
             rows.push(trussOptimizeMarkup());
         } else if (object.type === "beam") {
-            rows.push(derived("Length", length));
+            /*
+             * EDITABLE, and applied to the geometry.
+             *
+             * This used to be a read-only measurement, because Length is
+             * derived from the two ends. It is editable now, and typing a
+             * new one moves the far end along the beam's existing
+             * direction until it reaches that distance from the start -
+             * the beam grows or shrinks about the end that was placed
+             * first and keeps its attitude.
+             */
+            rows.push(scalar("Length", "length",
+                length, "mm"));
             rows.push(scalar("Height", "depth",
                 Number(geometry.depth) || 0, "mm"));
         } else if (object.type === "cable") {
@@ -17914,9 +18211,17 @@ function featurePropertyMarkup(object) {
              * stops being the first the moment a cable is drawn with a
              * sag. They share one GEOMETRY section rather than being
              * split across two, because they are read as one pair.
+             *
+             * For a straight cable they are the same number, and both are
+             * editable, both applied to the geometry the same way.
              */
-            rows.push(derived("Span", length));
-            rows.push(derived("Length", length));
+            rows.push(
+                scalar("Span", "length", length, "mm")
+            );
+
+            rows.push(
+                scalar("Length", "length", length, "mm")
+            );
 
             rows.push(section("SEGMENTS"));
             rows.push(derived("Segment Count",
@@ -18037,6 +18342,18 @@ function featurePropertyMarkup(object) {
                     "°"
                 )
             );
+
+            /*
+             * The same Reverse Direction control the load tools use,
+             * built by the same markup helper so a force and a load
+             * cannot drift apart in appearance or in behaviour. Only the
+             * data attribute differs, because only the handler differs.
+             */
+            rows.push(
+                reverseDirectionMarkup(
+                    "data-force-reverse-direction"
+                )
+            );
         } else {
             rows.push(
                 scalar(
@@ -18122,21 +18439,6 @@ function featurePropertyMarkup(object) {
 
         rows.push(section("APPEARANCE"));
         rows.push(arcRadiusRow(geometry));
-    } else if (object.type === "varying-load") {
-        /*
-         * A varying distributed load carries an intensity at
-         * each end, so one feature describes a triangular or
-         * trapezoidal distribution.
-         */
-        rows.push(section("VARYING LOAD"));
-        rows.push(coordinate("Start X", "start.x", geometry.start.x));
-        rows.push(coordinate("Start Y", "start.y", geometry.start.y));
-        rows.push(coordinate("End X", "end.x", geometry.end.x));
-        rows.push(coordinate("End Y", "end.y", geometry.end.y));
-        rows.push(scalar("Start Magnitude", "startIntensity",
-            Number(geometry.startIntensity) || 0, "N/mm"));
-        rows.push(scalar("End Magnitude", "endIntensity",
-            Number(geometry.endIntensity) || 0, "N/mm"));
     } else if (object.type === "couple") {
         /*
          * A Couple Moment is a FREE moment, so this panel has no
@@ -18183,62 +18485,37 @@ function featurePropertyMarkup(object) {
 
         rows.push(section("APPEARANCE"));
         rows.push(arcRadiusRow(geometry));
-    } else if (object.type === "load") {
+    } else if (
+        object.type === "load" ||
+        object.type === "varying-load"
+    ) {
         /*
-         * A Distributed Load is one continuous load, so the panel
-         * edits the things that define it: the direction every one
-         * of its arrows shares, the magnitude at each of its
-         * defining points, where along the body those points sit,
-         * and the interval its arrows are sampled at.
+         * A Distributed Load and a Varying Distributed Load share ONE
+         * panel.
          *
-         * Every one of these writes straight to the model the
-         * renderer reads, so a change is visible immediately and
-         * the load never has to be deleted and rebuilt.
+         * They are the same feature with a different distribution: both
+         * act over a region of a body, both point the same way, and both
+         * store their intensity as defining points along that region. The
+         * only real difference is that a varying profile has points of
+         * different magnitude, which is a property of the PROFILE, and
+         * profilePointPositions already reads whatever points the feature
+         * actually has.
+         *
+         * So one function builds both, and the two cannot drift apart.
+         * They did once. This branch handled only the uniform case, while
+         * a second varying-load branch below took priority - so a Varying
+         * Distributed Load silently lost its Direction and its Switch
+         * Direction control, the very controls that make a varying load
+         * usable, while the richer code sat unreachable beneath it.
+         *
+         * Every control here writes straight to the model the renderer
+         * reads, so a change is visible immediately and the load never has
+         * to be deleted and rebuilt.
          */
         rows.push(
             distributedLoadPanelMarkup(
                 object,
                 { coordinate, scalar, section }
-            )
-        );
-    } else if (object.type === "varying-load") {
-        /*
-         * A varying distributed load carries an intensity at
-         * each end, so one feature describes a triangular or
-         * trapezoidal distribution.
-         */
-        rows.push(section("VARYING LOAD"));
-        rows.push(
-            scalar(
-                "Direction",
-                "direction",
-                enggLoadProfile.loadDirection(geometry),
-                "°"
-            )
-        );
-        rows.push(reverseDirectionMarkup());
-        rows.push(
-            scalar(
-                "Start Magnitude",
-                "startIntensity",
-                Number(geometry.startIntensity) || 0,
-                "N/mm"
-            )
-        );
-        rows.push(
-            scalar(
-                "End Magnitude",
-                "endIntensity",
-                Number(geometry.endIntensity) || 0,
-                "N/mm"
-            )
-        );
-        rows.push(
-            scalar(
-                "Interval",
-                "interval",
-                enggLoadProfile.loadInterval(geometry),
-                "mm"
             )
         );
     } else if (
@@ -18941,6 +19218,104 @@ function bindFeaturePropertyControls(object) {
      * Feature Tree, the selection and this panel all
      * show the same name.
      */
+    drawingProperties.querySelectorAll('[data-statics-vector-scale]').forEach(select => {
+        select.addEventListener('change', () => {
+            /*
+             * The CUSTOM entry is not a scale - it is the request to type
+             * one. It reveals the field and changes nothing else, so
+             * picking it by mistake leaves the sheet exactly as it was
+             * rather than snapping every arrow back to true length.
+             */
+            if (
+                select.value ===
+                    enggLoadProfile.CUSTOM_VECTOR_SCALE
+            ) {
+                staticsCustomScaleOpen = true;
+
+                renderProperties();
+                return;
+            }
+
+            staticsCustomScaleOpen = false;
+
+            applyVectorScale(
+                Number(select.value)
+            );
+        });
+    });
+
+    /*
+     * THE CUSTOM SCALE, APPLIED.
+     *
+     * A typed value is stored in the same place as a listed one and read
+     * back the same way, so nothing downstream needs to know it was typed.
+     * The only thing that treats it differently is the range check: a
+     * length multiplier has to be positive and has to be drawable, so a
+     * zero, a negative number or a value too large to see is refused and
+     * the field is redrawn rather than leaving a scale that cannot be
+     * drawn.
+     */
+    const applyCustomVectorScale = () => {
+        const field = drawingProperties.querySelector(
+            '[data-statics-vector-custom]'
+        );
+
+        const requested = Number(field?.value);
+
+        const usable =
+            Number.isFinite(requested) &&
+            requested >= enggLoadProfile.MIN_VECTOR_SCALE &&
+            requested <= enggLoadProfile.MAX_VECTOR_SCALE;
+
+        if (!usable) {
+            renderProperties();
+            return;
+        }
+
+        staticsCustomScaleOpen = false;
+
+        applyVectorScale(requested);
+    };
+
+    drawingProperties
+        .querySelectorAll('[data-statics-vector-custom]')
+        .forEach(input => {
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter') {
+                    applyCustomVectorScale();
+                }
+            });
+        });
+
+    drawingProperties
+        .querySelectorAll('[data-statics-vector-apply]')
+        .forEach(button => {
+            button.addEventListener('click', () => {
+                applyCustomVectorScale();
+            });
+        });
+
+    /*
+     * One place that commits a scale, so the dropdown and the custom field
+     * cannot disagree about what a change does.
+     *
+     * Only the two redraws happen. No feature is touched: the stored
+     * magnitudes, units, directions and attachment points are left exactly
+     * as they are, and changing this setting must not add an undo step,
+     * because nothing about the drawing's engineering content has changed -
+     * only how large its arrows are drawn.
+     */
+    function applyVectorScale(value) {
+        drawingState.statics.vectorScale = value;
+
+        setToolMessage(
+            `Vector scale ${value}×`
+        );
+
+        renderProperties();
+        renderCurrentDrawing();
+    }
+
     /*
      * Reverse Direction turns a load's force vectors around.
      *
@@ -18956,6 +19331,44 @@ function bindFeaturePropertyControls(object) {
      * panel is what makes the displayed direction the current
      * one, whether the load is selected, deselected or reopened.
      */
+    /*
+     * Reverse Direction turns a Point Force's vector around.
+     *
+     * The load control above this one is the pattern: snapshot first, so
+     * one press is one step back and a reversal is safe to try and see.
+     *
+     * The reversal itself belongs to the model, and touches the
+     * DIRECTION alone. The application point, the magnitude, the unit,
+     * the feature's identity and its parent body all stay exactly where
+     * they were - a force turned around is the same force acting at the
+     * same place - so the arrow is redrawn pointing the other way and
+     * nothing is moved, rebuilt or replaced.
+     */
+    drawingProperties.querySelectorAll('[data-force-reverse-direction]').forEach(button => {
+        button.addEventListener('click', () => {
+            const previous =
+                enggDrawingState.snapshotDrawing(
+                    drawingState
+                );
+
+            enggLoadProfile.reverseForceDirection(
+                object.geometry
+            );
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previous
+            );
+
+            setToolMessage(
+                "Force direction reversed"
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
+        });
+    });
+
     drawingProperties.querySelectorAll('[data-load-reverse-direction]').forEach(button => {
         button.addEventListener('click', () => {
             const previous =
@@ -19198,7 +19611,18 @@ function bindFeaturePropertyControls(object) {
                         Math.max(0, distance)
                     );
 
-                const attachment =
+                /*
+                 * Typed as a distance along the body, STORED as the
+                 * fraction that distance represents.
+                 *
+                 * The panel speaks in millimetres because that is the
+                 * number a student reasons about; the model stores the
+                 * fraction because that is what survives the body being
+                 * resized. Converting here is the last half of that
+                 * translation, and it means the rest of the application
+                 * never has to work out which of the two it is holding.
+                 */
+                const point =
                     enggBodyFrames.pointAt(
                         frame,
                         clamped
@@ -19207,13 +19631,15 @@ function bindFeaturePropertyControls(object) {
                 const placement =
                     enggBodyFrames.supportPlacement(
                         parent,
-                        attachment,
+                        point,
                         object.geometry.flipped === true
                     );
 
-                object.geometry.attachment = {
-                    distance: clamped
-                };
+                object.geometry.attachment =
+                    enggBodyFrames.attachmentFor(
+                        frame,
+                        point
+                    );
 
                 if (placement) {
                     object.geometry.position =
@@ -20432,6 +20858,73 @@ function updateFeatureProperty(object, key, value) {
      * panel is still the same offset.
      */
     const relative = /^relative\.([xy])$/.exec(key);
+
+    /*
+     * THE LENGTH OF A STRAIGHT BODY IS EDITABLE.
+     *
+     * Length is presented in the panel as a number, and until now it was
+     * read-only because it is DERIVED from the two ends - so a reader
+     * was right to treat it as a measurement of the member rather than
+     * something to type into.
+     *
+     * It is a real property now, and it has to be applied to the GEOMETRY
+     * rather than to the number on screen. Setting the stored value and
+     * redrawing would change the label and nothing else, leaving a beam
+     * that still spans the old distance but claims a new one - which is
+     * exactly the kind of contradiction that makes every downstream
+     * number wrong, because the spans, the support positions and the
+     * analysis all read the ends.
+     *
+     * THE START IS THE ANCHOR. The far end is moved along the member's
+     * existing direction until it sits the requested distance from the
+     * start, so the member's orientation is preserved and the body grows
+     * or shrinks about the end the student placed first. That is the
+     * same anchor the panel's other relative edits use, and it means a
+     * body resized this way stays put where it was pinned.
+     *
+     * A zero-length request is refused: it would collapse the member to a
+     * point, which is not a body and cannot carry a load or be snapped
+     * to. The near-zero floor keeps the direction well defined instead.
+     */
+    if (key === "length" && positive && g.start && g.end) {
+        if (fixed("length")) return false;
+
+        const dx = g.end.x - g.start.x;
+        const dy = g.end.y - g.start.y;
+        const current = Math.hypot(dx, dy);
+
+        /*
+         * A body with no direction yet - two ends on the same point -
+         * cannot be stretched, because there is nothing to stretch
+         * along. Editing the start or the end gives it a direction
+         * first.
+         */
+        if (current <= 1e-6) {
+            return false;
+        }
+
+        g.end = {
+            x: g.start.x + (dx / current) * value,
+            y: g.start.y + (dy / current) * value
+        };
+
+        /*
+         * Nothing to do about the attachments.
+         *
+         * They used to be stored as an absolute distance along the
+         * member, which meant a resize had to walk every child and
+         * rescale it by hand. An attachment is now stored as the
+         * FRACTION of the member it sits at, so the far end moving is
+         * all it takes: half of a longer member is still half of it, and
+         * every support, connection and load on the member is carried
+         * along by its own stored value.
+         *
+         * Leaving it out is what makes the rule single: there is one
+         * representation, so a resize cannot need a special case and a
+         * drag cannot disagree with it.
+         */
+        return true;
+    }
 
     if (relative) {
         if (fixed(key)) return false;
@@ -22413,10 +22906,34 @@ function manipulationHandles(
      * one coherent force either way.
      */
     if (object.type === "force") {
+        /*
+         * The arrowhead handle sits WHERE THE ARROW IS DRAWN, not at the
+         * stored end.
+         *
+         * The stored end is the engineering vector - exactly `magnitude`
+         * from the application point - while the arrow is drawn at the
+         * shared display scale. At 4x the two are four times apart, so a
+         * handle at the stored end would float inside its own arrow, and
+         * grabbing that dot would cut the force down to a quarter of what
+         * is on screen.
+         *
+         * Asking the model where the arrow ends keeps the handle and the
+         * arrow in the same place at every scale, without either of them
+         * having to know how the other is drawn.
+         */
         return [
-                { kind: "start", point: g.start },
-                { kind: "end", point: g.end }
-            ];
+            {
+                kind: "start",
+                point: g.start || g.position
+            },
+            {
+                kind: "end",
+                point: enggLoadProfile.drawnForceEnd(
+                    drawingState,
+                    g
+                )
+            }
+        ];
     }
 
     /*
@@ -23543,6 +24060,36 @@ function applyStaticsManipulation(
         kind === "start" ||
         kind === "end"
     ) {
+        /*
+         * A FORCE'S ARROWHEAD IS DRAGGED ON THE SCALED DRAWING.
+         *
+         * Its handle sits at the drawn tip, so the point released here is
+         * a point on a scaled arrow. The scale is taken back off before
+         * the value is stored - otherwise releasing the head exactly
+         * where it already sits would quietly quarter the force at a 4x
+         * display scale, and the arrow would jump to a quarter of its
+         * length while the user was holding it still.
+         */
+        if (
+            object.type === "force" &&
+            kind === "end"
+        ) {
+            const drawn =
+                enggLoadProfile.forceVectorFromDrawnPoint(
+                    drawingState,
+                    g,
+                    point
+                );
+
+            enggLoadProfile.setForceVector(
+                g,
+                drawn.magnitude,
+                drawn.angle
+            );
+
+            return;
+        }
+
         g[kind] = {
             x: point.x,
             y: point.y

@@ -313,28 +313,40 @@ console.log("\nThe body changing does not disturb the attachment\n");
 /* ---- the body is resized ---- */
 beam.geometry.end = { x: 800, y: 0 };
 
-const grown = F.pointAt(F.frameOf(beam), 200);
+/*
+ * A support keeps its FRACTION of the member, so doubling the beam's
+ * length moves the support out with it and leaves it at the same place
+ * ON THE BODY rather than at the same distance in millimetres.
+ *
+ * This is the behaviour that used to be asserted the other way round. A
+ * stored absolute distance kept a support at 200mm on a beam that had
+ * grown to 800mm - which held the support still in the drawing but slid
+ * it to a quarter of the way along, out from under whatever load it had
+ * been put under. Keeping the fraction satisfies a drag and a resize at
+ * once, which an absolute distance could not.
+ *
+ * The attachment here was written as a fraction, so it is read back
+ * through the accessor rather than off the stored field.
+ */
+const attachmentUnderTest = { fraction: 0.25, unit: "fraction" };
+
+const grown = F.attachmentPoint(F.frameOf(beam), attachmentUnderTest);
 const grownPlacement = F.supportPlacement(beam, grown, false);
 
 check(
     grown.x === 200,
-    "a support 200 along stays 200 along a longer beam",
+    "a support a quarter along stays a quarter along a longer beam",
     String(grown.x)
 );
 
 /*
- * The distinction that makes a stored DISTANCE the right thing to keep.
- * The attachment is 200 from the start of both beams, and it is
- * therefore at a different FRACTION of each - which is exactly why a
- * world coordinate would have drifted and a distance does not.
+ * And it really is the same PLACE on the body, which is the point: the
+ * millimetre distance grows with the member instead of staying put.
  */
-const frameNow = F.frameOf(beam);
-const fractionNow = 200 / frameNow.length;
-
 check(
-    Math.abs(fractionNow - 0.25) < 1e-9,
-    "it is now a quarter of the way along, because the beam grew",
-    String(fractionNow)
+    Math.abs(F.attachmentFraction(F.frameOf(beam), attachmentUnderTest) - 0.25) < 1e-9,
+    "it is still a quarter of the way along, because the beam grew",
+    String(F.attachmentFraction(F.frameOf(beam), attachmentUnderTest))
 );
 
 /* ---- the body is moved ---- */
@@ -397,12 +409,36 @@ E.addObject(state, support);
 const lookup = id =>
     state.objects.find(o => o.id === id) || null;
 
+/*
+ * How far along its member a feature is attached, in millimetres.
+ *
+ * Read through the public accessor rather than off the stored field,
+ * because what is STORED is the fraction of the member and the number
+ * anyone actually reasons about is the distance that fraction currently
+ * represents. Reaching past the accessor into the storage format is what
+ * made this file break when the representation changed: it was asserting
+ * a shape of the data rather than a behaviour of the program.
+ */
+const alongMoveBody = (body, feature) => {
+    const frame = F.frameOf(body);
+
+    const point = F.attachmentPoint(
+        frame,
+        feature.geometry.attachment
+    );
+
+    return Math.hypot(
+        point.x - frame.start.x,
+        point.y - frame.start.y
+    );
+};
+
 G.translateObject(support, 100, 0, lookup);
 
 check(
-    Math.abs(support.geometry.attachment.distance - 300) < 1e-9,
+    Math.abs(alongMoveBody(moveBeam, support) - 300) < 1e-9,
     "a drag right moves it 100 further along",
-    String(support.geometry.attachment.distance)
+    String(alongMoveBody(moveBeam, support))
 );
 check(
     support.geometry.position.x === 300,
@@ -418,9 +454,9 @@ check(
 G.translateObject(support, 500, 0, lookup);
 
 check(
-    Math.abs(support.geometry.attachment.distance - 400) < 1e-9,
+    Math.abs(alongMoveBody(moveBeam, support) - 400) < 1e-9,
     "a drag past the end is clamped to the body, not beyond it",
-    String(support.geometry.attachment.distance)
+    String(alongMoveBody(moveBeam, support))
 );
 
 /* ---- dragged off the beam vertically ---- */
@@ -428,15 +464,15 @@ G.translateObject(support, 0, -300, lookup);
 
 const after = F.supportPlacement(
     moveBeam,
-    F.pointAt(F.frameOf(moveBeam), support.geometry.attachment.distance),
+    F.attachmentPoint(F.frameOf(moveBeam), support.geometry.attachment),
     support.geometry.flipped
 );
 
 check(
-    support.geometry.attachment.distance >= 0 &&
-        support.geometry.attachment.distance <= 400,
+    alongMoveBody(moveBeam, support) >= 0 &&
+        alongMoveBody(moveBeam, support) <= 400,
     "it cannot be dragged off the member it is attached to",
-    String(support.geometry.attachment.distance)
+    String(alongMoveBody(moveBeam, support))
 );
 check(
     below(after.render, { x: after.render.x, y: 0 }),
@@ -461,7 +497,7 @@ console.log("\nEvery support type shares the same attachment logic\n");
     );
     check(
         built.geometry.attachment &&
-            built.geometry.attachment.distance === 0,
+            F.attachmentFraction(null, built.geometry.attachment) === 0,
         type + " is created with an attachment, not a bare position"
     );
 });

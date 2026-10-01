@@ -201,9 +201,28 @@
      * no seam anywhere on it.
      */
     function arcPath(arc) {
+        /*
+         * SVG arc syntax is:
+         *
+         *     A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+         *
+         * The ROTATION parameter is part of the command and is not
+         * optional - it is the third number after the radius pair.
+         *
+         * It was omitted here, so the large-arc flag landed in the
+         * rotation slot and the sweep flag landed in the large-arc slot.
+         * The emitted command was therefore malformed, the browser
+         * rejected the path, and neither an Applied Moment nor a Couple
+         * Moment drew anything at all: the tools were armed and created
+         * their features correctly, and every one of them was invisible.
+         *
+         * The curve is drawn in the canvas's own screen space with no
+         * elliptical tilt, so the rotation is 0. Stating it explicitly
+         * means the flags cannot be misread again.
+         */
         return (
             `M ${arc.start.x} ${arc.start.y} ` +
-            `A ${arc.radius} ${arc.radius} ` +
+            `A ${arc.radius} ${arc.radius} 0 ` +
             `${arc.largeArcFlag} ${arc.sweepFlag} ` +
             `${arc.tip.x} ${arc.tip.y}`
         );

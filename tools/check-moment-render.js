@@ -311,13 +311,53 @@ check(momentPaths.length === 1, "one curve is drawn",
     "paths = " + momentPaths.length);
 
 const d = momentPaths[0] ? momentPaths[0].getAttribute("d") : "";
-const flags = (d.match(/A\s+[\d.]+\s+[\d.]+\s+([01])\s+([01])\s/) || []);
 
-check(flags[1] === "1", "the curve sweeps the long way, not the gap",
-    "large-arc flag = " + flags[1]);
+/*
+ * An SVG arc command is
+ *
+ *     A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+ *
+ * and the ROTATION is a required parameter, not an optional one - it is
+ * the third number after the radius pair.
+ *
+ * Reading only two flags after the radius pair puts the rotation in the
+ * large-arc slot and slides the sweep flag along with it, which describes
+ * an arc the drawing never asked for.
+ *
+ * That is not a hypothetical mistake: the path was emitted without the
+ * rotation for a while. Every flag was individually correct, the stored
+ * angles described a 300 degree sweep, and the browser rejected the whole
+ * command - so both moment tools armed, created their features, listed
+ * them in the Features panel, and drew absolutely nothing. Reading the
+ * rotation out is what makes these checks able to see that at all.
+ */
+function readArc(path) {
+    const found = String(path || "").match(
+        /A\s+[-\d.e+]+\s+[-\d.e+]+\s+([-\d.e+]+)\s+([01])\s+([01])\s/
+    );
 
-check(flags[2] === "0", "a new moment is anticlockwise",
-    "sweep flag = " + flags[2]);
+    if (!found) {
+        return null;
+    }
+
+    return {
+        rotation: Number(found[1]),
+        large: found[2] === "1",
+        sweep: found[3] === "1"
+    };
+}
+
+const flags = readArc(d) || {};
+
+check(flags.rotation === 0,
+    "the curve states its rotation, so the flags cannot slide into the wrong slots",
+    "rotation = " + flags.rotation);
+
+check(flags.large, "the curve sweeps the long way, not the gap",
+    "large-arc flag = " + flags.large);
+
+check(flags.sweep === false, "a new moment is anticlockwise",
+    "sweep flag = " + flags.sweep);
 
 check(momentHeads.length === 1, "one arrowhead is drawn",
     "heads = " + momentHeads.length);
@@ -411,13 +451,19 @@ check(coupleLines.length === 0,
     "straight lines = " + coupleLines.length);
 
 const coupleD = couplePaths[0].getAttribute("d");
-const coupleFlags = (coupleD.match(/A\s+[\d.]+\s+[\d.]+\s+([01])\s+([01])\s/) || []);
 
-check(coupleFlags[1] === "1", "it sweeps the long way too",
-    "large-arc flag = " + coupleFlags[1]);
+/* The same reader as above, so both moments are judged the same way. */
+const coupleFlags = readArc(coupleD) || {};
 
-check(coupleFlags[2] === "0", "it defaults to anticlockwise",
-    "sweep flag = " + coupleFlags[2]);
+check(coupleFlags.rotation === 0,
+    "the couple states its rotation too",
+    "rotation = " + coupleFlags.rotation);
+
+check(coupleFlags.large, "it sweeps the long way too",
+    "large-arc flag = " + coupleFlags.large);
+
+check(coupleFlags.sweep === false, "it defaults to anticlockwise",
+    "sweep flag = " + coupleFlags.sweep);
 
 check(
     couplePaths[0].getAttribute("stroke-width") ===
