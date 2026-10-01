@@ -218,6 +218,33 @@
          * or the arrow stops being the force it describes.
          */
         if (
+            type === "pin-support" ||
+            type === "roller-support" ||
+            type === "fixed-support" ||
+            type === "smooth-support"
+        ) {
+            /*
+             * A SUPPORT MOVES ALONG ITS BODY, NOT FREELY.
+             *
+             * Two things are returned and they are different kinds of
+             * thing. The distance along the body is what the student
+             * actually controls, and the attachment point is the world
+             * position that distance denotes.
+             *
+             * The attachment is returned as well so that a drag which
+             * takes the support past the end of its body is CLAMPED to
+             * the body rather than being allowed to fly off along the
+             * centreline's infinite extension - which is what moving
+             * the single stored render position allowed, and how a
+             * support ended up somewhere with no beam under it.
+             */
+            return valid([
+                g.position,
+                g.attachment
+            ]);
+        }
+
+        if (
             type === "line" ||
             type === "beam" ||
             type === "truss" ||
@@ -237,20 +264,58 @@
             ]);
         }
 
+        /*
+         * THE ANALYSIS OBJECTS MOVE, BUT NOT LIKE EVERYTHING ELSE.
+         *
+         * An analysis object is a READING of other features, and it
+         * is re-derived from them after every edit. So a move cannot
+         * simply translate its geometry: the next refresh would put it
+         * straight back where the source says it belongs, and the drag
+         * would appear to do nothing at all.
+         *
+         * What it does instead is record WHERE THE STUDENT PUT IT as
+         * an offset from the source, and the refresh applies that
+         * offset to the values it re-derives. The student keeps
+         * control of the placement; the source keeps control of the
+         * numbers. Both are true at once, which is what makes moving a
+         * diagram possible without the diagram ever becoming a lie.
+         *
+         * So the moved point here is the offset, not the geometry. Only
+         * the two ends are returned: the analysis registry owns every
+         * other derived point, and duplicating them here would let a
+         * move and a refresh disagree about where the object is.
+         */
+        if (
+            type === "resultant" ||
+            type === "force-components"
+        ) {
+            return valid([
+                g.start,
+                g.end
+            ]);
+        }
+
+        if (type === "analysis-diagram") {
+            return valid([
+                g.start,
+                g.end
+            ]);
+        }
+
         if (
             type === "moment" ||
             type === "couple"
         ) {
             /*
-             * A moment turns about its application point; a
-             * couple is two forces whose lines of action
-             * stay parallel, so its two arrow heads are the
-             * points that define it.
+             * Both rotational features are defined by the single
+             * point they turn about. They used to contribute their
+             * two arrow heads as well, from the straight-force
+             * shape a couple was drawn as; that shape is gone, so
+             * those points are gone, and the position is now the
+             * whole of what a move has to carry.
              */
             return valid([
-                g.position,
-                coupleArrowPoint(g, 0),
-                coupleArrowPoint(g, 1)
+                g.position
             ]);
         }
 
@@ -276,34 +341,6 @@
         }
 
         return [];
-    }
-
-    /*
-     * One arrow head of a Couple.
-     *
-     * The two arrows are opposite and equal, so a single
-     * point is enough to describe where the feature is; it
-     * is derived from the stored position and separation
-     * rather than held as a second copy of the shape.
-     */
-    function coupleArrowPoint(
-        g,
-        index
-    ) {
-        if (!g.position) {
-            return null;
-        }
-
-        const half =
-            (Number(g.separation) || 0) / 2;
-
-        return {
-            x: g.position.x,
-
-            y:
-                g.position.y +
-                (index === 0 ? half : -half)
-        };
     }
 
     /*
@@ -603,7 +640,8 @@
     function translateObject(
         object,
         deltaX,
-        deltaY
+        deltaY,
+        lookup
     ) {
         const g = object.geometry;
 
@@ -646,7 +684,156 @@
             return;
         }
 
-        if (type === "truss" && Array.isArray(g.members)) {
+        if (
+            object.type === "resultant" ||
+            object.type === "force-components" ||
+            object.type === "analysis-diagram"
+        ) {
+            /*
+             * AN ANALYSIS OBJECT IS MOVED BY RECORDING AN OFFSET.
+             *
+             * Everything else on the sheet is moved by translating its
+             * geometry, because its geometry is the thing itself. An
+             * analysis object is different: its numbers are re-derived
+             * from its sources after every edit, so translating the
+             * geometry here would be undone by the very next refresh
+             * and the drag would appear to do nothing.
+             *
+             * So the drag is recorded as an OFFSET FROM THE SOURCE and
+             * the refresh applies it to whatever it derives. The
+             * student's placement survives; the source's values
+             * survive; neither overrides the other. That is what lets
+             * a diagram sit under its beam and still follow the beam
+             * when the beam is resized.
+             *
+             * The offset is COMPOSED rather than replaced, so dragging
+             * twice moves twice - the student sees the diagram follow
+             * their hand each time rather than snapping back to the
+             * source on the first drag of a second one.
+             */
+            const existing =
+                g.placementOffset || {
+                    x: 0,
+                    y: 0
+                };
+
+            g.placementOffset = {
+                x: existing.x + deltaX,
+                y: existing.y + deltaY
+            };
+
+            /*
+             * The geometry is translated as well, so the drawing moves
+             * with the hand IMMEDIATELY rather than waiting for the
+             * commit that triggers the refresh. The two agree, because
+             * the refresh re-derives these same coordinates from this
+             * same offset.
+             */
+            definingPoints(
+                object
+            ).forEach(
+                point => {
+                    point.x += deltaX;
+                    point.y += deltaY;
+                }
+            );
+
+            return;
+        }
+
+        if (
+            object.type === "pin-support" ||
+            object.type === "roller-support" ||
+            object.type === "fixed-support" ||
+            object.type === "smooth-support"
+        ) {
+            /*
+             * A SUPPORT SLIDES ALONG ITS BODY, AND STAYS OUTSIDE IT.
+             *
+             * The drag is resolved onto the body's centreline, so a
+             * support can only ever be dragged along the member it is
+             * attached to and is clamped to the member's ends. Moving
+             * the stored render position instead - which is what this
+             * did before - let a support be dragged off the beam,
+             * through it, or off past its end while still claiming to
+             * be attached to it.
+             *
+             * The projection is onto the centreline and NOT onto the
+             * drawn position, so a support dragged from the symbol
+             * rather than from the centreline still lands on the
+             * member: the grab point is offset from the body, and
+             * using it directly would shift every drop by that offset.
+             */
+            const parent =
+                typeof lookup === "function"
+                    ? lookup(object.parentId)
+                    : null;
+
+            if (!parent) {
+                return;
+            }
+
+            const frames = window.enggBodyFrames;
+
+            const frame = frames.frameOf(parent);
+
+            if (!frame) {
+                return;
+            }
+
+            const attachment =
+                frames.pointAt(
+                    frame,
+                    Number(g.attachment?.distance) || 0
+                );
+
+            if (!attachment) {
+                return;
+            }
+
+            /*
+             * Where the drag would put the attachment, measured
+             * ALONG the body and clamped to it.
+             */
+            const target = {
+                x: attachment.x + deltaX,
+                y: attachment.y + deltaY
+            };
+
+            const distance = Math.min(
+                frame.length,
+                Math.max(
+                    0,
+                    frames.positionOn(
+                        frame,
+                        target
+                    )
+                )
+            );
+
+            const moved =
+                frames.pointAt(
+                    frame,
+                    distance
+                );
+
+            const placement =
+                frames.supportPlacement(
+                    parent,
+                    moved,
+                    g.flipped === true
+                );
+
+            g.attachment = { distance };
+
+            if (placement) {
+                g.position = placement.render;
+            }
+
+            return;
+        }
+
+        if (object.type === "truss" && Array.isArray(g.members)) {
             g.members.forEach((member) => {
                 member.start.x += deltaX;
                 member.start.y += deltaY;
@@ -804,7 +991,6 @@
     root.enggFeatureGeometry = {
       RIGID_BODY_SHAPES,
       centerOf,
-      coupleArrowPoint,
       definingPoints,
       rectangleCorners,
       rigidBodyCenter,

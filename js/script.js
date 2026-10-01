@@ -11,19 +11,23 @@ function showTab(tabName, button) {
     button.classList.add("active");
 }
 
-async function updateWriting() {
-    let code = document.getElementById("writingCode").value;
-    const output = document.getElementById("writingOutput");
-    const documentMatch = code.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
-
-    if (documentMatch) {
-        code = documentMatch[1].trim();
+/*
+ * Render the written solution.
+ *
+ * A thin wrapper, and deliberately so. The rendering itself belongs to
+ * the reference module, because it is the reference module that knows
+ * a drawing reference is a command in the text that resolves to a
+ * sheet - and the solution cannot be rendered correctly without that
+ * knowledge. Rendering it here instead would mean the solution showed
+ * the reference token verbatim, or dropped the figure, or put it in
+ * some other panel rather than where the token is.
+ *
+ * So the button calls the one renderer, and there is exactly one.
+ */
+function updateWriting() {
+    if (window.enggWrittenReferences) {
+        window.enggWrittenReferences.render();
     }
-
-    MathJax.typesetClear([output]);
-    const hasMathDelimiters = /\\\[|\\\(|\$\$/.test(code);
-    output.textContent = hasMathDelimiters ? code : `\\[${code}\\]`;
-    await MathJax.typesetPromise([output]);
 }
 
 function previewImage(uploadId, imageId, messageId) {

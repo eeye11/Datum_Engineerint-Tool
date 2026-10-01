@@ -30,8 +30,17 @@
     color: var(--cad-ink);
     display: grid;
     flex: 1 1 auto;
-    grid-template-columns: 148px minmax(0, 1fr) 196px;
-    grid-template-rows: 30px auto 28px minmax(0, 1fr) 22px;
+    grid-template-columns: 202px minmax(0, 1fr) 168px;
+    /*
+     * Rows: the global toolbar, the toolset nav, the style strip, the
+     * three panels, then the sheet bar and the status bar.
+     *
+     * The sheet bar gets its own row beneath the canvas rather than
+     * sharing the status bar's, so that the two never have to
+     * negotiate the width: tabs scroll horizontally within the canvas
+     * column while the coordinates and the zoom stay where they are.
+     */
+    grid-template-rows: auto auto 28px minmax(0, 1fr) 24px 22px;
     height: auto;
     min-height: 0;
     overflow: hidden;
@@ -43,13 +52,34 @@
     background: #eef3f4;
     border-bottom: 1px solid var(--cad-border);
     display: flex;
+    flex-wrap: wrap;
     gap: 5px;
     grid-column: 1 / -1;
     min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0 5px;
-    scrollbar-width: none;
+
+    /*
+     * NO SIDEWAYS SCROLLING, AT ANY SCREEN SIZE.
+     *
+     * This row used to scroll horizontally, which meant that on a
+     * laptop or a split screen the tools on the right were simply
+     * not there: they were off the end of the row, reachable only
+     * by scrolling, and a horizontal scrollbar in a toolbar is very
+     * easily missed. A tool the student cannot see is a tool they
+     * do not know exists.
+     *
+     * Wrapping is the honest answer. A toolbar of this many tools
+     * cannot be guaranteed to fit an arbitrary width without either
+     * wrapping, shrinking its text below legibility, or dropping
+     * tools - and only one of those keeps every tool present and
+     * readable. So the groups flow onto a second line when they run
+     * out of room, and the toolbar's row grows to hold them.
+     *
+     * The row height in the workspace grid is therefore `auto` and
+     * not the fixed 30px it was; a fixed height would clip the
+     * wrapped second line rather than accommodating it.
+     */
+    padding: 2px 5px;
+    row-gap: 2px;
 }
 
 .drawing-app-toolbar-group,
@@ -168,12 +198,30 @@
     background: #f9fbfb;
     border-bottom: 1px solid var(--cad-border);
     display: flex;
+    flex-wrap: wrap;
     gap: 0;
     grid-column: 1 / -1;
     min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
+
+    /*
+     * NO SIDEWAYS SCROLLING, AT ANY SCREEN SIZE.
+     *
+     * This row of discipline tabs scrolled horizontally, so on a
+     * narrow screen the last few - Controls, Maths, and the long names
+     * like Solid Mechanics - sat off the right edge with no
+     * indication that they were there. A tab you cannot see is a
+     * section you do not know you have.
+     *
+     * They wrap instead. The row's grid track is `auto`, so a second
+     * line is accommodated rather than clipped.
+     *
+     * The title is allowed to drop out of the flow entirely at narrow
+     * widths, because it is the one item here that carries no
+     * function: every tab is named, and the product name is in the
+     * tab title. It goes before the tabs need the space.
+     */
     padding: 3px 4px;
+    row-gap: 2px;
 }
 
 .drawing-style-strip {
@@ -270,18 +318,220 @@
     padding: 9px 7px;
 }
 
+/*
+ * Each side panel now lives inside its own RAIL, and the rail -
+ * not the panel - is what the workspace grid sizes.
+ *
+ * The rail is the reason collapsing actually works. Hiding a
+ * panel with visibility or opacity leaves its grid column
+ * exactly as wide as before, so the canvas gets nothing back and
+ * the drawing is unchanged; the space is only really reclaimed
+ * when the column itself shrinks. Collapsing therefore changes
+ * the rail's width, and because the canvas column is
+ * minmax(0, 1fr) it absorbs the difference on its own.
+ *
+ * Collapsed is a width, not a display toggle, so the rail's
+ * single arrow stays on screen and the layout keeps its shape.
+ */
+.drawing-panel-rail {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    grid-row: 4;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.drawing-panel-rail-left {
+    border-right: 1px solid var(--cad-border);
+}
+
+.drawing-panel-rail-right {
+    border-left: 1px solid var(--cad-border);
+    flex-direction: row-reverse;
+}
+
+/*
+ * The panel fills whatever its rail has left.
+ *
+ * This is `flex: 1` and not the default `flex: 0 1 auto` on
+ * purpose. A flex item's default width comes from its CONTENT, so
+ * an inspector whose only content happened to be the words "No
+ * feature selected" shrank to about half the rail and left a band
+ * of dead space between the drawing and the panel - a gap that
+ * looked like the canvas had been padded and that moved about as
+ * the panel's contents changed.
+ *
+ * Growing to fill makes the rail's width mean what it says: the
+ * panel's edge IS the panel's boundary, and the drawing runs up to
+ * it. `min-width: 0` lets a long feature name still shrink the
+ * panel's CONTENTS rather than forcing the rail wider.
+ */
+.drawing-panel-rail > .drawing-tool-panel,
+.drawing-panel-rail > .drawing-inspector {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/*
+ * The arrow.
+ *
+ * Kept as a slim vertical strip with a rotated caption, so the
+ * collapsed state costs about twenty pixels rather than a whole
+ * panel. It is deliberately not a floating overlay: an overlay
+ * would sit on top of the drawing it was meant to give more room
+ * to.
+ */
+.drawing-panel-toggle {
+    align-items: center;
+    align-self: stretch;
+    background: #eef3f4;
+    border: 0;
+    color: var(--cad-muted);
+    cursor: pointer;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: flex-start;
+    padding: 7px 2px;
+    transition: background .12s ease, color .12s ease;
+    width: 22px;
+}
+
+.drawing-panel-toggle:hover {
+    background: #e2ebee;
+    color: var(--cad-ink);
+}
+
+.drawing-panel-toggle:focus-visible {
+    outline: 2px solid var(--cad-accent);
+    outline-offset: -2px;
+}
+
+.drawing-panel-toggle svg {
+    flex: 0 0 auto;
+    height: 16px;
+    width: 16px;
+}
+
+/*
+ * The caption reads bottom-to-top, so the strip says what it
+ * opens rather than needing a tooltip to be understood.
+ */
+.drawing-panel-toggle-text {
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+}
+
+/*
+ * COLLAPSED STATE
+ *
+ * The panel is removed from the flow and the rail narrows to the
+ * arrow. The arrow itself flips to point the other way, so it
+ * always indicates the action rather than the current state -
+ * a control that describes where it is rather than what it does
+ * is one more thing to interpret.
+ *
+ * The canvas is NOT re-zoomed here. The viewport is measured from
+ * the canvas element itself on every render, so a wider canvas
+ * simply shows more of the same drawing at the same zoom. That
+ * is why collapsing the toolbar at 150% leaves it at 150%.
+ */
+.drawing-panel-rail-collapsed {
+    width: 22px;
+}
+
+/*
+ * The grid TRACK, not the element.
+ *
+ * Narrowing the rail element is not enough on its own: the rail
+ * sits in a fixed 148px column, and a narrower element inside a
+ * track that is still 148px wide leaves that width unclaimed.
+ * The canvas column is minmax(0, 1fr), so it only grows if the
+ * tracks on either side of it actually get smaller.
+ *
+ * So collapsing rewrites the workspace's own column template. The
+ * canvas is the only flexible track, so it absorbs the whole
+ * difference and the freed width becomes drawing area.
+ */
+.drawing-workspace-tools-collapsed {
+    grid-template-columns: 22px minmax(0, 1fr) 168px;
+}
+
+.drawing-workspace-features-collapsed {
+    grid-template-columns: 202px minmax(0, 1fr) 22px;
+}
+
+/*
+ * ONCE THE SCREEN IS TOO NARROW FOR THE TOOL PANEL, IT IS FOLDED
+ * AWAY.
+     *
+     * The panel is sized to fit its longest tool name's longest word,
+     * and that is a fixed cost - about 100px, which is a fair deal on a
+     * normal screen and a third of a 320px-wide one.
+     *
+     * Below the point where a tool name would have to be split
+     * mid-word to fit, the arrow strip is kept and the panel is not:
+     * a two-letter stub of a tool name is worse than no list, and the
+     * student can still open the panel on a wider screen or on a
+     * phone held sideways. The choice is made on WIDTH, not on
+     * scrollbars, so it is the screen that decides rather than the
+     * content.
+     */
+@media (max-width: 720px) {
+    .drawing-workspace {
+        grid-template-columns: 22px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-workspace .drawing-tool-panel {
+        display: none;
+    }
+}
+
+/*
+ * Both panels collapsed.
+ *
+ * Written as ONE compound selector, `.a.b`, and not as
+ * `.a .b`. Both classes sit on the same workspace element, so a
+ * descendant selector would be looking for a CHILD carrying the
+ * second class - it could never match, and the base rule's 148px
+ * would silently win. The track stayed a full toolbar's width
+ * while the arrow strip sat in the middle of it, which is exactly
+ * the dead column that looked like the drawing had not taken the
+ * space.
+ */
+.drawing-workspace-tools-collapsed.drawing-workspace-features-collapsed {
+    grid-template-columns: 22px minmax(0, 1fr) 22px;
+}
+
+.drawing-panel-rail-collapsed .drawing-tool-panel,
+.drawing-panel-rail-collapsed .drawing-inspector {
+    display: none;
+}
+
+.drawing-panel-rail-left.drawing-panel-rail-collapsed {
+    border-right: 0;
+}
+
+.drawing-panel-rail-right.drawing-panel-rail-collapsed {
+    border-left: 0;
+}
+
 .drawing-tool-panel,
-.drawing-canvas-area,
-.drawing-inspector {
+.drawing-canvas-area {
     grid-row: 4;
 }
 
 .drawing-tool-panel {
-    border-right: 1px solid var(--cad-border);
+    border-right: 0;
 }
 
 .drawing-inspector {
-    border-left: 1px solid var(--cad-border);
+    border-left: 0;
 }
 
 .drawing-panel-heading {
@@ -298,11 +548,20 @@
     flex: 1 1 auto;
     gap: 1px;
     min-height: 0;
+    min-width: 0;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .drawing-tool-group {
     border-bottom: 1px solid #e0e7e9;
+
+    /*
+     * Same reason as the buttons: a grid item's default `min-width:
+     * auto` stops a section shrinking below its widest child, which
+     * kept the whole list scrolling sideways on a very narrow screen.
+     */
+    min-width: 0;
     padding: 4px 0 5px;
 }
 
@@ -315,21 +574,138 @@
     font-size: 8px;
     font-weight: 700;
     letter-spacing: .08em;
-    margin: 0 4px 2px;
+    margin: 0 1px 2px;
+    min-width: 0;
     text-transform: uppercase;
+
+    /*
+     * A group heading wraps like everything else. It is the widest
+     * fixed content left in the panel - "BODIES" on one line, "GEOMETRY
+     * TOOLS" on two - so letting it overflow was enough on its own to
+     * keep the whole list scrolling sideways on a narrow screen.
+     */
+    overflow-wrap: break-word;
 }
 
 .drawing-tool {
-    align-items: center;
+    align-items: flex-start;
     background: transparent;
     border: 1px solid transparent;
     color: var(--cad-ink);
     cursor: pointer;
     display: flex;
     font-size: 11px;
-    gap: 7px;
-    min-height: 29px;
+    gap: 5px;
+
+    /*
+     * A grid item's default min-width is `auto`, so a button would
+     * refuse to be narrower than its own content and would push the
+     * list into sideways scrolling on a very narrow screen. `min-width:
+     * 0` lets it shrink to the panel, and the label below wraps
+     * instead. A tool is still reachable; it is just not given a
+     * horizontal scrollbar to find it by.
+     */
+    min-width: 0;
+
+    /*
+     * The hanging indent for a wrapped name.
+     *
+     * The row is a flex line, so the label is made a block of its
+     * own: `text-indent` moves only the FIRST line left, leaving
+     * every subsequent line at the block's own edge. The result is
+     * that a name too long for the panel breaks at a word and its
+     * second line sits under its first, instead of hanging back
+     * under the icon and reading as a separate item.
+     *
+     * `overflow-wrap` rather than `hyphens`, so a break is made
+     * between words where one is possible and only inside a word
+     * when a single word is itself too long.
+     */
+    line-height: 1.25;
+    min-height: 25px;
     padding: 3px 5px;
+    text-align: left;
+    width: 100%;
+}
+
+.drawing-tool-label {
+    /*
+     * A FLEX ITEM'S DEFAULT min-width IS `auto`, which means "never
+     * smaller than my content". The label therefore refused to shrink
+     * below the width of its longest word, the row overflowed the
+     * panel, and a narrow panel simply CUT the text off at the edge:
+     * "Point Force" became "Point Fo".
+     *
+     * `min-width: 0` lifts that floor, which is what lets the label
+     * take the width actually left over after the icon and let the
+     * wrapping above do its job. Without it the hanging indent is
+     * decoration - the text never reaches the second line, because it
+     * never gets a narrow box to wrap inside.
+     */
+    min-width: 0;
+
+    /*
+     * The label takes the width LEFT OVER, rather than only as much
+     * as its own text happens to need.
+     *
+     * A flex item's default basis is its content width, so a short
+     * name like "Select" was laid out in a box just wide enough for
+     * itself while 60-odd pixels of the panel sat empty beside it -
+     * and a long name, having no extra room to claim, broke early
+     * into two or three lines instead of using the width there
+     * plainly was. The panel looked half empty and the names looked
+     * cramped at the same time.
+     *
+     * `flex: 1 1 auto` with `min-width: 0` fixes both ends: the label
+     * grows into the space available, and may still shrink below its
+     * content when the panel is too narrow, where the wrapping above
+     * takes over. Growing and being able to shrink are not in
+     * conflict; they are what `1 1` means.
+     *
+     * It also puts the submenu marker after the LAST word, on the
+     * word it belongs to, because the label is now wide enough to hold
+     * the final word and its marker together.
+     */
+    flex: 1 1 auto;
+
+    /*
+     * WHOLE WORDS ONLY, NEVER SPLIT MID-WORD.
+     *
+     * This was `break-word`, which breaks a word at the character
+     * level when it will not fit on a line by itself. That produces
+     * "Component" / "s" and "Temperature" split across three lines:
+     * text that is not a word, and which a student has to reassemble
+     * before they can read what the tool is called.
+     *
+     * `normal` is the default and means exactly what is wanted: break
+     * BETWEEN words, and let a long word sit on a line of its own.
+     * The panel is sized to fit the longest tool name's longest word,
+     * so this rarely has to do anything - and when it does, the
+     * result is still a readable word on a line rather than a
+     * fragment.
+     */
+    overflow-wrap: normal;
+    word-break: normal;
+
+    text-indent: -0.62em;
+    padding-left: 0.62em;
+}
+
+    /*
+     * Compact, because the tool list is a long one.
+     *
+     * The Statics section alone carries more tools than fit on a
+     * laptop screen, so a comfortable 29px per button turned into a
+     * panel that could only be used by scrolling. Tightening the
+     * row to 25px and trimming the group headings' margins buys
+     * back most of that without making the buttons harder to hit:
+     * 25px is still comfortably larger than a comfortable reading
+     * target for a control of this kind, and the whole list now
+     * fits without a scrollbar, which is the difference between
+     * seeing that a tool exists and not seeing it.
+     */
+    min-height: 25px;
+    padding: 2px 5px;
     text-align: left;
     width: 100%;
 }
@@ -338,12 +714,31 @@
     align-items: center;
     color: var(--cad-accent);
     display: inline-flex;
-    flex: 0 0 21px;
-    height: 21px;
+
+    /*
+     * A little smaller than the 21px it used, because the panel is
+     * narrower.
+     *
+     * The icon is the one part of a row that cannot shrink or
+     * wrap: it is what tells two similar tools apart at a glance,
+     * so it has to stay whole. Taking four pixels off it and four
+     * off the gap buys back eight pixels of LABEL width in a 104px
+     * panel, and label width is the scarce thing - it is what
+     * decides whether "Bending Moment" needs three lines or two.
+     */
+    flex: 0 0 18px;
+    height: 18px;
     justify-content: center;
     line-height: 1;
     text-align: center;
-    width: 21px;
+
+    /*
+     * Matches the flex basis above. It was left at the old 21px,
+     * and because a fixed width wins over flex-basis the icon kept
+     * its full width even after the basis was reduced - so the panel
+     * looked narrower while the text had not gained a single pixel.
+     */
+    width: 18px;
 }
 
 .drawing-tool-icon svg {
@@ -651,10 +1046,17 @@
 
 .drawing-property-row span:first-child {
     color: var(--cad-muted);
+
+    /*
+     * The pair is laid out so the value takes what the label does not
+     * need. Without the label being able to shrink, a long property
+     * name would win the space and squeeze a value out of the panel.
+     */
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .drawing-status-bar {
-    align-items: center;
     background: #e5eaed;
     border-top: 1px solid var(--cad-border);
     color: #64747d;
@@ -663,7 +1065,7 @@
     height: 22px;
     justify-content: space-between;
     grid-column: 1 / -1;
-    grid-row: 5;
+    grid-row: 6;
     line-height: 1;
     padding: 0 7px;
 }
@@ -1056,11 +1458,47 @@
     align-items: center;
     display: grid;
     gap: 4px;
-    grid-template-columns: minmax(46px, 1fr) minmax(0, 1fr) minmax(0, 1fr) 14px;
+
+    /*
+     * The grid is a flex child of the panel column, and a flex item
+     * is floored at the width of its widest content unless it is
+     * allowed to shrink below that. Flexible TRACKS are therefore not
+     * enough on their own: the grid would still refuse to come back
+     * under the panel's width, and the row would hang off the edge
+     * even though every track inside it could have fitted.
+     */
+    min-width: 0;
+
+    /*
+     * THE GRID'S TRACKS MUST BE ABLE TO SHRINK.
+     *
+     * A grid item's default `min-width: auto` refuses to go below its
+     * own content, so `minmax(0, 1fr)` on the right hand track did not
+     * make it flexible - the INPUTS inside it still forced the track
+     * wider than the panel, and a numeric field or a select then
+     * rendered half outside the Features panel with its content
+     * clipped rather than wrapped.
+     *
+     * `minmax(0, 1fr)` on EVERY track is what actually allows them to
+     * compress, and the children are given `min-width: 0` and a full
+     * width below so they fill the track instead of overflowing it.
+     *
+     * This is the same fix already applied to the tool list and the
+     * tool groups for exactly the same reason; it was missing here.
+     */
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 1.25fr)
+        minmax(0, 18px)
+        minmax(0, 14px);
 }
 
 .drawing-property-grid-value {
-    grid-template-columns: minmax(64px, 1fr) minmax(58px, 1.25fr) 18px 14px;
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 1.25fr)
+        minmax(0, 18px)
+        minmax(0, 14px);
 }
 
 .drawing-property-grid-head {
@@ -1073,7 +1511,45 @@
     color: var(--cad-muted);
     font-size: 9px;
     line-height: 1.15;
-    overflow-wrap: break-word;
+
+    /*
+     * A LABEL THAT WRAPS, RATHER THAN ONE THAT PUSHES.
+     *
+     * A long property name - "Position Along Body" on a support, or a
+     * diagram's "Source Positions" - used to hold its track open by its
+     * full length, which is what drove the whole row past the edge of
+     * the panel. It can break at its spaces and it can shrink, so a
+     * long name takes more lines instead of taking more width.
+     */
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+/*
+ * A value the analysis system DERIVED from its sources.
+ *
+ * Rendered as text rather than an input, and styled to say so: a
+ * resultant's magnitude is a sum of forces the student typed, so
+ * there is nothing here for them to type, and an input box would
+ * invite them to. It is inset and quiet so the panel's editable
+ * numbers - the ones that really do take a value - stay visually
+ * distinct from the ones that are simply reported.
+ */
+.drawing-property-derived {
+    color: var(--cad-ink);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    justify-self: start;
+    line-height: 1.15;
+    padding: 3px 5px;
+
+    /*
+     * A derived value can be a whole unit, a name, or a long
+     * association, and none of them may push the row wider than the
+     * panel. It wraps for the same reason the label does.
+     */
+    max-width: 100%;
+    overflow-wrap: anywhere;
     white-space: normal;
 }
 
@@ -1083,6 +1559,16 @@
     border: 1px solid #cbd5d9;
     border-radius: 3px;
     color: var(--cad-ink);
+
+    /*
+     * THE FIELD FILLS ITS TRACK AND NEVER EXCEEDS IT.
+     *
+     * Without these an input is as wide as its default size demands and
+     * will not shrink below it, which is what let a numeric field hang
+     * out past the right edge of the panel on a narrow one.
+     */
+    min-width: 0;
+    width: 100%;
     font: inherit;
     font-size: 9px;
     min-width: 0;
@@ -1214,10 +1700,124 @@
     color: var(--cad-ink);
     font-size: 9px;
     font-variant-numeric: tabular-nums;
-    overflow: hidden;
     padding-left: 3px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+
+    /*
+     * WRAPPED, NOT CLIPPED.
+     *
+     * This was a single line with an ellipsis, which meant any value
+     * wider than the panel showed as "Beam 0…f3a" or simply vanished
+     * behind the edge. A Features panel that hides the value it is
+     * reporting is worse than one that wraps it onto a second line:
+     * the number a student is checking is the whole point of the row,
+     * and an ellipsis on it leaves them unable to read what the
+     * application is telling them.
+     *
+     * A long unit or a wrapped association now takes more height,
+     * which the panel scrolls vertically.
+     */
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+/*
+ * AN INTERNAL ID, SHOWN SECONDARY AND WRAPPED.
+ *
+ * A feature id is not something a student needs to read - it is
+ * something a report needs to quote - so it is never the main label
+ * of a property. Where an id genuinely has to be visible it goes here:
+ * small, muted, and allowed to break anywhere so a UUID cannot widen
+ * the panel.
+ */
+.drawing-property-id {
+    color: var(--cad-muted);
+    font-size: 8px;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    padding-left: 3px;
+}
+
+/*
+ * An action on the geometry rather than a value to be typed,
+ * such as a truss's Optimize. It is styled to sit in the value
+ * column of a property row so the panel reads the same way as
+ * every other Features panel.
+ */
+.drawing-property-action {
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--cad-accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    min-width: 0;
+    padding: 2px 6px;
+    width: 100%;
+}
+
+.drawing-property-action:hover {
+    background: var(--cad-active-bg);
+    border-color: var(--cad-accent);
+}
+
+.drawing-property-action:active {
+    background: var(--cad-accent);
+    color: #ffffff;
+}
+
+/*
+ * The icon inside a panel action, kept as its own inline span so
+ * it can be set in step with the button's own type scale rather
+ * than inheriting the caption's.
+ */
+.drawing-property-action-icon {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin-right: 4px;
+    vertical-align: -1px;
+}
+
+/*
+ * An action that is shown as its icon alone.
+ *
+ * The label lives in the title and the accessible name, so the
+ * control is still named for a screen reader and still explains
+ * itself on hover, while the button itself stays a compact square
+ * in the same column as every other property row.
+ */
+.drawing-property-action-icon-only {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 18px;
+    padding: 2px 4px;
+}
+
+.drawing-property-action-icon-only .drawing-property-action-icon {
+    margin-right: 0;
+}
+
+/*
+ * The header of a child feature's relative coordinates, naming the
+ * parent the offsets are measured from.
+ *
+ * Without it the numbers below are just numbers: the panel would
+ * be showing an X and a Y that mean nothing without saying what
+ * they are an offset FROM, which is the whole difference between
+ * a local and an absolute coordinate.
+ */
+.drawing-property-relative-to {
+    color: #5b6b73;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 3px 0 1px;
+    text-transform: uppercase;
 }
 
 .drawing-properties-block input[type="text"] {
@@ -1277,6 +1877,59 @@
     align-items: center;
     display: flex;
     gap: 6px;
+}
+
+/*
+ * THE FEATURE CONTEXT MENU
+ *
+ * Styled from the same tokens as the toolbar flyouts, so a menu
+ * over the drawing looks like the rest of the application rather
+ * than a browser menu dropped into a CAD canvas.
+ */
+.drawing-context-menu {
+    background: #fff;
+    border: 1px solid var(--cad-border);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(38, 52, 59, .18);
+    min-width: 172px;
+    padding: 4px 0;
+    position: fixed;
+    z-index: 10000;
+}
+
+.drawing-context-item {
+    align-items: center;
+    background: none;
+    border: 0;
+    color: var(--cad-ink);
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    font-size: 11px;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 6px 14px;
+    text-align: left;
+    width: 100%;
+}
+
+.drawing-context-item:hover:not(:disabled) {
+    background: var(--cad-active-bg);
+}
+
+.drawing-context-item:disabled {
+    color: #a9b4ba;
+    cursor: default;
+}
+
+/*
+ * The shortcut shown on the right of an entry, so the menu and
+ * the keyboard advertise the same thing.
+ */
+.drawing-context-hint {
+    color: var(--cad-muted);
+    font-size: 9px;
+    margin-left: auto;
 }
 
 .drawing-polygon-prompt-row input {
@@ -1553,14 +2206,6 @@
     cursor: ew-resize;
 }
 
-.drawing-geometry-handle-rotation {
-    cursor: grab;
-}
-
-.drawing-geometry-handle-rotation:active {
-    cursor: grabbing;
-}
-
 .drawing-entity-selected {
     filter: drop-shadow(0 0 1px rgba(31, 92, 56, .45));
 }
@@ -1638,20 +2283,79 @@
    SELECTED GEOMETRY
 ========================================================= */
 
+/*
+ * A selected feature highlights in ONE piece, internal and
+ * external alike.
+ *
+ * Every primitive a feature can be drawn from is listed here, so
+ * a shape made of polygons, ellipses or stroked outlines looks
+ * the same as one made of a single line. A member of a truss, a
+ * rigid body's fill, a load's arrowheads and a circle's ring all
+ * read as part of the same selected object, which is what
+ * makes it obvious that ONE thing was picked rather than several.
+ *
+ * The highlight is deliberately uniform across those primitives:
+ * the same colour and the same weight everywhere, so the emphasis
+ * is on the shape as a whole and never on one edge of it.
+ */
 .drawing-renderer .drawing-entity-selected line,
 .drawing-renderer .drawing-entity-selected circle,
 .drawing-renderer .drawing-entity-selected rect,
+.drawing-renderer .drawing-entity-selected ellipse,
 .drawing-renderer .drawing-entity-selected polyline,
+.drawing-renderer .drawing-entity-selected polygon,
 .drawing-renderer .drawing-entity-selected path {
-    filter: drop-shadow(0 0 1px rgba(22, 119, 255, .9));
+    filter: drop-shadow(0 0 1.5px rgba(22, 119, 255, .9));
     stroke: #1677ff !important;
     stroke-width: 2.25px !important;
 }
 
-.drawing-renderer .drawing-entity-selected path:not(.drawing-open-arc) {
-    fill: #1677ff !important;
+/*
+ * Selection is an OUTLINE, never a fill.
+ *
+ * A filled highlight hides the very thing the user selected in
+ * order to work on it. A distributed load's profile is a shaded
+ * envelope, a rigid body may be a filled outline, and a force's
+ * arrowhead is a solid triangle: painting all of that blue meant
+ * the feature could not be judged, positioned or aligned while it
+ * was selected, which is exactly when it needs to be visible.
+ *
+ * So the selection is carried entirely by the stroke, and the
+ * interior of a region is left as the feature drew it.
+ *
+ * The load's profile envelope is the case that matters most, and it
+ * is handled explicitly rather than by trying to restore whatever
+ * the element happened to carry. `revert` was the obvious way to
+ * say "use what the element had", and it is exactly wrong: it
+ * discards the element's own fill and falls back to the SVG
+ * default, which is opaque black. A selected load therefore came
+ * out as a black block hiding its own arrows. Saying "none"
+ * plainly is both correct and immune to that fallback.
+ *
+ * A load's profile is the ENVELOPE of its field of arrows, not a
+ * filled region - the area under it is where the arrows are drawn,
+ * so filling it hides the very thing being selected.
+ */
+.drawing-renderer .drawing-entity-selected .drawing-load-profile {
+    fill: none;
+    stroke: #1677ff;
+    stroke-opacity: 1;
 }
 
+/*
+ * Every other closed region: the feature keeps its own fill. A
+ * rigid body that is genuinely filled stays filled, one that is a
+ * hollow outline stays hollow, and nothing is silently recoloured.
+ */
+.drawing-renderer .drawing-entity-selected path:not(.drawing-open-arc),
+.drawing-renderer .drawing-entity-selected polygon:not(.drawing-load-profile) {
+    stroke: #1677ff;
+}
+
+/*
+ * Text is the one exception: a glyph has no interior to preserve,
+ * so it is recoloured outright rather than outlined.
+ */
 .drawing-renderer .drawing-entity-selected text {
     fill: #1677ff !important;
 }
@@ -1663,8 +2367,8 @@
     stroke-width: 1.5px;
 }
 
-.drawing-manipulation-handle.rotation {
-    fill: #1677ff;
+.drawing-manipulation-handle.origin {
+    fill: #7a3fb5;
 }
 
 .drawing-engineering-grid {
@@ -1674,11 +2378,721 @@
     stroke-width: 0.65px;
 }
 
-/* =========================================================
+/*
+ * =========================================================
+   SHEET TABS
+   ========================================================= */
+
+/*
+ * The bar sits in its own row UNDER the canvas.
+ *
+ * That is a layout decision with a meaning behind it: the tab bar
+ * belongs to the workspace, not to the drawing. A worksheet tab in
+ * Excel belongs to the workbook rather than to the cell you are
+ * looking at, and a drawing sheet tab belongs to the document rather
+ * than to the drawing on it - which is why it never scales with the
+ * zoom, never moves with the pan, and never appears in an export or in
+ * a figure. It is styled from the same panel palette as the rest of
+ * the workspace so it reads as part of the application rather than as
+ * something drawn on the canvas.
+ */
+.drawing-sheet-bar-row {
+    background: #e4eaec;
+    border-top: 1px solid #cbd4d9;
+    grid-column: 2;
+    grid-row: 5;
+    min-height: 0;
+    min-width: 0;
+}
+
+.drawing-sheet-bar {
+    align-items: stretch;
+    display: flex;
+    gap: 1px;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 3px 4px;
+    scrollbar-width: none;
+}
+
+.drawing-sheet-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.drawing-sheet-tab {
+    align-items: center;
+    background: #f2f6f7;
+    border: 1px solid #cbd4d9;
+    color: #455761;
+    cursor: pointer;
+    display: flex;
+    flex: 0 0 auto;
+    font-family: inherit;
+    font-size: 11px;
+    gap: 4px;
+    max-width: 190px;
+    padding: 4px 6px 4px 12px;
+}
+
+/*
+ * The name, and the selected tab's name, sits slightly high in the
+ * tab.
+ *
+ * The active tab carries a two-pixel indicator along its bottom edge.
+ * Centring the text in the whole tab box therefore puts its lower
+ * half underneath that indicator, and the descenders and the bottom
+ * of the letters are cut into the bar - the name looks struck through
+ * rather than selected.
+ *
+ * The fix is the TEXT's position rather than a thinner indicator: the
+ * bar is the clear signal that this is the current sheet, and making
+ * it thinner to accommodate the type would weaken it. Nudging the
+ * name up by a fixed amount keeps the whole of it clear of the bar
+ * and keeps the bar itself legible. The same nudge applies to
+ * unselected tabs so the row does not shimmer as the selection
+ * moves.
+ */
+.drawing-sheet-tab-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    /*
+     * Inset from the bottom of the tab, which is where the indicator
+     * is. Equal to the indicator's thickness plus its border, so the
+     * baseline of the type clears it at every font size.
+     */
+    transform: translateY(-2px);
+}
+
+/*
+ * The hover delete control.
+ *
+ * Present at all times and simply not drawn, rather than added on
+ * hover: a control that appeared by changing the DOM would rebuild the
+ * tab, and the rebuild can land between the pointer going down and the
+ * click arriving - which is the one moment this control is used.
+ *
+ * Its WIDTH is reserved even while it is invisible. Reserving it is
+ * not cosmetic - a tab that grew when hovered would resize under the
+ * pointer as the pointer arrived, which moves the name sideways, makes
+ * the tab a moving target for the click aimed at it, and is enough to
+ * make an automated click time out waiting for the element to settle.
+ * Every tab therefore has the same box whether hovered or not, and the
+ * only thing that changes on hover is whether the X can be seen.
+ */
+.drawing-sheet-close {
+    align-items: center;
+    border-radius: 3px;
+    color: #6d7d85;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 13px;
+    height: 14px;
+    justify-content: center;
+    line-height: 1;
+    opacity: 0;
+
+    /*
+     * Always present, always the same size. The tab does not change
+     * shape when the pointer arrives.
+     */
+    width: 14px;
+}
+
+/*
+ * Shown only while the pointer is over the tab.
+ *
+ * Deliberately NOT also on :focus-within. The control is a span and is
+ * not focusable, so revealing it on focus showed a delete button to
+ * someone who had merely tabbed onto the tab and could not have
+ * activated it - visible but not usable, which is worse than not
+ * showing it. It also broke the sheet list's cleanliness, since a tab
+ * left focused by an earlier click kept its X on screen indefinitely.
+ *
+ * Deleting without a mouse remains possible through the tab's context
+ * menu, which is the accessible route to the same workflow.
+ */
+.drawing-sheet-tab:hover .drawing-sheet-close {
+    opacity: 1;
+}
+
+.drawing-sheet-close:hover {
+    background: #d8e0e3;
+    color: #8c2b2b;
+}
+
+.drawing-sheet-close.is-disabled {
+    cursor: default;
+}
+
+.drawing-sheet-close.is-disabled:hover {
+    background: transparent;
+    color: #6d7d85;
+}
+
+.drawing-sheet-tab:hover {
+    background: #e8eff1;
+    color: #1f5c38;
+}
+
+.drawing-sheet-tab.active {
+    background: #ffffff;
+    color: #164c2d;
+    font-weight: 600;
+
+    /*
+     * The active indicator, as a separate element rather than a
+     * border on the tab. A border participates in the tab's box, so
+     * the content inside is laid out above it and the text ends up
+     * crowded against it; a pseudo-element is drawn over the tab's
+     * own bottom edge without changing the box at all, so the name's
+     * position is unaffected by whether the tab is selected.
+     */
+    position: relative;
+}
+
+.drawing-sheet-tab.active::after {
+    background: #1f5c38;
+    bottom: -1px;
+    content: "";
+    height: 2px;
+    left: -1px;
+    position: absolute;
+    right: -1px;
+}
+
+/*
+ * A tab being dragged out of its place. Dimmed rather than hidden, so
+ * the bar's layout does not shift under the pointer while a reorder is
+ * in progress.
+ */
+.drawing-sheet-tab.dragging {
+    opacity: 0.45;
+}
+
+.drawing-sheet-add {
+    background: #f2f6f7;
+    border: 1px solid #cbd4d9;
+    color: #455761;
+    cursor: pointer;
+    flex: 0 0 auto;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 11px 4px;
+}
+
+.drawing-sheet-add:hover {
+    background: #dcebe2;
+    border-color: #a9c7b4;
+    color: #164c2d;
+}
+
+/*
+ * The tab menu. Positioned against the page rather than the workspace
+ * so it is not clipped by the canvas area's overflow, which is what a
+ * menu dropping out of a scrolled canvas would otherwise do.
+ */
+.drawing-sheet-menu {
+    background: #ffffff;
+    border: 1px solid #cbd4d9;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+    display: flex;
+    flex-direction: column;
+    min-width: 140px;
+    position: fixed;
+    z-index: 60;
+}
+
+.drawing-sheet-menu button {
+    background: transparent;
+    border: none;
+    color: #26343b;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 7px 14px;
+    text-align: left;
+}
+
+.drawing-sheet-menu button:hover:not(:disabled) {
+    background: #e8eff1;
+}
+
+.drawing-sheet-menu button:disabled {
+    color: #9aa7ae;
+    cursor: default;
+}
+
+/*
+ * =========================================================
+   DRAWING REFERENCE (written side)
+   ========================================================= */
+
+.reference-panel {
+    background: #f6f8f9;
+    border: 1px solid #d8dce1;
+    border-radius: 6px;
+    margin-top: 14px;
+    padding: 12px;
+}
+
+.reference-panel-heading {
+    color: #555;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 10px;
+}
+
+.reference-field {
+    align-items: center;
+    color: #555;
+    display: flex;
+    font-size: 12px;
+    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.reference-field select,
+.reference-field input {
+    border: 1px solid #cfd3d8;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 5px 7px;
+    width: 62%;
+}
+
+.reference-insert {
+    margin-top: 4px;
+    width: 100%;
+}
+
+.drawing-reference-preview,
+.reference-preview {
+    margin-top: 12px;
+}
+
+/*
+ * A figure inside the rendered solution.
+ *
+ * Block-level and centred, with space above and below, because it is a
+ * figure in a piece of written work rather than a decoration: the
+ * reader's eye has to find it where the author put it, between the
+ * two paragraphs that talk about it.
+ */
+#writingOutput .drawing-reference-figure {
+    margin: 18px auto;
+    max-width: 100%;
+}
+
+#writingOutput .drawing-reference-figure svg {
+    display: block;
+    height: auto;
+    margin: 0 auto;
+    max-width: 100%;
+}
+
+.drawing-reference-figure {
+    margin: 0 0 22px;
+}
+
+.drawing-reference-frame {
+    background: #ffffff;
+    border: 1px solid #d8dce1;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.drawing-reference-frame svg {
+    display: block;
+    height: auto;
+    width: 100%;
+}
+
+.drawing-reference-figure figcaption {
+    color: #555;
+    font-size: 12px;
+    padding-top: 6px;
+    text-align: center;
+}
+
+.drawing-reference-empty,
+.drawing-reference-missing {
+    color: #777;
+    font-size: 12px;
+    margin: 0;
+    padding: 14px 4px;
+}
+
+/*
+ * =========================================================
+   DIALOGS
+   ========================================================= */
+
+/*
+ * The dimmed layer behind a dialog.
+ *
+ * It intercepts what is under it, which is the point: a rename dialog
+ * that leaves the canvas live means a click meant for the dialog
+ * arrives as a click on the drawing, and the canvas moves geometry
+ * while someone is trying to type a name.
+ *
+ * z-index above every part of the workspace and below nothing else -
+ * there is nothing it should ever be under.
+ */
+.engg-dialog-backdrop {
+    align-items: center;
+    background: rgba(28, 36, 41, 0.42);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    position: fixed;
+    z-index: 100;
+}
+
+.engg-dialog {
+    background: #ffffff;
+    border: 1px solid #cbd4d9;
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    color: #26343b;
+    max-width: calc(100vw - 24px);
+    padding: 18px 20px 16px;
+    width: 340px;
+}
+
+.engg-dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 8px;
+}
+
+.engg-dialog-description {
+    color: #5c6b73;
+    font-size: 12.5px;
+    line-height: 1.5;
+    margin: 0 0 14px;
+    white-space: pre-line;
+}
+
+.engg-dialog-field {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.engg-dialog-field-label {
+    color: #5c6b73;
+    flex: 0 0 auto;
+    font-size: 12px;
+}
+
+.engg-dialog-input {
+    border: 1px solid #cfd3d8;
+    border-radius: 5px;
+    flex: 1 1 auto;
+    font-family: inherit;
+    font-size: 13px;
+    min-width: 0;
+    padding: 7px 9px;
+}
+
+.engg-dialog-input:focus {
+    border-color: #1f5c38;
+    outline: 2px solid rgba(31, 92, 56, 0.18);
+    outline-offset: 1px;
+}
+
+.engg-dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.engg-dialog-button {
+    background: #f2f6f7;
+    border: 1px solid #cbd4d9;
+    border-radius: 5px;
+    color: #26343b;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    padding: 7px 14px;
+}
+
+.engg-dialog-button:hover {
+    background: #e8eff1;
+}
+
+.engg-dialog-button-primary {
+    background: #1f5c38;
+    border-color: #1f5c38;
+    color: #ffffff;
+}
+
+.engg-dialog-button-primary:hover {
+    background: #17472b;
+}
+
+/*
+ * =========================================================
    LIVE LINE MEASUREMENT
 ========================================================= */
 
 #drawingToolMessage {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+/* ==========================================================================
+   SET DRAWING SCALE
+
+   The first dimension asks how big the drawing really is. It is a modal,
+   not a menu, because it is a question with two answers that has to be
+   answered before anything else can happen - a popup that could be
+   dismissed by clicking elsewhere would let a dimension be created with
+   no scale at all, which is the thing this exists to prevent.
+
+   Styled to match the existing drawing chrome rather than the browser's
+   own dialog, so it reads as part of EnggDraw.
+   ========================================================================== */
+
+.drawing-scale-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    gap: 6px;
+
+    background: rgba(255, 255, 255, 0.86);
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #000000;
+}
+
+.drawing-scale-dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.drawing-scale-dialog-text {
+    margin: 0 0 8px;
+    max-width: 340px;
+    text-align: center;
+    line-height: 1.5;
+    color: #333333;
+}
+
+.drawing-scale-dialog-note {
+    margin: 10px 0 0;
+    max-width: 340px;
+    text-align: center;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #666666;
+}
+
+.drawing-scale-dialog-error {
+    margin: 8px 0 0;
+    max-width: 340px;
+    text-align: center;
+    font-size: 11px;
+    color: #b00020;
+}
+
+.drawing-scale-dialog-label {
+    display: block;
+    width: 260px;
+    margin-bottom: 3px;
+    font-size: 11px;
+    text-align: left;
+    color: #444444;
+}
+
+.drawing-scale-dialog-input,
+.drawing-scale-dialog-select {
+    width: 260px;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #000000;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+}
+
+.drawing-scale-dialog-input:focus,
+.drawing-scale-dialog-select:focus {
+    outline: 2px solid #1f5c38;
+    outline-offset: -1px;
+}
+
+.drawing-scale-dialog-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.drawing-scale-dialog-actions button {
+    min-width: 96px;
+    padding: 7px 14px;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #000000;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.drawing-scale-dialog-actions button.primary {
+    border-color: #1f5c38;
+    background: #1f5c38;
+    color: #ffffff;
+}
+
+.drawing-scale-dialog-actions button:hover {
+    background: #f0f0f0;
+}
+
+.drawing-scale-dialog-actions button.primary:hover {
+    background: #17492b;
+}
+
+/* ==========================================================================
+   EDIT DIMENSION
+
+   Same shell as the scale-calibration dialog - both are short forms that
+   must be answered before anything else can happen - with the dialog's
+   own rhythm and the editor's two-part layout.
+
+   The two FIELDSETS are not decoration. "Display" and "Set real-world
+   size" are different kinds of act, one cosmetic and one a change to
+   the document, and putting them in one undifferentiated list would
+   invite exactly the confusion this editor exists to prevent.
+   ========================================================================== */
+
+.drawing-dimension-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    background: rgba(255, 255, 255, 0.86);
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #000000;
+}
+
+.drawing-dimension-dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.drawing-dimension-dialog-readout {
+    min-width: 300px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #f7f7f7;
+    text-align: center;
+}
+
+.drawing-dimension-dialog-value {
+    font-size: 17px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.drawing-dimension-dialog-meta {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #666666;
+}
+
+.drawing-dimension-dialog-group {
+    min-width: 300px;
+    margin: 0 0 12px;
+    padding: 10px 12px 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+}
+
+.drawing-dimension-dialog-group legend {
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #555555;
+}
+
+.drawing-dimension-dialog-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 12px;
+}
+
+.drawing-dimension-dialog-check input {
+    margin: 0;
+}
+
+.drawing-dimension-dialog-label {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 11px;
+    color: #444444;
+}
+
+.drawing-dimension-dialog-input,
+.drawing-dimension-dialog-select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    margin-bottom: 10px;
+
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #000000;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+}
+
+.drawing-dimension-dialog-input:focus,
+.drawing-dimension-dialog-select:focus {
+    outline: 2px solid #1f5c38;
+    outline-offset: -1px;
+}
+
+.drawing-dimension-dialog-note {
+    margin: 0 0 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #666666;
 }

@@ -20,7 +20,39 @@ const toolIcons = {
 	Extend: drawingIcon(`<path ${iconStroke} d="M4 10h12M12 6l4 4-4 4M4 5v10"/>`),
 	Pan: drawingIcon(`<path ${iconStroke} d="M6 10V6a1 1 0 0 1 2 0v3V4a1 1 0 0 1 2 0v5V5a1 1 0 0 1 2 0v4V6a1 1 0 0 1 2 0v6c0 3-2 5-5 5-2 0-3-1-4-3l-1-2a1 1 0 0 1 2-1z"/>`),
 	Zoom: drawingIcon(`<circle ${iconStroke} cx="8.5" cy="8.5" r="4.5"/><path ${iconStroke} d="M12 12l4 4M8.5 6v5M6 8.5h5"/>`),
+
+	/*
+	 * THE TWO FIT MODES.
+	 *
+	 * One drawing shape for each, saying what it fits rather than how
+	 * it does it: the whole-page icon brackets a wide drawing, the
+	 * selected icon brackets one small thing. They are drawn from the
+	 * same corner-bracket language so they read as a pair, and they
+	 * differ in what is between the brackets - which is exactly the
+	 * difference between the two commands.
+	 */
+
+	"Fit Whole Page": drawingIcon(`<path ${iconStroke} d="M3 6V3h3M14 3h3v3M17 14v3h-3M6 17H3v-3"/><path ${iconStroke} d="M5 12l3-4 3 3 4-4"/>`),
+
+	"Fit Selected": drawingIcon(`<path ${iconStroke} d="M3 6V3h3M14 3h3v3M17 14v3h-3M6 17H3v-3"/><rect ${iconStroke} x="8" y="9" width="4" height="3"/>`),
+	/*
+	 * Dimension and Smart Dimension are two tools over ONE
+	 * implementation.
+	 *
+	 * Smart Dimension is the same tool with the decision left to the
+	 * program: it inspects the selection, picks the meaningful
+	 * measurement and places it for you. Dimension is the same tool
+	 * with the choice made explicit, which is what a student needs
+	 * when the automatic reading is not the one they want - a beam
+	 * quoted vertically rather than horizontally, say.
+	 *
+	 * They differ only in whether the measurement type is chosen for
+	 * the user or by them, so they share an icon's underlying shape
+	 * and are kept adjacent in the Annotate toolset.
+	 */
+	Dimension: drawingIcon(`<path ${iconStroke} d="M4 6v12M16 6v12M4 12h12M4 12l3-2M4 12l3 2M16 12l-3-2M16 12l-3 2"/>`),
 	"Smart Dimension": drawingIcon(`<path ${iconStroke} d="M4 6l2-2 2 2M6 4v12M4 14l2 2 2-2M11 5h5M11 10h4M11 15h5"/>`),
+	"Annotation": drawingIcon(`<path ${iconStroke} d="M4 5h8M4 9h8M4 13h5"/><path ${iconStroke} d="M12 16l1.5-4L18 7l-4.5 1.5L12 13"/>`),
 	"Note / Text": drawingIcon(`<path ${iconStroke} d="M4 4h12v9H9l-4 3v-3H4zM7 7h6M7 10h4"/>`),
 	Leader: drawingIcon(`<path ${iconStroke} d="M4 15L15 5M12 5h4v4"/><circle ${iconStroke} cx="4" cy="15" r="1"/>`),
 	Arrow: drawingIcon(`<path ${iconStroke} d="M4 16L16 4M11 4h5v5"/>`),
@@ -32,6 +64,16 @@ const toolIcons = {
 	"Coordinate System": drawingIcon(`<path ${iconStroke} d="M4 16V4M4 16h12M4 16l3-3M4 16l3 1M16 16l-3-3M16 16l-3 1"/>`),
 	"Reference Point": drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 3v4M10 13v4M3 10h4M13 10h4"/>`),
 	"Reference Line": drawingIcon(`<path ${iconStroke} stroke-dasharray="3 2" d="M3 15L17 5"/><circle ${iconStroke} cx="3" cy="15" r="1"/><circle ${iconStroke} cx="17" cy="5" r="1"/>`),
+
+	/*
+	 * Reference Arc.
+	 *
+	 * The Reference Line's icon, with the straight chord replaced by
+	 * an arc, and dashed for the same reason it is: the dash is how
+	 * the whole reference family is marked as construction rather
+	 * than final geometry, so the two read as relatives.
+	 */
+	"Reference Arc": drawingIcon(`<path ${iconStroke} stroke-dasharray="3 2" d="M3 15A8 8 0 0 1 17 5"/><circle ${iconStroke} cx="3" cy="15" r="1"/><circle ${iconStroke} cx="17" cy="5" r="1"/>`),
 	Moment: drawingIcon(`<path ${iconStroke} d="M6 14a6 6 0 1 1 7-9M13 5h3v3M10 10l3-3"/>`),
 	Moments: drawingIcon(`<path ${iconStroke} d="M6 14a6 6 0 1 1 7-9M13 5h3v3M10 10l3-3"/>`),
 	Support: drawingIcon(`<path ${iconStroke} d="M4 15h12M6 15l4-7 4 7M4 17h12"/>`),
@@ -67,9 +109,85 @@ const toolIcons = {
 	"Slider Connection": drawingIcon(`<path ${iconStroke} d="M3 8h4M3 12h4M13 10h4"/><path ${iconStroke} d="M8 6h4v8H8z"/><path ${iconStroke} d="M9 3h2M9 17h2"/>`),
 	"Free Body Diagram": drawingIcon(`<rect ${iconStroke} x="5" y="5" width="10" height="10"/><path ${iconStroke} d="M10 2v3M10 15v3M2 10h3M15 10h3"/>`),
 	Equilibrium: drawingIcon(`<path ${iconStroke} d="M10 4v12M4 8h12M6 8l-2 4h4zM14 8l-2 4h4z"/>`),
-	Resultant: drawingIcon(`<path ${iconStroke} d="M4 16V6M4 16h10M4 16l4-4M4 16l-1-5M12 8l4-4"/>`),
-	"Force Components": drawingIcon(`<path ${iconStroke} d="M4 16h12M4 16V4M4 16l9-9M13 7v4M13 7h-4"/>`),
-	"Moment Analysis": drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="5"/><path ${iconStroke} d="M10 7v3l2 2M15 5l2-2"/>`),
+	/*
+	 * THE ANALYSIS ICONS.
+	 *
+	 * One family, five members, built from the same parts: a 20x20
+	 * viewBox, the shared iconStroke, round caps and joins, no fills,
+	 * and a common 10,10 origin. They are meant to be read at about
+	 * twenty pixels in a toolbar, so each is built from at most three
+	 * strokes and none of them from a chart metaphor.
+	 *
+	 * What they say, in the student's own language:
+	 *
+	 *   Force Components  one force, split into two
+	 *   Resultant         two forces, combined into one
+	 *   SFD               shear, which JUMPS - a stepped profile
+	 *   BMD               moment, which CURVES - a smooth bow
+	 *   AFD               axial force, in blocks about the axis
+	 *
+	 * The last three are the ones that had to be told apart, and they
+	 * are separated by exactly the property that separates the real
+	 * diagrams: SFD is discontinuous, BMD is smooth, AFD is a block
+	 * diagram on a member axis. Stepped-versus-curved is the
+	 * difference a structural engineer looks for, so it is the
+	 * difference drawn here.
+	 *
+	 * These are ICONS, not example solutions. They show the shape a
+	 * diagram takes, never a value, so a student cannot read an
+	 * answer off the toolbar.
+	 */
+
+	/*
+	 * FORCE COMPONENTS: one diagonal force out of a common origin,
+	 * with the horizontal and vertical components drawn as the two
+	 * legs of the triangle it completes.
+	 *
+	 * The three vectors meet at ONE corner, and that is the whole
+	 * message: a single force F, resolved into Fx along the span and
+	 * Fy up the member. The dot marks the shared origin so the three
+	 * strokes read as one figure rather than as three arrows that
+	 * happen to be nearby.
+	 *
+	 * The earlier version of this drew the component legs as an
+	 * L-shaped path that ran straight through the diagonal, so the
+	 * three strokes piled up in the corner and read as a solid
+	 * block at toolbar size. Each leg is now its own stroke,
+	 * starting where it is meant to start.
+	 */
+	"Force Components": drawingIcon(`<path ${iconStroke} d="M3 16h13"/><path ${iconStroke} d="M16 16V4"/><path ${iconStroke} d="M3 16 16 4"/><path ${iconStroke} d="M12.5 4H16"/><path ${iconStroke} d="M16 8v4"/><circle ${iconStroke} cx="3" cy="16" r="1.3"/>`),
+
+	/*
+	 * RESULTANT: two forces converging on an origin and one long
+	 * arrow leaving it. The two input vectors are clearly paired and
+	 * the output is clearly singular, which is the whole difference
+	 * from Force Components - where the one input is a diagonal and
+	 * the two outputs are the legs.
+	 */
+	"Resultant": drawingIcon(`<path ${iconStroke} d="M10 10L3 4M10 10L3 16"/><path ${iconStroke} d="M10 10h7"/><path ${iconStroke} d="M15 8l3 2-3 2"/><path ${iconStroke} d="M1.5 2.5l3 3M1.5 17.5l3-3"/>`),
+
+	/*
+	 * SFD: a shear profile. Staircase top and bottom, so it reads as
+	 * a JUMPING diagram at twenty pixels, and the axis runs the full
+	 * width beneath it.
+	 */
+	"Shear Force (SFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M4 4v12h4V4zM8 6v8h4V6zM12 8v4h4V8z"/>`),
+
+	/*
+	 * BMD: a moment profile, drawn as a smooth bow over a full-width
+	 * axis. The curve is the point - a BMD is the one of the three
+	 * that is continuous, and the stroke is genuinely smooth here
+	 * where the SFD is explicitly stepped.
+	 */
+	"Bending Moment (BMD)": drawingIcon(`<path ${iconStroke} d="M2 14h16"/><path ${iconStroke} d="M2 14C5 6 7 6 10 6s5 0 8 8"/>`),
+
+	/*
+	 * AFD: axial force as tension and compression blocks, set about
+	 * a heavy member axis. Rectangular and paired, with a member line
+	 * through the middle, which is how an axial diagram is drawn and
+	 * how it reads as normal force rather than shear.
+	 */
+	"Axial Force (AFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M3 5h5v5H3zM12 10h5v5h-5z"/>`),
 	Particle: drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 3v5M10 12v5M3 10h5M12 10h5"/>`),
 	"Rigid Body": drawingIcon(`<rect ${iconStroke} x="5" y="5" width="10" height="10"/><circle ${iconStroke} cx="10" cy="10" r="2"/>`),
 	Velocity: drawingIcon(`<path ${iconStroke} d="M3 14h12M11 7l5 7-5 1"/>`),
@@ -165,13 +283,13 @@ const drawingToolGroups = [
 		id: "geometry",
 		label: "Create",
 		tools: [
-			{ id: "point", label: "Point" },
+			{ id: "point", label: "Point", shortcut: "P" },
 			{ id: "line", label: "Line", shortcut: "L" },
-			{ id: "triangle", label: "Triangle" },
-			{ id: "rectangle", label: "Rectangle" },
+			{ id: "triangle", label: "Triangle", shortcut: "T" },
+			{ id: "rectangle", label: "Rectangle", shortcut: "R" },
 			{ id: "circle", label: "Circle", shortcut: "C" },
 			{ id: "arc", label: "Arc", shortcut: "A" },
-			{ id: "polygon", label: "Polygon" }
+			{ id: "polygon", label: "Polygon", shortcut: "G" }
 		]
 	},
 	{
@@ -218,12 +336,46 @@ const disciplineToolGroups = {
 		{
 			id: "statics-analysis",
 			label: "Analysis",
+
+			/*
+			 * The Analysis section is DOCUMENTATION, not a solver.
+			 *
+			 * Every tool here helps the student draw, label and
+			 * organise their own reasoning: resolve a force they
+			 * have already drawn, combine vectors they have
+			 * already placed, or open a frame to draw a
+			 * shear/moment/axial diagram inside. None of them
+			 * works out an unknown, and none reports a solution.
+			 *
+			 * Equilibrium and Moment Analysis were removed for
+			 * that reason. Both read the student's forces and
+			 * print a verdict - "not balanced, ΣFx ..." - which
+			 * is a first step into doing the exercise for them,
+			 * and it is exactly the step the exercise exists to
+			 * make. They are not replaced with anything: if a
+			 * genuine analysis module is built later it will earn
+			 * its place here, rather than these two standing in
+			 * for it.
+			 */
+			/*
+			 * The diagram names carry their abbreviation in the
+			 * LABEL as well as the icon, because the abbreviation
+			 * is what the student will say and search for, and
+			 * because the full names wrap to three lines in a
+			 * narrow panel - which pushes the last tool in the
+			 * section out of sight.
+			 *
+			 * The names are shortened rather than abbreviated to
+			 * the point of being cryptic: "Shear Force (SFD)" is
+			 * still readable on its own, and it is what a student
+			 * would call it in a report.
+			 */
 			tools: [
-				{ id: "free-body-diagram", label: "Free Body Diagram" },
 				{ id: "resultant", label: "Resultant" },
 				{ id: "force-components", label: "Force Components" },
-				{ id: "equilibrium", label: "Equilibrium" },
-				{ id: "moment-analysis", label: "Moment Analysis" }
+				{ id: "shear-force-diagram", label: "Shear Force (SFD)" },
+				{ id: "bending-moment-diagram", label: "Bending Moment (BMD)" },
+				{ id: "axial-force-diagram", label: "Axial Force (AFD)" }
 			]
 		},
 		{
@@ -232,7 +384,25 @@ const disciplineToolGroups = {
 			tools: [
 				{ id: "coordinate-system", label: "Coordinate System" },
 				{ id: "reference-point", label: "Reference Point" },
-				{ id: "reference-line", label: "Reference Line" }
+				{ id: "reference-line", label: "Reference Line" },
+
+				/*
+				 * Reference Arc.
+				 *
+				 * An ARC construction that produces construction
+				 * geometry, in the same way the Reference Line
+				 * produces construction linework.
+				 *
+				 * It is a separate tool rather than a mode of
+				 * Geometry → Arc because the two make different
+				 * things: one is final geometry a student drew,
+				 * the other is reference geometry a student
+				 * worked from. But the INTERACTION is the same code
+				 * - the same construction modes, snapping, preview
+				 * and editing - so it feels identical to use, and
+				 * only the finished feature differs.
+				 */
+				{ id: "reference-arc", label: "Reference Arc" }
 			]
 		}
 	]
@@ -271,7 +441,7 @@ const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool => [to
 
 const engineeringTools = {
 	GEOMETRY: sidebarToolDefinitions.map(tool => tool.label),
-	ANNOTATE: ["Smart Dimension", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
+	ANNOTATE: ["Dimension", "Smart Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
 	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Applied Moment", "Couple", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
 	DYNAMICS: ["Particle", "Rigid Body", "Velocity", "Acceleration", "Rotation", "Motion Path"],
 	FLUIDS: ["Pipe", "Reservoir", "Valve", "Pump", "Flow Arrow", "Pressure"],

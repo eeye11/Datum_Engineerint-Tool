@@ -1,7 +1,103 @@
 /* Engineering drawing object snapping and geometric inference. */
 (function () {
-    const SNAP_TOLERANCE_PX = 12;
-    const INFERENCE_TOLERANCE_DEGREES = 7;
+    /*
+     * How close the cursor must be, in screen pixels, to snap
+     * to a named point.
+     *
+     * Generous on purpose. The tolerance is the whole width of
+     * the target as far as the user is concerned: they aim at a
+     * joint and expect to be caught by it, not to land on it to
+     * the pixel. A tight tolerance makes snapping feel broken
+     * for anyone using a trackpad, and makes the halfway
+     * positions - midpoints and quarter points - especially hard
+     * to hit, because the eye is judging a third of a span
+     * rather than a point.
+     *
+     * It was 18, which turned out to be slightly STICKY rather
+     * than merely generous: a cursor passing a few pixels clear of
+     * one feature was caught by the next one along, so lining a
+     * member up past a row of supports became a fight. The
+     * reduction below is deliberately modest - the tolerance is
+     * still comfortably wider than the arrowheads, quarter points
+     * and half positions it has to catch - and this constant is
+     * the ONE place the value lives, so every tool, every zoom
+     * level and every kind of snap is narrowed together rather
+     * than one tool at a time.
+     */
+    const SNAP_TOLERANCE_PX = 15;
+
+    /*
+     * How far off horizontal or vertical the cursor may be and
+     * still be pulled into line.
+     *
+     * Wider than the snap tolerance, because alignment is a
+     * direction rather than a place: the user is lining a member
+     * up with a chord, and the chord is often long and thin, so
+     * aiming precisely along it is much harder than aiming at
+     * its end. A band that is too tight makes the alignment
+     * appear not to work at all.
+     */
+    const INFERENCE_TOLERANCE_DEGREES = 12;
+
+    /*
+     * Tools whose snap target is hard enough to aim at that they
+     * need a wider catch than the default.
+     *
+     * A TRUSS is the case that earns this. A truss is aimed at
+     * through its joints, its intersections and its quarter
+     * regions - all of which are points ON a member rather than
+     * the member itself, and all of which the eye judges by
+     * comparison with the member running past them. Judging
+     * "is the cursor on that joint" is much harder than judging
+     * "is it near that long member", so a tolerance that feels
+     * right for a Beam's endpoints feels distinctly too tight
+     * for a truss joint, and the failure mode is a snap that
+     * appears not to work.
+     *
+     * The figure is deliberately modest. A truss is a dense
+     * structure, so a tolerance wide enough to be forgiving of
+     * one joint is wide enough to grab the wrong one in a
+     * crossing of several members. Generous, not loose.
+     */
+    const TOOL_SNAP_TOLERANCE_MULTIPLIER = {
+        truss: 1.4
+    };
+
+    const DEFAULT_SNAP_TOLERANCE_MULTIPLIER = 1;
+
+    /*
+     * The tolerance for the construction currently running.
+     *
+     * Read from the live interaction as well as the armed tool,
+     * because a construction keeps its own tool identity after
+     * the student has moved on: a truss whose panels are being
+     * added is still a truss, and must still be forgiving,
+     * even though the click that began it is over.
+     */
+    function getToolToleranceMultiplier(
+        state
+    ) {
+        const ids = [
+            state?.interaction?.snapToolId,
+            state?.activeTool
+        ];
+
+        for (const id of ids) {
+            if (!id) {
+                continue;
+            }
+
+            const multiplier =
+                TOOL_SNAP_TOLERANCE_MULTIPLIER[id];
+
+            if (Number.isFinite(multiplier)) {
+                return multiplier;
+            }
+        }
+
+        return DEFAULT_SNAP_TOLERANCE_MULTIPLIER;
+    }
+
     const INFERENCE_DIRECTION_HYSTERESIS_PX = 1;
 
     const SNAP_PRIORITY = {
@@ -9,8 +105,48 @@
         intersection: 2,
         center: 3,
         midpoint: 4,
-        quadrant: 5,
-        pointOnEntity: 6
+
+        /*
+         * A quarter point is a derived position along a member,
+         * so it is offered only after the real joints and the
+         * midpoint. It must never outrank an endpoint: placing a
+         * new joint on a quarter of an existing panel is useful,
+         * but snapping to the panel's own end is more likely to
+         * be what was meant.
+         */
+        quarter: 5,
+
+        quadrant: 6,
+        pointOnEntity: 7,
+
+        /*
+         * A MEMBER'S CENTRELINE.
+         *
+         * Ranked just above a point merely ON an object, and well below
+         * the object's own endpoints and midpoint.
+         *
+         * The ranking is the honest description of what it is: a line
+         * along a body rather than a marked point on it, and a support
+         * wants the line. It is below endpoints because a student
+         * aiming at the very end of a beam has usually aimed at the
+         * end, and the centreline must not quietly move the
+         * attachment to somewhere they did not mean.
+         */
+        centreline: 5,
+
+        /*
+         * A diagram's reference station.
+         *
+         * Ranked BELOW every real feature, and below pointOnEntity too.
+         *
+         * It is a convenience - it tells a student where a load sits
+         * along a beam so their diagram lines up with it - and a
+         * convenience must never win against something actually drawn.
+         * A station that sat alongside endpoints would let a diagram
+         * marker capture a click aimed at the axis next to it, and
+         * the axis is the thing the student is more likely to mean.
+         */
+        "analysis-reference": 8
     };
 
     const CONSTRUCTION_TYPES = new Set([
@@ -40,7 +176,8 @@
         candidates,
         type,
         objectId,
-        candidatePoint
+        candidatePoint,
+        label
     ) {
         if (
             !candidatePoint ||
@@ -50,7 +187,7 @@
             return;
         }
 
-        candidates.push({
+        const candidate = {
             type,
             objectId,
             point: {
@@ -59,7 +196,25 @@
             },
             priority:
                 SNAP_PRIORITY[type]
-        });
+        };
+
+        /*
+         * AN OPTIONAL NAME, shown in the bottom-of-screen message.
+         *
+         * A diagram's reference markers say what they are - the
+         * station a load sits on, the one a support sits on - and a
+         * student aiming at a marker needs to know they have snapped
+         * to the right one. Without a label every snap reads
+         * "Endpoint", which is true and useless.
+         *
+         * Left off everywhere else, so the existing messages are
+         * unchanged.
+         */
+        if (label) {
+            candidate.label = label;
+        }
+
+        candidates.push(candidate);
     }
 
     function getTolerancePx(state) {
@@ -72,10 +227,20 @@
             Number.isFinite(configured) &&
             configured > 0
         ) {
-            return configured;
+            return (
+                configured *
+                getToolToleranceMultiplier(
+                    state
+                )
+            );
         }
 
-        return SNAP_TOLERANCE_PX;
+        return (
+            SNAP_TOLERANCE_PX *
+            getToolToleranceMultiplier(
+                state
+            )
+        );
     }
 
     function getInferenceTolerancePx(state) {
@@ -91,7 +256,28 @@
             return configured;
         }
 
-        return 8;
+        /*
+         * The catch band for ALIGNMENT.
+         *
+         * Alignment is a different question from snapping to a point, and
+         * it is given its own floor. It asks "is this line the direction I
+         * am drawing?", which is judged against a whole member rather than
+         * against a dot, and the cursor is commonly a good way off the
+         * axis while the student is still lining the member up. A band
+         * derived only by scaling the point tolerance inherits every
+         * narrowing made to that tolerance, so tightening the point snap
+         * silently tightened alignment too - and that is not a change
+         * anyone asking for a stiffer point snap is asking for.
+         *
+         * So the floor is stated here rather than inherited, and the
+         * multiple still runs off the live tolerance so the two stay
+         * related. A configured value still wins outright.
+         */
+        const ALIGNMENT_TOLERANCE_PX = 27;
+        return Math.max(
+            ALIGNMENT_TOLERANCE_PX,
+            getTolerancePx(state) * 1.5
+        );
     }
 
     function normalizeAngle(angle) {
@@ -314,11 +500,170 @@
         ];
     }
 
+    /*
+     * THE CANDIDATE TYPES A TOOL WILL ACCEPT.
+     *
+     * Snapping is not one thing, it is several: a support is attached
+     * to a body's centreline, a dimension measures between real
+     * features, a truss wants quarter points, and a student drawing a
+     * free line wants whatever is actually under the pointer. A single
+     * shared list of candidates for every tool is what produced the
+     * fault this fixes - a support could be caught by the bottom edge
+     * of a beam, or by a point somewhere inside it, and had to be
+     * dropped on the exact surface to come out underneath.
+     *
+     * So a tool declares what it attaches to, and the candidates are
+     * FILTERED rather than replaced. The face snapping a beam still
+     * publishes is untouched for a force - a load applied to the top
+     * face really is applied there - and simply is not offered to a
+     * support. Nothing is removed from the shared system; the tools
+     * disagree about which parts of it apply to them.
+     *
+     * `null` means "everything", which is the default and the right
+     * answer for the overwhelming majority of tools.
+     */
+    const TOOL_CANDIDATE_TYPES = {
+        /*
+         * THE SUPPORTS.
+         *
+         * A support is attached to the member's centreline and is
+         * drawn outside it, so the centreline is the only thing it may
+         * catch. Its own ends are allowed as well - a support at the
+         * very end of a beam is a real thing, and refusing it would
+         * mean the commonest case at all, a pin under each end, could
+         * not be placed.
+         *
+         * Everything else a beam publishes - its two faces, its
+         * midpoint, its quarters - is refused. The faces are the
+         * reason this filter exists: they exist so a force can be
+         * applied to a surface, and without the filter they were
+         * catching supports too and putting them half inside the
+         * member.
+         */
+        "pin-support": [
+            "centreline",
+            "endpoint",
+            "intersection",
+            "reference-point"
+        ],
+        "roller-support": [
+            "centreline",
+            "endpoint",
+            "intersection",
+            "reference-point"
+        ],
+        "fixed-support": [
+            "centreline",
+            "endpoint",
+            "intersection",
+            "reference-point"
+        ],
+        "smooth-support": [
+            "centreline",
+            "endpoint",
+            "intersection",
+            "reference-point"
+        ]
+    };
+
+    /*
+     * Is this candidate something the active tool will accept?
+     *
+     * Asked at the one point where the shortlist is built, so an
+     * unacceptable candidate is never even measured - which matters
+     * for more than tidiness: a face candidate the tool would never
+     * take still costs a distance calculation on every pointer move,
+     * and a filter applied after the search would be a filter applied
+     * to the wrong candidate.
+     */
+    function candidateIsValidForTool(
+        candidate,
+        toolId
+    ) {
+        const allowed =
+            TOOL_CANDIDATE_TYPES[toolId];
+
+        if (!allowed) {
+            return true;
+        }
+
+        return allowed.includes(
+            candidate.type
+        );
+    }
+
+    /*
+     * A WHOLE LINE AS A SNAP TARGET.
+     *
+     * Not a set of points on it. A centreline is something a support
+     * is placed ALONG, and publishing only its ends and its middle
+     * would mean the commonest thing anyone does with a support -
+     * putting one at midspan - needed a lucky aim, and putting one a
+     * third of the way along was impossible at all.
+     *
+     * The candidate is the line itself and the snap is measured
+     * against it, so the pointer can be anywhere near the member and
+     * the attachment is the point ON the member nearest the pointer.
+     * That is the same tolerance and the same indicator every other
+     * snap uses, because it goes through the same machinery.
+     */
+    function addSegment(
+        candidates,
+        objectId,
+        start,
+        end,
+        type = "centreline"
+    ) {
+        /*
+         * The point check is INLINED rather than delegated.
+         *
+         * This file has no `isPoint` helper - it spells the test out
+         * everywhere - and calling one that does not exist throws a
+         * ReferenceError from inside candidate building. That throw
+         * happens on EVERY snap, for EVERY tool, because building the
+         * candidates is the first thing a snap does: so one missing
+         * name took down all snapping in the application, and every
+         * tool that depends on it, while every unit test of the model
+         * still passed.
+         *
+         * Worth stating why that was invisible: nothing was wrong with
+         * any feature, every factory worked, and the drawing rendered.
+         * Only the interaction died.
+         */
+        if (
+            !start || !end ||
+            !Number.isFinite(start.x) ||
+            !Number.isFinite(start.y) ||
+            !Number.isFinite(end.x) ||
+            !Number.isFinite(end.y)
+        ) {
+            return;
+        }
+
+        candidates.push({
+            type,
+            objectId,
+            priority: SNAP_PRIORITY[type] ?? 3,
+
+            /*
+             * The line, not a point. The snap search measures the
+             * pointer against it directly, so the candidate's `point`
+             * is absent by design - there is no single point on a line
+             * to name.
+             */
+            segment: {
+                start: { x: start.x, y: start.y },
+                end: { x: end.x, y: end.y }
+            }
+        });
+    }
+
     function segmentCandidates(
         candidates,
         objectId,
         start,
-        end
+        end,
+        quarterSnap = false
     ) {
         addCandidate(
             candidates,
@@ -338,20 +683,73 @@
             candidates,
             "midpoint",
             objectId,
-            {
-                x:
-                    (
-                        start.x +
-                        end.x
-                    ) / 2,
-
-                y:
-                    (
-                        start.y +
-                        end.y
-                    ) / 2
-            }
+            segmentPointAt(
+                start,
+                end,
+                0.5
+            )
         );
+
+        /*
+         * The quarter points.
+         *
+         * A structural member is most usefully divided into
+         * quarters, not just halves: a new panel is usually
+         * wanted at a quarter of the span of the one beside it,
+         * and offering only the midpoint forces the student to
+         * place the joint by eye.
+         *
+         * They are published here, from the one function that
+         * publishes a span's points, so every span of one feature
+         * gets them at the same tolerance and the same priority
+         * as its endpoints and midpoint. A quarter point is a
+         * weaker target than an endpoint, so it sits below them
+         * in the priority order and never steals a snap that
+         * should have been a joint.
+         *
+         * TRUSS ONLY. `quarterSnap` is the feature's declared
+         * capability, so a Beam, a Cable, a Shaft, a load, a
+         * support, a connection, a dimension or an annotation
+         * offers endpoints, a midpoint and a point-on-object and
+         * never offers a quarter. Keeping the rule at the
+         * publishing point rather than filtering afterwards
+         * means the extra candidates are never even built.
+         */
+        if (!quarterSnap) {
+            return;
+        }
+
+        [0.25, 0.75].forEach(ratio => {
+            addCandidate(
+                candidates,
+                "quarter",
+                objectId,
+                segmentPointAt(
+                    start,
+                    end,
+                    ratio
+                )
+            );
+        });
+    }
+
+    /*
+     * A point a given fraction of the way along a segment.
+     *
+     * Every published point of a span is one of these, so the
+     * endpoints, the midpoint and the quarter points are
+     * computed in exactly one way and cannot disagree about
+     * where they are.
+     */
+    function segmentPointAt(
+        start,
+        end,
+        ratio
+    ) {
+        return {
+            x: start.x + (end.x - start.x) * ratio,
+            y: start.y + (end.y - start.y) * ratio
+        };
     }
 
     /*
@@ -452,6 +850,57 @@
         };
     }
 
+    /*
+     * Quarter points are a TRUSS capability, not a general one.
+     *
+     * The reason is physical rather than aesthetic. A truss panel
+     * is divided into quarters because a new panel is usually
+     * wanted at a quarter of the span of the one beside it, and
+     * because a truss member is a structural element whose span
+     * gets divided deliberately. The same candidate on a Beam, a
+     * Cable, a Shaft, a support or a dimension is noise: it
+     * invents a position the feature never promised, competes
+     * with the midpoint and the endpoints for the cursor's
+     * attention, and makes the shared snap behave differently
+     * from one feature to the next for no stated reason.
+     *
+     * So the capability is stated where the features are, and
+     * read from there by the one function that publishes a
+     * span's points. No tool opts in by accident: a feature is a
+     * quarter-snap target because it declares that it is one.
+     */
+    const QUARTER_SNAP_TYPES = new Set([
+        "truss"
+    ]);
+
+    function supportsQuarterSnap(
+        object
+    ) {
+        if (!object) {
+            return false;
+        }
+
+        if (
+            object.snapCapabilities
+                ?.quarter === false
+        ) {
+            return false;
+        }
+
+        if (object.type === "line" && (
+            object.engineering
+                ?.subtype === "truss" ||
+            object.engineering
+                ?.feature === "truss"
+        )) {
+            return true;
+        }
+
+        return QUARTER_SNAP_TYPES.has(
+            object.type
+        );
+    }
+
     function addObjectCandidates(
         candidates,
         object
@@ -465,6 +914,105 @@
 
         const geometry =
             object.geometry;
+
+        /*
+         * Whether this object's spans publish quarter points.
+         *
+         * Read once here and threaded down to the span publishers,
+         * so every segment of one feature agrees about it: a
+         * truss member offers its quarters and the same feature's
+         * other geometry does not, and a Beam offers none
+         * anywhere.
+         */
+        const quarterSnap =
+            supportsQuarterSnap(object);
+
+        /*
+         * A DIAGRAM'S SOURCE REFERENCE POSITIONS ARE SNAP TARGETS.
+         *
+         * A student drawing an SFD needs their vertical drops to land
+         * on the same stations as the loads on the beam above. Without
+         * this they would be reading those positions off the beam by
+         * eye and transferring them by hand, which is precisely the
+         * work the diagram's reference markers were transferred to
+         * save - and which is easy to get subtly wrong by a few
+         * units, producing a diagram that looks right and is not.
+         *
+         * So each marker is published through the SAME candidate list
+         * as every other snap, with the same tolerance, the same
+         * priority and the same bottom-of-screen message. It is a
+         * drafting aid and nothing more: it says where a station IS,
+         * never what the diagram's value should be, and it cannot
+         * produce a shear jump or a moment however hard a student
+         * tries to make it.
+         */
+        if (
+            object.type ===
+                "analysis-diagram" &&
+            Array.isArray(
+                geometry.referencePositions
+            ) &&
+            geometry.showReferencePositions !==
+                false
+        ) {
+            geometry.referencePositions.forEach(
+                marker => {
+                    if (!marker.position) {
+                        return;
+                    }
+
+                    /*
+                     * A NAMED snap type, not a plain endpoint.
+                     *
+                     * The distinction is worth its own entry because
+                     * a diagram marker is a different thing from the
+                     * end of a line, and a student who has snapped to
+                     * "the station a load sits on" needs to be told
+                     * that rather than "Endpoint" - the word would be
+                     * true and would tell them nothing about what
+                     * they have caught.
+                     */
+                    addCandidate(
+                        candidates,
+                        "analysis-reference",
+                        object.id,
+                        marker.position,
+                        marker.label
+                    );
+                }
+            );
+
+            /*
+             * The two ends of the axis are published too, and then the
+             * axis itself is left to the ordinary span handling below,
+             * so a diagram snaps along its own zero axis like any other
+             * line on the sheet.
+             */
+            const axis =
+                geometry.zeroAxis ||
+                (geometry.start && geometry.end
+                    ? {
+                        from: geometry.start,
+                        to: geometry.end
+                    }
+                    : null);
+
+            if (axis) {
+                addCandidate(
+                    candidates,
+                    "endpoint",
+                    object.id,
+                    axis.from
+                );
+
+                addCandidate(
+                    candidates,
+                    "endpoint",
+                    object.id,
+                    axis.to
+                );
+            }
+        }
 
         if (object.type === "point") {
             addCandidate(
@@ -517,7 +1065,8 @@
                 candidates,
                 object.id,
                 geometry.start,
-                geometry.end
+                geometry.end,
+                quarterSnap
             );
 
             return;
@@ -538,7 +1087,75 @@
          * arbitrary point along a member. It uses the shared
          * candidate list, so it gets the same snapping and the
          * same priority as every other geometry.
+         *
+         * Each MEMBER is also published as a span, so its
+         * midpoint and quarter points are recognised. That is
+         * what lets a new panel be placed relative to the panel
+         * beside it, rather than only at its ends: a truss is
+         * built panel by panel, and the quarter of an existing
+         * member is exactly where the next one is wanted.
+         *
+         * The joints are published first and as endpoints, so
+         * they keep the stronger priority and a snap at a real
+         * joint is never lost to a quarter of the member that
+         * happens to pass nearby.
          */
+        /*
+         * A load is a span, so it publishes one exactly as a Line
+         * does: its two ends, and the positions along it. The ends
+         * are the places a second load, a support or a force is
+         * attached, and the span is what makes the loaded region
+         * itself a place that can be aligned with.
+         *
+         * Its DISTRIBUTION points are published as endpoints too.
+         * They are real, visible places in the drawing - they are
+         * drawn as force arrows - so a new feature can line up
+         * with one exactly as it lines up with a truss joint. They
+         * are published before the span's other positions so a
+         * snap at a point the user defined outranks a snap at some
+         * derived quarter of the same span.
+         */
+        if (
+            object.type === "load" ||
+            object.type === "varying-load"
+        ) {
+            if (!geometry.start || !geometry.end) {
+                return;
+            }
+
+            const start = geometry.start;
+            const end = geometry.end;
+
+            enggLoadProfile
+                .profilePoints(geometry)
+                .forEach((point) => {
+                    const along =
+                        enggLoadProfile.pointAlong(
+                            geometry,
+                            point.t
+                        );
+
+                    if (along) {
+                        addCandidate(
+                            candidates,
+                            "endpoint",
+                            object.id,
+                            along
+                        );
+                    }
+                });
+
+            segmentCandidates(
+                candidates,
+                object.id,
+                start,
+                end,
+                quarterSnap
+            );
+
+            return;
+        }
+
         if (
             object.type === "truss" &&
             Array.isArray(geometry.members) &&
@@ -571,6 +1188,23 @@
                 });
             });
 
+            /*
+             * The interior positions of every member. Duplicates
+             * across members are not removed: two members that
+             * cross at their midpoints are genuinely two ways of
+             * reaching the same point, and the candidate list
+             * already handles a tie by priority.
+             */
+            geometry.members.forEach((member) => {
+                segmentCandidates(
+                    candidates,
+                    object.id,
+                    member.start,
+                    member.end,
+                    quarterSnap
+                );
+            });
+
             return;
         }
 
@@ -583,16 +1217,146 @@
                 candidates,
                 object.id,
                 geometry.start,
-                geometry.end
+                geometry.end,
+                quarterSnap
             );
+            /*
+             * A BEAM is drawn as a deep member, not a line, so
+             * its real edges sit half a depth either side of the
+             * centreline the span above publishes.
+             *
+             * Without them, a force placed on the top face of a
+             * beam cannot be snapped to that face: the only
+             * snapping available is the centreline it was
+             * constructed from, so the user has to aim at an
+             * invisible line in the middle of the member rather
+             * than at the thing they can actually see.
+             *
+             * The drawn geometry is what must snap. Each face
+             * is therefore published as a span in its own right,
+             * so its ends, its midpoint and its quarter points
+             * are all reachable, and the body's centre is
+             * published so a load can be placed on the member
+             * itself.
+             */
+            if (object.type === "beam") {
+                const half = Math.max(
+                    (Number(geometry.depth) || 0) / 2,
+                    0
+                );
 
-            return;
-        }
+                if (half > 0) {
+                    const dx =
+                        geometry.end.x -
+                        geometry.start.x;
+
+                    const dy =
+                        geometry.end.y -
+                        geometry.start.y;
+
+                    const length = Math.hypot(dx, dy);
+
+                    if (length > 1e-9) {
+                        /*
+                         * A normal to the member, so the faces
+                         * are offset across it rather than along
+                         * it.
+                         */
+                        const nx =
+                            (-dy / length) * half;
+
+                        const ny =
+                            (dx / length) * half;
+
+                        [1, -1].forEach((side) => {
+                            segmentCandidates(
+                                candidates,
+                                object.id,
+                                {
+                                    x:
+                                        geometry.start.x +
+                                        nx * side,
+                                    y:
+                                        geometry.start.y +
+                                        ny * side
+                                },
+                                {
+                                    x:
+                                        geometry.end.x +
+                                        nx * side,
+                                    y:
+                                        geometry.end.y +
+                                        ny * side
+                                },
+                                quarterSnap
+                            );
+                        });
+                    }
+                }
+
+                    addCandidate(
+                        candidates,
+                        "center",
+                        object.id,
+                        segmentPointAt(
+                            geometry.start,
+                            geometry.end,
+                            0.5
+                        )
+                    );
+                    }
+
+                    /*
+                     * THE MEMBER'S CENTRELINE, AS A NAMED SNAP TARGET.
+                     *
+                     * Published as its own candidate type rather than as more
+                     * endpoints and midpoints, because what it is FOR matters:
+                     * this is the line a support is meant to be attached to,
+                     * and it is the only part of a beam a support should be
+                     * able to catch.
+                     *
+                     * The faces published above are still here, and are still
+                     * correct for a force - a load applied to the top face of a
+                     * beam really is applied there, and a student aiming at the
+                     * surface they can see should catch it. What has changed is
+                     * that they are no longer EQUALLY valid for everything: see
+                     * `candidateIsValidForTool`, which is where a tool declares
+                     * that it attaches to the centreline and not to a surface.
+                     *
+                     * So this is not a replacement for the face snapping, it
+                     * is a distinction the tools can act on. Adding the
+                     * centreline without that distinction would have made the
+                     * snapping worse, not better: one more line to hit among
+                     * the ones already there.
+                     */
+                    const centreline =
+                        window.enggBodyFrames?.centrelineOf(
+                            object
+                        );
+
+                    if (centreline) {
+                        addSegment(
+                            candidates,
+                            object.id,
+                            centreline.start,
+                            centreline.end,
+                            "centreline"
+                        );
+                    }
+
+                    return;
+                }
 
         /*
-         * A Particle and a Rigid Body are located bodies
-         * rather than spans, so only their centre is
-         * published.
+         * A Particle and a Rigid Body are located bodies rather
+         * than spans, so they publish a centre.
+         *
+         * A Rigid Body also publishes its OUTLINE. Its centre
+         * alone is not enough: the drawn shape is a rectangle, a
+         * circle, a triangle or a polygon, and its corners and
+         * edges are the places a force is actually put on. A
+         * body that can only be snapped at its centre cannot be
+         * attached to at a corner at all.
          */
         if (
             LOCATED_STATICS_BODIES.includes(
@@ -612,6 +1376,100 @@
                     "center",
                     object.id,
                     centre
+                );
+            }
+
+            if (object.type === "rigid-body") {
+                const shape =
+                    enggFeatureGeometry
+                        .rigidBodyShape(geometry);
+
+                const outline =
+                    enggFeatureGeometry
+                        .definingPoints(geometry, shape)
+                        .filter(Boolean);
+
+                /*
+                 * Each edge is published as a span, so its
+                 * corners, its midpoint and its quarter points
+                 * are all reachable along the face the user can
+                 * see.
+                 */
+                if (outline.length >= 2) {
+                    outline.forEach((corner, index) => {
+                        const next =
+                            outline[
+                                (index + 1) %
+                                    outline.length
+                            ];
+
+                        addCandidate(
+                            candidates,
+                            "endpoint",
+                            object.id,
+                            corner
+                        );
+
+                        segmentCandidates(
+                            candidates,
+                            object.id,
+                            corner,
+                            next,
+                            quarterSnap
+                        );
+                    });
+                }
+            }
+
+            return;
+        }
+
+        /*
+         * A Point Force is a vector, and BOTH of its ends are
+         * real places in the drawing.
+         *
+         * The origin is where the force acts, so it is a natural
+         * place to attach something else to a force. The far end
+         * is the tip of the drawn arrow, and it is a real point in
+         * the drawing too: a reaction applied at the end of a
+         * force, or a dimension measured to it, is an ordinary
+         * thing to want.
+         *
+         * Both are published as endpoints, so they snap with the
+         * same strength as any other joint, and the shaft between
+         * them is published as a span so the arrow can be picked
+         * along its length as well as at its ends.
+         */
+        if (object.type === "force") {
+            const origin =
+                geometry.start ||
+                geometry.position;
+
+            if (!origin) {
+                return;
+            }
+
+            addCandidate(
+                candidates,
+                "endpoint",
+                object.id,
+                origin
+            );
+
+            if (geometry.end) {
+                addCandidate(
+                    candidates,
+                    "endpoint",
+                    object.id,
+                    geometry.end
+                );
+
+                segmentCandidates(
+                    candidates,
+                    object.id,
+                    origin,
+                    geometry.end,
+                    quarterSnap
                 );
             }
 
@@ -832,7 +1690,8 @@
                         candidates,
                         object.id,
                         segment[0],
-                        segment[1]
+                        segment[1],
+                        quarterSnap
                     )
             );
 
@@ -1932,6 +2791,37 @@
         );
     }
 
+    /*
+     * A screen point back in drawing units.
+     *
+     * The inverse of `screenPoint`, and needed because a line target
+     * is resolved in SCREEN space - the pointer is projected onto the
+     * drawn line - and the attachment has to come back out in WORLD
+     * units, where the feature is stored and where the body it
+     * attaches to is measured.
+     *
+     * This is the application's own inverse mapping rather than a
+     * scale factor worked out here. That is not tidiness: screen y is
+     * INVERTED relative to world y, and the origin is the middle of the
+     * canvas rather than its corner, so a hand-rolled inverse would
+     * come out reflected and offset - which looks almost right and
+     * puts every support a visible distance from its beam.
+     */
+    function engineeringFromScreen(
+        screenPos,
+        bounds,
+        state
+    ) {
+        return enggDrawingState.screenToEngineering(
+            screenPos,
+            {
+                width: bounds.width,
+                height: bounds.height
+            },
+            state
+        );
+    }
+
     function screenDistance(
         first,
         second,
@@ -1980,6 +2870,79 @@
             state.objects
         );
 
+        /*
+         * Geometry that is being DRAWN rather than finished.
+         *
+         * A truss under construction is a set of real members that
+         * exist only in the interaction, and a member being placed
+         * is a real segment. Publishing them through the same
+         * candidate list means a new member snaps to a joint or an
+         * intersection of the members already placed, with exactly
+         * the same tolerance, priority and indicator every other
+         * snap uses. It is the existing snap system, simply
+         * pointed at the live construction as well as the drawing.
+         */
+        const live =
+            state?.interaction
+                ?.snapGeometry ||
+            [];
+
+        if (live.length) {
+            /*
+             * The construction's own feature type, so the live
+             * geometry is snapped to as the feature being built
+             * rather than as a generic line.
+             *
+             * This matters for more than tidiness. A Truss
+             * publishes quarter points and a Line does not, so
+             * publishing an in-progress truss as a plain line
+             * would silently remove the quarter regions the
+             * student is trying to aim at, and only for the
+             * panels being drawn rather than the ones already
+             * committed. Declaring the capability keeps a
+             * construction behaving like the feature it will
+             * become.
+             */
+            const quarterSnap =
+                state?.interaction
+                    ?.snapQuarterSnap === true;
+
+            const published = live.map(
+                (geometry, index) => ({
+                    id: `interaction-${index}`,
+                    type: "line",
+                    geometry,
+
+                    /*
+                     * A Truss's members are published as
+                     * generic spans, because a member IS a
+                     * span. So the quarter capability is
+                     * carried on the published object rather
+                     * than inferred from a type, and only the
+                     * Truss construction sets it.
+                     */
+                    snapCapabilities: {
+                        quarter: quarterSnap
+                    }
+                })
+            );
+
+            published.forEach(
+                object =>
+                    addObjectCandidates(
+                        candidates,
+                        object
+                    )
+            );
+
+            addIntersections(
+                candidates,
+                published.concat(
+                    state.objects
+                )
+            );
+        }
+
         return candidates;
     }
 
@@ -2014,6 +2977,28 @@
             buildSnapCandidates(
                 state
             );
+
+        /*
+         * A CANDIDATE THAT IS A LINE IS NOT AN ALIGNMENT REFERENCE.
+         *
+         * Alignment works by comparing the pointer with a single point
+         * on each candidate and then pulling the pointer onto its axis.
+         * A candidate with no point - a centreline, published as a line
+         * so a support can be placed anywhere along it - has no axis to
+         * align to, so reading one throws.
+         *
+         * This is not a rare path: the references below are the same
+         * candidate list the snap search uses, so every snap that got
+         * far enough to look for inference met a centreline. The throw
+         * happened inside the alignment code, a long way from the
+         * candidate that caused it and giving no hint that the
+         * centreline was involved.
+         *
+         * Alignment is a property of POINTS, so line candidates are
+         * skipped here and nothing is lost: a centreline still snaps
+         * as a snap, and what a student aligns to is a point they have
+         * already placed rather than a member they are standing on.
+         */
 
         /*
          * Selected geometry also acts as reference
@@ -2107,6 +3092,18 @@
 
         references.forEach(
             reference => {
+                /*
+                 * The same exclusion as above: a candidate with no
+                 * point cannot be converted to screen coordinates and
+                 * cannot be aligned to.
+                 */
+                if (
+                    !reference ||
+                    !reference.point
+                ) {
+                    return;
+                }
+
                 const referenceScreen =
                     screenPoint(
                         reference.point,
@@ -2358,6 +3355,49 @@
         };
     }
 
+    /*
+     * THE POINT ON A SEGMENT NEAREST A GIVEN POINT.
+     *
+     * The projection of the point onto the segment, clamped to its
+     * ends. Clamping is what makes a beam's centreline stop at the
+     * beam: a pointer beyond the end of a member attaches at the end
+     * of it, rather than snapping to a point on the line extended
+     * into empty space where there is no member to attach to.
+     *
+     * Returned in the same space it was given in, so it can be used
+     * for an indicator on screen and converted back for a world
+     * position without the two drifting apart.
+     */
+    function nearestPointOnSegment(
+        point,
+        start,
+        end
+    ) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+
+        const lengthSquared = dx * dx + dy * dy;
+
+        if (lengthSquared <= 1e-12) {
+            return { x: start.x, y: start.y };
+        }
+
+        const t = Math.min(
+            1,
+            Math.max(
+                0,
+                ((point.x - start.x) * dx +
+                    (point.y - start.y) * dy) /
+                    lengthSquared
+            )
+        );
+
+        return {
+            x: start.x + dx * t,
+            y: start.y + dy * t
+        };
+    }
+
     function findSnapCandidate(
         rawPoint,
         state,
@@ -2396,8 +3436,100 @@
 
         const nearby = [];
 
+        /*
+         * WHAT THE ACTIVE TOOL WILL ACCEPT.
+         *
+         * Read once, here, and applied to every candidate as it is
+         * measured. The tool is `state.activeTool`, which is the same
+         * value every other part of the interaction reads, so there is
+         * one answer to "what is being built" and no chance of this
+         * filter disagreeing with the tool that is actually armed.
+         */
+        const toolId = state.activeTool;
+
         candidates.forEach(
             candidate => {
+                if (
+                    !candidateIsValidForTool(
+                        candidate,
+                        toolId
+                    )
+                ) {
+                    return;
+                }
+
+                /*
+                 * A SEGMENT CANDIDATE IS A LINE, NOT A POINT.
+                 *
+                 * A centreline is something a feature is placed ALONG,
+                 * so the pointer is measured against the line and the
+                 * snap is the point on the line nearest the pointer.
+                 * Treating it as a single point would put the snap
+                 * indicator at one fixed spot on the member and make
+                 * every other position on it unattachable - which is
+                 * the opposite of what a centreline is for.
+                 *
+                 * The result is folded into the same `nearby` list with
+                 * the same `distance`, so the priority ordering, the
+                 * tolerance and the indicator below are all shared and
+                 * a line target is chosen on the same terms as a point.
+                 */
+                if (candidate.segment) {
+                    const from = screenPoint(
+                        candidate.segment.start,
+                        bounds,
+                        state
+                    );
+
+                    const to = screenPoint(
+                        candidate.segment.end,
+                        bounds,
+                        state
+                    );
+
+                    const nearest = nearestPointOnSegment(
+                        rawScreenPoint,
+                        from,
+                        to
+                    );
+
+                    const segmentDistance =
+                        Math.hypot(
+                            nearest.x - rawScreenPoint.x,
+                            nearest.y - rawScreenPoint.y
+                        );
+
+                    if (
+                        segmentDistance <=
+                        tolerancePx
+                    ) {
+                        /*
+                         * The candidate's world `point` is the
+                         * PROJECTED point, not the segment's start.
+                         *
+                         * Everything downstream asks the candidate
+                         * where the snap actually landed, in world
+                         * units, and that is the point on the member
+                         * the student was aiming at - not one end of
+                         * it. The segment is kept for the indicator
+                         * and for measuring, and the point is what the
+                         * feature is attached at.
+                         */
+                        nearby.push({
+                            ...candidate,
+                            point: engineeringFromScreen(
+                                nearest,
+                                bounds,
+                                state
+                            ),
+                            screenPoint: nearest,
+                            distance: segmentDistance
+                        });
+                    }
+
+                    return;
+                }
+
                 const candidateScreen =
                     screenPoint(
                         candidate.point,
@@ -2510,27 +3642,62 @@
             return null;
         }
 
-        nearby.sort(
-            (
-                first,
-                second
-            ) => {
-                if (
-                    Math.abs(
-                        first.distance -
-                        second.distance
-                    ) <
-                    0.5
-                ) {
-                    return (
-                        first.priority -
-                        second.priority
-                    );
-                }
+        /*
+         * Ranking.
+         *
+         * Distance decides, with priority breaking ties. That is
+         * right for most targets, where the nearest point is the
+         * one meant. It is wrong for a position ON a member: a
+         * point lying on the segment is always exactly at the
+         * cursor, so it out-distances every named position and
+         * would always win, and a quarter point, an endpoint or
+         * a centre could never be chosen.
+         *
+         * So a named position is preferred over an unnamed one
+         * whenever both are within tolerance. The user is given
+         * a tolerance to aim at, and aiming AT a named position
+         * is what the snap is for: landing on a member somewhere
+         * unnamed should be the fallback, not the default.
+         *
+         * Priority still decides between two named positions, so
+         * an endpoint keeps outranking a quarter of the same
+         * member.
+         */
+        const NAMED_TYPES = new Set([
+            "endpoint",
+            "intersection",
+            "center",
+            "midpoint",
+            "quarter",
+            "quadrant"
+        ]);
 
-                return (
+        nearby.sort((first, second) => {
+            const firstNamed =
+                NAMED_TYPES.has(first.type);
+
+            const secondNamed =
+                NAMED_TYPES.has(second.type);
+
+            if (firstNamed !== secondNamed) {
+                return firstNamed ? -1 : 1;
+            }
+
+            if (
+                Math.abs(
                     first.distance -
-                    second.distance
+                        second.distance
+                ) < 0.5
+            ) {
+                return (
+                    first.priority -
+                    second.priority
+                );
+            }
+
+            return (
+                first.distance -
+                second.distance
                 );
             }
         );
@@ -2645,6 +3812,138 @@
         };
     }
 
+    /*
+     * How long a snap guideline stays up after the cursor
+     * leaves its region.
+     *
+     * Expressed in a time unit rather than a distance, because
+     * what it compensates for is how fast the hand moves, not
+     * how far away the target is.
+     *
+     * The guideline is a drafting aid, and a drafting aid that
+     * disappears the instant it stops being exactly true is not
+     * one. Two things made it read as unreliable: the guide
+     * vanished on the frame the pointer drifted out of the
+     * tolerance band, which happens constantly while lining a
+     * member up, and a guide that flickered on and off with
+     * every small movement was read as the snapping itself
+     * being unreliable. The user needs a moment in which the
+     * guide has settled in order to believe the point they are
+     * being offered is deliberate.
+     *
+     * So the guide is held for a short grace period once it has
+     * been established, which lets a small movement inside or
+     * just outside the region keep it up, and it fades rather
+     * than cutting. It is not made permanent: leaving the
+     * region for good still clears it, because a guide pointing
+     * at a target the cursor has plainly left is worse than no
+     * guide at all.
+     */
+    const GUIDELINE_HOLD_MS = 260;
+
+    /*
+     * The clock the hold is measured against.
+     *
+     * Named once so a test can reason about the hold, and so
+     * there is a single place to change if the guideline ever
+     * needs to follow a frame counter rather than wall time.
+     */
+    function nowMs() {
+        return (
+            typeof performance !==
+                "undefined" &&
+            performance.now
+                ? performance.now()
+                : Date.now()
+        );
+    }
+
+    function sameInferenceTarget(
+        first,
+        second
+    ) {
+        if (!first || !second) {
+            return false;
+        }
+
+        if (
+            (first.type || null) !==
+            (second.type || null)
+        ) {
+            return false;
+        }
+
+        const a = first.referencePoint;
+        const b = second.referencePoint;
+
+        if (!a || !b) {
+            return !a && !b;
+        }
+
+        return (
+            Math.abs(a.x - b.x) < 1e-6 &&
+            Math.abs(a.y - b.y) < 1e-6
+        );
+    }
+
+    /*
+     * Decide which guide to show, given the one just found and
+     * the one currently on screen.
+     *
+     * `previous` is whatever was drawn last time, with the time
+     * it was drawn. The rule is deliberately simple: a fresh
+     * snap always wins, and an absent one is only replaced once
+     * the previous guide has been up long enough.
+     *
+     * Keeping the previous guide rather than fading it through a
+     * second mechanism is what stops the flicker. There is only
+     * ever one guide and it is either current or briefly stale,
+     * so it cannot strobe between two states.
+     */
+    function holdGuideline(
+        state,
+        bounds,
+        fresh,
+        now
+    ) {
+        const previous =
+            state?.interaction
+                ?.guideline;
+
+        if (!fresh) {
+            if (
+                !previous?.inference
+            ) {
+                return null;
+            }
+
+            if (
+                now - previous.at <
+                GUIDELINE_HOLD_MS
+            ) {
+                return previous.inference;
+            }
+
+            return null;
+        }
+
+        /*
+         * Staying on the SAME target extends the hold, so the
+         * user can move about within the region without the
+         * guide lapsing between two adjacent frames.
+         */
+        if (
+            sameInferenceTarget(
+                previous?.inference,
+                fresh
+            )
+        ) {
+            return fresh;
+        }
+
+        return fresh;
+    }
+
     function resolveConstructionPoint(
         rawPoint,
         state,
@@ -2743,13 +4042,30 @@
                 snapCandidate?.objectId ||
                 null,
 
-            inference
+            inference,
+
+            /*
+             * The guide to draw this frame, which may be the
+             * current inference or a recent one still inside
+             * its hold period. The renderer reads this rather
+             * than the raw inference, so the guide and the
+             * geometry can never disagree about whether a snap
+             * is active.
+             */
+            guideline: holdGuideline(
+                state,
+                bounds,
+                inference,
+                nowMs()
+            )
         };
     }
 
     window.enggDrawingSnap = {
         SNAP_TOLERANCE_PX,
         INFERENCE_TOLERANCE_DEGREES,
+        GUIDELINE_HOLD_MS,
+        nowMs,
         buildSnapCandidates,
         findInferenceCandidate,
         findSnapCandidate,

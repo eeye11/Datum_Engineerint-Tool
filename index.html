@@ -419,7 +419,6 @@
 
             </div>
 
-
             <div class="review-grid">
 
 
@@ -466,6 +465,48 @@
                         Update Output
                     </button>
 
+                    <!--
+                        Drawing Reference test interface.
+
+                        A placeholder for the written-solution
+                        editor: it inserts a reference to a SHEET into
+                        the source and shows what that sheet currently
+                        contains. The sheet is chosen here by name for
+                        the user's benefit, but what is stored is its
+                        permanent id - which is why the figure keeps
+                        working after the sheet is renamed or moved.
+                    -->
+                    <div class="reference-panel">
+
+                        <h3 class="reference-panel-heading">
+                            Drawing Reference
+                        </h3>
+
+                        <label class="reference-field">
+                            Sheet
+                            <select id="referenceSheetSelect"></select>
+                        </label>
+
+                        <label class="reference-field">
+                            Caption
+                            <input
+                                id="referenceCaption"
+                                type="text"
+                                placeholder="Free Body Diagram"
+                                autocomplete="off"
+                            >
+                        </label>
+
+                        <button
+                            id="referenceInsert"
+                            class="update-button reference-insert"
+                            type="button"
+                        >
+                            Insert Reference
+                        </button>
+
+                    </div>
+
                 </div>
 
 
@@ -501,9 +542,12 @@
                 <div class="drawing-app-toolbar" aria-label="Global drawing tools">
                     <div class="drawing-app-toolbar-group" aria-label="File">
                         <span class="drawing-app-toolbar-group-label">File</span>
-                        <button id="drawingFileNew" type="button" title="Create a new drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5zM12 3v4h4M8 12h4M10 10v4"/></svg>New</button>
-                        <button id="drawingFileOpen" type="button" title="Open a drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3zM3 6V4h5l2 2"/></svg>Open</button>
-                        <button id="drawingFileSave" type="button" title="Save the drawing"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h11l2 2v12H4zM7 3v5h7V3M7 17v-5h6v5"/></svg>Save</button>
+                        <button type="button" data-file-action="new" title="New drawing (Ctrl+N)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5"/></svg>New</button>
+                        <button type="button" data-file-action="open" title="Open an .enggdraw file"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3z"/></svg>Open</button>
+                        <button type="button" data-file-action="save" title="Save (Ctrl+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5"/></svg>Save</button>
+                        <button type="button" data-file-action="save-as" title="Save as (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
+                        <button type="button" data-file-action="export" title="Export as PNG, JPG or SVG (Ctrl+Shift+E)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M10 12l-3-3M10 12l3-3M4 15v2h12v-2"/></svg>Export</button>
+                        <button type="button" data-file-action="print" title="Print the drawing (Ctrl+Shift+P)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 7V3h8v4M6 14H4V9h12v5h-2M6 12h8v5H6z"/></svg>Print</button>
                     </div>
                     <div class="drawing-app-toolbar-group" aria-label="History">
                         <span class="drawing-app-toolbar-group-label">History</span>
@@ -522,7 +566,20 @@
                         <span class="drawing-app-toolbar-group-label">View</span>
                         <button type="button" data-global-tool="pan" title="Pan the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Pan</button>
                         <button type="button" data-global-tool="zoom" title="Zoom the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M9 4a5 5 0 1 1 0 10A5 5 0 0 1 9 4zM13 13l4 4M7 9h4M9 7v4"/></svg>Zoom</button>
-                        <button type="button" data-global-tool="fit" title="Fit the drawing in view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>Fit</button>
+                        <!--
+                            ONE Fit COMMAND.
+
+                            Fit works out its own target: the selection
+                            if there is one, and the whole active sheet
+                            if there is not. The student is never asked
+                            to choose between two fits, because there is
+                            only one thing they mean by it - show me
+                            what I am looking at.
+
+                            The title says so, because the behaviour
+                            depends on state the button cannot show.
+                        -->
+                        <button type="button" data-global-tool="fit" title="Fit: the selected features if any, otherwise the whole sheet"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>Fit</button>
                     </div>
                     <div id="drawingGlobalToolGroups" class="drawing-app-toolbar-groups"></div>
                 </div>
@@ -550,21 +607,70 @@
                     <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" aria-pressed="true">Snap ON</button>
                 </div>
 
-                <aside class="drawing-tool-panel" aria-label="Tools">
-                    <h2 class="drawing-panel-heading" id="drawingToolHeading">GEOMETRY TOOLS</h2>
-                    <div class="drawing-tool-list" id="drawingToolList"></div>
-                </aside>
+                <!--
+                    The tool panel's own column, holding a single
+                    hide/show arrow. The arrow is a SIBLING of the
+                    panel rather than a control inside it, so it
+                    survives the panel being collapsed: a control
+                    inside the thing it collapses would take
+                    itself out of reach.
+                -->
+                <div class="drawing-panel-rail drawing-panel-rail-left">
+                    <button
+                        class="drawing-panel-toggle"
+                        id="drawingToolPanelToggle"
+                        type="button"
+                        aria-expanded="true"
+                        aria-controls="drawingToolPanel"
+                        title="Hide tools"
+                    >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="drawing-panel-toggle-text">HIDE</span>
+                    </button>
+
+                    <aside class="drawing-tool-panel" id="drawingToolPanel" aria-label="Tools">
+                        <h2 class="drawing-panel-heading" id="drawingToolHeading">GEOMETRY TOOLS</h2>
+                        <div class="drawing-tool-list" id="drawingToolList"></div>
+                    </aside>
+                </div>
 
                 <div class="drawing-canvas-area">
                     <div class="drawing-canvas" aria-label="Engineering drawing canvas">
                     </div>
                 </div>
 
-                <aside class="drawing-inspector" aria-label="Features inspector">
-                    <h2 class="drawing-panel-heading">FEATURES</h2>
-                    <button class="drawing-components-back" id="drawingFeaturesBack" type="button">&lt;- Features</button>
-                    <div class="drawing-inspector-message" id="drawingProperties">No feature selected</div>
-                </aside>
+                <div class="drawing-sheet-bar-row">
+                    <div class="drawing-sheet-bar" id="drawingSheetTabs" role="tablist" aria-label="Drawing sheets"></div>
+                </div>
+
+                <!--
+                    The Features panel's column, mirroring the left
+                    rail so both sides collapse by the same gesture
+                    and the two arrows read as one idea.
+                -->
+                <div class="drawing-panel-rail drawing-panel-rail-right">
+                    <aside class="drawing-inspector" id="drawingFeaturesPanel" aria-label="Features inspector">
+                        <h2 class="drawing-panel-heading">FEATURES</h2>
+                        <button class="drawing-components-back" id="drawingFeaturesBack" type="button">&lt;- Features</button>
+                        <div class="drawing-inspector-message" id="drawingProperties">No feature selected</div>
+                    </aside>
+
+                    <button
+                        class="drawing-panel-toggle"
+                        id="drawingFeaturesPanelToggle"
+                        type="button"
+                        aria-expanded="true"
+                        aria-controls="drawingFeaturesPanel"
+                        title="Hide features"
+                    >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="drawing-panel-toggle-text">HIDE</span>
+                    </button>
+                </div>
 
                 <footer class="drawing-status-bar" aria-label="Workspace status">
                     <div class="drawing-status-meta">
@@ -593,13 +699,44 @@
 
     <script src="js/script.js"></script>
     <script src="js/engineering-drawing/tools.js"></script>
-    <script src="js/engineering-drawing/drawing-state.js"></script>
+    <script src="js/engineering-drawing/sheets.js"></script>
+    <script src="js/engineering-drawing/ui.js"></script>
+        <!--
+        Measurement, dimension, annotation and smart dimension.
+
+        Loaded before drawing-state CREATES anything, though not
+        before it parses: the factories reach for these by name, so
+        a module that is read too early simply is not found until it
+        is used. The order among them is the reverse of the reading
+        order - measurement first because it knows what a feature can
+        be measured as, and the models that need that judgement next.
+    -->
+    <script src="js/engineering-drawing/measurement-core.js"></script>
+    <script src="js/engineering-drawing/dimension-model.js"></script>
+    <script src="js/engineering-drawing/annotation-model.js"></script>
+    <script src="js/engineering-drawing/smart-dimension.js"></script>
+<script src="js/engineering-drawing/drawing-state.js"></script>
+    <script src="js/engineering-drawing/document-file.js"></script>
+    <script src="js/engineering-drawing/file-save.js"></script>
+    <script src="js/engineering-drawing/document-export.js"></script>
+    <script src="js/engineering-drawing/document-recovery.js"></script>
+    <script src="js/engineering-drawing/dimensions.js"></script>
+    <script src="js/engineering-drawing/scale-calibration.js"></script>
     <script src="js/engineering-drawing/feature-geometry.js"></script>
+    <script src="js/engineering-drawing/dimension-editor.js"></script>
+    <script src="js/engineering-drawing/load-profile.js"></script>
+    <script src="js/engineering-drawing/clipboard.js"></script>
+    <script src="js/engineering-drawing/rotational-arrow.js"></script>
+    <script src="js/engineering-drawing/body-frames.js"></script>
+    <script src="js/engineering-drawing/analysis-dependencies.js"></script>
     <script src="js/engineering-drawing/renderer.js"></script>
     <script src="js/engineering-drawing/object-snap.js"></script>
+    <script src="js/engineering-drawing/drawing-reference.js"></script>
+    <script src="js/engineering-drawing/sheet-tabs.js"></script>
     <script src="js/engineering-drawing/drawing.js"></script>
     <script src="js/engineering-drawing/drawing-delete.js"></script>
     <script src="js/engineering-drawing/toolbar.js"></script>
+    <script src="js/engineering-drawing/written-references.js"></script>
 
 
 </body>

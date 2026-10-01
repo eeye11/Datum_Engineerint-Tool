@@ -1,0 +1,27 @@
+﻿  pass  the canvas click handler is reachable
+
+A Point Force is placed in the MIDDLE of a beam
+
+  pass  the first click places nothing yet - a span tool needs two
+  pass  and arms the span for its second point
+  pass  the second click creates the Point Force
+  pass  and it is a force
+  pass  applied at the MIDDLE of the beam, not an endpoint
+  pass  and attached to the beam it was clicked on
+
+A Pin Support is placed in the MIDDLE of a beam
+
+  FAIL  a Pin Support is created by two clicks :: added = 0
+  FAIL  and it is a support :: type = force
+  pass  attached to the beam
+  FAIL  its attachment is part-way along the body, NOT an endpoint :: distance = none
+  FAIL  at exactly where the pointer was - 120 along a 400 body :: distance = none
+  FAIL  and the symbol is drawn OUTSIDE the body :: position = {"x":200,"y":0}
+
+A Distributed Load is placed over part of a beam
+
+  FAIL  a Distributed Load is created :: added = 0
+  FAIL  and it is a load :: type = force
+  FAIL  over a PARTIAL span, not forced to the body's endpoints :: {"start":{"x":200,"y":0},"end":{"x":200,"y":80}}
+
+8 check(s) failed
