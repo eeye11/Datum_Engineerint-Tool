@@ -31742,11 +31742,9 @@ function setPanelCollapsed(
             : "HIDE";
     }
 
-    toggle.querySelector("svg")?.setAttribute(
-        "transform",
-        collapsed
-            ? collapsedArrowTransform(toggle)
-            : "rotate(0)"
+    toggle.querySelector("svg path")?.setAttribute(
+        "d",
+        panelArrowPath(toggle, collapsed)
     );
 
     /*
@@ -31757,14 +31755,18 @@ function setPanelCollapsed(
     renderCurrentDrawing();
 }
 
-function collapsedArrowTransform(
-    toggle
+function panelArrowPath(
+    toggle,
+    collapsed
 ) {
-    return toggle.closest(
+    const rightRail = toggle.closest(
         ".drawing-panel-rail-right"
-    )
-        ? "rotate(180)"
-        : "rotate(0)";
+    );
+
+    const pointsRight = rightRail ? !collapsed : collapsed;
+    return pointsRight
+        ? "M6 3l5 5-5 5"
+        : "M10 3L5 8l5 5";
 }
 
 /*
