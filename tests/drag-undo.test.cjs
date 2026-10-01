@@ -137,5 +137,72 @@ console.log("\nAnd identity and style are never rolled back");
   );
 });
 
+console.log("\nPlot labels and the legend have independent editing targets");
+
+const graphSelection = section("graphPlotObjectIds");
+const annotationProperties = section("featurePropertyMarkup");
+const propertyBindings = section("bindFeaturePropertyControls");
+const plotBuilder = section("addGraphPlotToDrawing");
+const handlePicking = section("handleAtPoint");
+const manipulation = section("beginManipulationDrag");
+const applyManipulation = section("applyManipulation");
+
+check(
+  "a plot label selects independently",
+  /graphPlotRole\s*===\s*["']label["'][\s\S]*?return\s+\[object\.id\]/.test(graphSelection),
+  "plot labels still select the entire graph"
+);
+
+check(
+  "legend members share a draggable subgroup",
+  /graphPlotGroup\s*===\s*graphPlotGroup/.test(graphSelection) &&
+    /graphPlotGroup:\s*["']legend["']/.test(source),
+  "the legend background, swatches and labels are not grouped"
+);
+
+check(
+  "the legend subgroup has independent frame resize handles",
+  /graphPlotGroupRole:\s*["']frame["']/.test(source) &&
+    /wholeGroupSelected[\s\S]*?graphPlotGroupRole\s*===\s*["']frame["'][\s\S]*?boundsOfObjects\([\s\S]*?frame\s*\?\s*\[frame\]\s*:\s*resizeObjects/.test(handlePicking),
+  "legend resizing still depends on selecting the whole plot"
+);
+
+check(
+  "plot labels expose editable text",
+  /data-annotation-text/.test(annotationProperties) &&
+    /data-annotation-text/.test(propertyBindings),
+  "plot label text has no property editor"
+);
+
+check(
+  "endpoint labels have no leader lines",
+  !/endpoint-label-leader|\$\{name\} leader/.test(plotBuilder),
+  "endpoint labels still create a line back to the plotted point"
+);
+
+check(
+  "press-dragging a plot label selects and snapshots it",
+  /graphPlotRole\s*===\s*["']label["'][\s\S]*?selectObjects\([\s\S]*?originals:\s*\{[\s\S]*?JSON\.parse\(JSON\.stringify\(object\)\)/.test(manipulation),
+  "an unselected plot label cannot begin a drag with a whole-object snapshot"
+);
+
+check(
+  "a selected plot label wins over graph resize handles",
+  /pointedObject\?\.engineering\?\.graphPlotRole\s*===\s*["']label["'][\s\S]*?return\s*\{[\s\S]*?object:\s*pointedObject/.test(handlePicking),
+  "graph-corner handles are checked before selected plot labels"
+);
+
+check(
+  "plot-label text hit-testing runs before handle picking",
+  /const plotLabel\s*=\s*\[\.\.\.drawingState\.objects\]\.reverse\(\)\.find[\s\S]*?annotationContainsPoint\(object, point\)[\s\S]*?const hit\s*=\s*handleAtPoint/.test(manipulation),
+  "resize handles can claim a press on plot-label text"
+);
+
+check(
+  "moving a plot label changes only its own placement",
+  /drag\.kind\s*===\s*["']plot-label["'][\s\S]*?original\.placement\.x\s*\+\s*point\.x\s*-\s*drag\.start\.x[\s\S]*?original\.placement\.y\s*\+\s*point\.y\s*-\s*drag\.start\.y/.test(applyManipulation),
+  "label dragging still routes through graph-group translation"
+);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

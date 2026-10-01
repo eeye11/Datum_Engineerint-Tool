@@ -1047,7 +1047,7 @@ function commitPolygon(
                 metadata: {
                     definition:
                         interaction.polygonMode ===
-                        "sides"
+                            "sides"
                             ? "By Sides"
                             : "By Centre"
                 },
@@ -1070,7 +1070,6 @@ function commitPolygon(
     enggDrawingState.clearInteraction(
         drawingState
     );
-
     enggDrawingState.selectObject(
         drawingState,
         object.id
@@ -1091,8 +1090,7 @@ function openPolygonMenu(button) {
 
     if (
         coordinateSystemMenu &&
-        coordinateSystemMenuAnchor ===
-            button
+        coordinateSystemMenuAnchor === button
     ) {
         closeCoordinateSystemMenu();
         return;
@@ -1642,6 +1640,11 @@ function isReferenceArcTool(toolId) {
 }
 
 const STATICS_TOOL_MENUS = {
+    "sfd-menu": [
+        { id: "graph-plotter", label: "Graph Plotter" },
+        { id: "shear-force-diagram", label: "Place Diagram" }
+    ],
+
     body: [
         { id: "particle", label: "Particle" },
         { id: "rigid-body", label: "Rigid Body" },
@@ -1819,6 +1822,31 @@ function openStaticsMenu(
         button,
         items,
         childId => {
+            const diagramType =
+                ANALYSIS_DIAGRAM_TOOLS[childId];
+
+            if (diagramType) {
+                enggDrawingState.setActiveTool(
+                    drawingState,
+                    childId
+                );
+
+                beginAnalysisDiagram(diagramType);
+                renderEngineeringTools(activeCategory());
+                renderCurrentDrawing();
+                return;
+            }
+
+            if (childId === "graph-plotter") {
+                if (window.enggGraphPlotter) {
+                    window.enggGraphPlotter.open(button);
+                } else {
+                    setToolMessage("Graph Plotter is unavailable. Check your internet connection and reload.");
+                }
+
+                return;
+            }
+
             activateTool(
                 childId
             );
@@ -3620,6 +3648,16 @@ function activate2DCoordinateSystemTool() {
 function activateTool(
     toolId
 ) {
+    if (toolId === "graph-plotter") {
+        if (window.enggGraphPlotter) {
+            window.enggGraphPlotter.open();
+        } else {
+            setToolMessage("Graph Plotter is unavailable. Check your internet connection and reload.");
+        }
+
+        return;
+    }
+
     if (
         toolId ===
         "coordinate-system"
@@ -5680,8 +5718,9 @@ function continueTrussConstruction(
     const interaction =
         drawingState.interaction;
 
-    const point =
-        resolution.effectiveConstructionPoint;
+    const point = manipulationDrag.kind === "plot-label"
+        ? canvasPointFromEvent(event, false)
+        : resolution.effectiveConstructionPoint;
 
     if (!point) {
         return;
@@ -12064,6 +12103,407 @@ function renderCurrentDrawing() {
     }
 }
 
+function addGraphPlotToDrawing(plot) {
+    if (!plot || !Array.isArray(plot.series) || !plot.series.length) {
+        return false;
+    }
+
+    const bounds = drawingCanvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) {
+        return false;
+    }
+
+    const center = enggDrawingState.screenToEngineering(
+        { x: bounds.width / 2, y: bounds.height / 2 },
+        { width: bounds.width, height: bounds.height },
+        drawingState
+    );
+    const availableWorldWidth = bounds.width / (
+        enggDrawingState.BASE_PIXELS_PER_UNIT * drawingState.camera.zoom
+    );
+    const totalPlotWidth = Math.min(280, availableWorldWidth * 0.86);
+    const plotLegendWidth = Math.min(88, Math.max(54, totalPlotWidth * 0.31));
+    const graphWidth = Math.max(96, totalPlotWidth - plotLegendWidth - 12);
+    const graphHeight = graphWidth * (plot.aspect || 0.62);
+    const left = center.x - graphWidth / 2;
+    const right = center.x + graphWidth / 2;
+    const bottom = center.y - graphHeight / 2;
+    const top = center.y + graphHeight / 2;
+    const { min: xMin, max: xMax } = plot.domain;
+    const { yMin, yMax } = plot;
+    const xToDrawing = x => left + ((x - xMin) / (xMax - xMin)) * graphWidth;
+    const yToDrawing = y => bottom + ((y - yMin) / (yMax - yMin)) * graphHeight;
+    const axisY = yToDrawing(0);
+    const axisX = xMin <= 0 && xMax >= 0 ? xToDrawing(0) : left;
+    const tickSize = graphHeight * 0.018;
+    const graphId = `graph-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const objects = [];
+
+    const options = (name, color, lineWidth, role, details = {}, lineType = "solid") => ({
+        name,
+        style: {
+            stroke: color,
+            fill: "none",
+            lineWidth,
+            lineType,
+            opacity: 1
+        },
+        engineering: {
+            plane: "XY",
+            discipline: "statics",
+            graphPlotId: graphId,
+            graphPlotRole: role,
+            ...details
+        }
+    });
+
+    const addLine = (start, end, name, color, lineWidth, role, lineType = "solid", details = {}) => {
+        objects.push(
+            enggDrawingState.geometryFactories.line(
+                start,
+                end,
+                options(name, color, lineWidth, role, details, lineType)
+            )
+        );
+    };
+
+    const addEndpoint = (point, name, color, details) => {
+        const marker = enggDrawingState.geometryFactories.circle(
+            point,
+            graphHeight * 0.012,
+            options(name, color, 1, "endpoint", details)
+        );
+        marker.style.fill = "#ffffff";
+        objects.push(marker);
+    };
+
+    const addPolyline = (points, name, color, lineWidth, role, details = {}) => {
+        if (points.length < 2) {
+            return;
+        }
+
+        objects.push(
+            enggDrawingState.geometryFactories.polyline(
+                points,
+                options(name, color, lineWidth, role, details)
+            )
+        );
+    };
+
+    const addLabel = (text, position, color, name, fontSize = 5.2, details = {}) => {
+        const label = enggDrawingState.geometryFactories.annotation({
+            kind: "label",
+            text,
+            position,
+            leader: { enabled: false },
+            style: { fontSize, stroke: color }
+        });
+        label.name = name;
+        label.style = {
+            ...label.style,
+            fontSize,
+            stroke: color,
+            align: "center"
+        };
+        label.engineering = {
+            plane: "XY",
+            discipline: "statics",
+            graphPlotId: graphId,
+            graphPlotRole: "label",
+            ...details
+        };
+        objects.push(label);
+    };
+
+    const addEndpointLabel = (text, point, color, name, curveIndex, endpointIndex) => {
+        const fontSize = 9;
+        const textWidth = text.length * fontSize * 0.58;
+        const boxWidth = textWidth + 6;
+        const directionX = endpointIndex === 0 ? -1 : 1;
+        const directionY = (curveIndex + endpointIndex) % 2 === 0 ? 1 : -1;
+        const center = {
+            x: point.x + directionX * (boxWidth / 2 + 5),
+            y: point.y + directionY * (9 + Math.floor(curveIndex / 2) * 12)
+        };
+        addLabel(text, center, color, name, fontSize);
+    };
+
+    const axisColor = "#52646c";
+    addLine(
+        { x: left, y: axisY },
+        { x: right, y: axisY },
+        "Graph X Axis",
+        axisColor,
+        0.9,
+        "axis"
+    );
+    addLine(
+        { x: axisX, y: bottom },
+        { x: axisX, y: top },
+        "Graph Y Axis",
+        axisColor,
+        0.9,
+        "axis"
+    );
+
+    (plot.xTicks || []).forEach((value, index) => {
+        if (value < xMin || value > xMax) {
+            return;
+        }
+
+        const x = xToDrawing(value);
+        addLine(
+            { x, y: axisY - tickSize },
+            { x, y: axisY + tickSize },
+            `Graph X Tick ${index + 1}`,
+            axisColor,
+            0.55,
+            "tick"
+        );
+
+        const labelY = axisY - bottom < graphHeight * 0.08
+            ? axisY + 3.2
+            : axisY - 3.2;
+        addLabel(
+            Number(value.toPrecision(4)).toString(),
+            { x, y: labelY },
+            axisColor,
+            `Graph X Value ${index + 1}`
+        );
+    });
+
+    (plot.yTicks || []).forEach((value, index) => {
+        if (value < yMin || value > yMax) {
+            return;
+        }
+
+        const y = yToDrawing(value);
+        addLine(
+            { x: axisX - tickSize, y },
+            { x: axisX + tickSize, y },
+            `Graph Y Tick ${index + 1}`,
+            axisColor,
+            0.55,
+            "tick"
+        );
+
+        const labelX = axisX - left < graphWidth * 0.08
+            ? axisX + 3.5
+            : axisX - 3.5;
+        addLabel(
+            Number(value.toPrecision(4)).toString(),
+            { x: labelX, y },
+            axisColor,
+            `Graph Y Value ${index + 1}`
+        );
+    });
+
+    addLabel("x", { x: right + 3.5, y: axisY }, axisColor, "Graph X Label");
+    addLabel("y", { x: axisX, y: top + 3.5 }, axisColor, "Graph Y Label");
+
+    plot.series.forEach((curve, curveIndex) => {
+        const curveName = `f${curveIndex + 1}(x)`;
+
+        curve.endpoints.forEach((endpoint, endpointIndex) => {
+            if (endpoint.y < yMin || endpoint.y > yMax) {
+                return;
+            }
+
+            const position = {
+                x: xToDrawing(endpoint.x),
+                y: yToDrawing(endpoint.y)
+            };
+            const endpointName = endpointIndex === 0 ? "start" : "end";
+            addEndpoint(
+                position,
+                `Graph ${curveName} ${endpointName} point`,
+                curve.color,
+                { expression: curve.expression, endpoint: endpointName }
+            );
+            addEndpointLabel(
+                `(${Number(endpoint.x.toPrecision(4))}, ${Number(endpoint.y.toPrecision(4))})`,
+                position,
+                curve.color,
+                `Graph ${curveName} ${endpointName} coordinates`,
+                curveIndex,
+                endpointIndex
+            );
+        });
+
+        curve.connectors.forEach((connector, connectorIndex) => {
+            addLine(
+                {
+                    x: xToDrawing(connector.x),
+                    y: yToDrawing(connector.yStart)
+                },
+                {
+                    x: xToDrawing(connector.x),
+                    y: yToDrawing(connector.yEnd)
+                },
+                `Graph ${curveName} Discontinuity ${connectorIndex + 1}`,
+                curve.color,
+                0.75,
+                "discontinuity-connector",
+                "dashed"
+            );
+        });
+
+        let segment = [];
+        let previous = null;
+        let segmentIndex = 0;
+
+        const commitSegment = () => {
+            segmentIndex += 1;
+            addPolyline(
+                segment,
+                `Graph ${curveName} Segment ${segmentIndex}`,
+                curve.color,
+                1.2,
+                "function",
+                { expression: curve.expression, domain: curve.domain }
+            );
+            segment = [];
+            previous = null;
+        };
+
+        curve.points.forEach(point => {
+            if (
+                point.y === null ||
+                point.y < yMin ||
+                point.y > yMax
+            ) {
+                commitSegment();
+                return;
+            }
+
+            const mapped = {
+                x: xToDrawing(point.x),
+                y: yToDrawing(point.y)
+            };
+
+            if (previous && Math.abs(mapped.y - previous.y) > graphHeight * 0.65) {
+                commitSegment();
+            }
+
+            segment.push(mapped);
+            previous = mapped;
+        });
+        commitSegment();
+    });
+
+    const legendFontSize = 9;
+    const legendLeft = right + 12;
+    const legendPadding = 3;
+    const legendRowGap = 2;
+    const legendHeaderGap = 2;
+    const legendTextStart = legendLeft + 22;
+    const legendTextMaxChars = 26;
+    const legendTitle = "Functions";
+    const wrapLegendText = text => {
+        const words = text.split(/\s+/);
+        const lines = [];
+        let line = "";
+
+        words.forEach(word => {
+            const next = line ? `${line} ${word}` : word;
+            if (next.length > legendTextMaxChars && line) {
+                lines.push(line);
+                line = word;
+            } else {
+                line = next;
+            }
+        });
+
+        if (line) {
+            lines.push(line);
+        }
+
+        return lines;
+    };
+    const legendEntries = plot.series.map((curve, index) => ({
+        curve,
+        lines: wrapLegendText(`f${index + 1}(x) = ${curve.expression}`)
+    }));
+    const widestLegendLine = Math.max(
+        ...legendEntries.flatMap(entry => entry.lines.map(line => line.length))
+    );
+    const legendHeaderHeight = legendFontSize * 1.2;
+    const legendContentWidth = Math.max(
+        legendTitle.length * legendFontSize * 0.58,
+        22 + widestLegendLine * legendFontSize * 0.58
+    );
+    const legendWidth = legendContentWidth + legendPadding * 2;
+    const legendRowsHeight = legendEntries.reduce(
+        (height, entry) => height + entry.lines.length * legendFontSize * 1.2,
+        0
+    );
+    const legendHeight = legendPadding * 2 + legendHeaderHeight + legendHeaderGap + legendRowsHeight +
+        legendRowGap * Math.max(0, legendEntries.length - 1);
+    const legendTop = top + 2;
+    const legendBackground = enggDrawingState.geometryFactories.rectangle(
+        { x: legendLeft, y: legendTop },
+        legendWidth,
+        legendHeight,
+        0,
+        options("Graph Function Legend", "#cbd6d9", 0.55, "legend", {
+            graphPlotGroup: "legend",
+            graphPlotGroupRole: "frame"
+        })
+    );
+    legendBackground.style.fill = "#ffffff";
+    objects.push(legendBackground);
+    addLabel(
+        legendTitle,
+        { x: legendLeft + legendWidth / 2, y: legendTop - legendPadding - legendHeaderHeight / 2 },
+        axisColor,
+        "Graph Function Legend Title",
+        9,
+        { graphPlotGroup: "legend", graphPlotDraggable: false }
+    );
+
+    let legendY = legendTop - legendPadding - legendHeaderHeight - legendHeaderGap;
+    legendEntries.forEach(({ curve, lines }, index) => {
+        const rowHeight = lines.length * legendFontSize * 1.2;
+        const rowCenterY = legendY - rowHeight / 2;
+        addLine(
+            { x: legendLeft + 6, y: rowCenterY },
+            { x: legendLeft + 17, y: rowCenterY },
+            `Graph Function Legend Swatch ${index + 1}`,
+            curve.color,
+            1.2,
+            "legend-swatch",
+            "solid",
+            { graphPlotGroup: "legend" }
+        );
+        const widestLine = Math.max(...lines.map(line => line.length));
+        const labelCenterX = legendTextStart + widestLine * legendFontSize * 0.58 / 2;
+        addLabel(
+            lines.join("\n"),
+            { x: labelCenterX, y: rowCenterY },
+            curve.color,
+            `Graph Function Legend Entry ${index + 1}`,
+            legendFontSize,
+            { graphPlotGroup: "legend", graphPlotDraggable: false }
+        );
+        legendY -= rowHeight + legendRowGap;
+    });
+
+    const previousObjects = enggDrawingState.snapshotDrawing(drawingState);
+    objects.forEach(object => enggDrawingState.addObject(drawingState, object));
+    enggDrawingState.selectObjects(
+        drawingState,
+        objects.map(object => object.id)
+    );
+    enggDrawingState.commitDrawingChange(drawingState, previousObjects);
+    setToolMessage("Graph added to drawing. Undo to remove it.");
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+window.enggInsertGraphPlot = addGraphPlotToDrawing;
+
 /*
  * The distance from a point to a closed outline.
  *
@@ -17734,6 +18174,30 @@ function featurePropertyMarkup(object) {
 
     rows.push(featureHeaderMarkup(object, typeLabel));
 
+    if (
+        object.type === "annotation" &&
+        object.engineering?.graphPlotRole === "label"
+    ) {
+        const text = String(object.text || "").replace(/[&<>]/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;"
+        })[character]);
+
+        rows.push(section("TEXT"));
+        rows.push(`
+            <label class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">Label</span>
+                <textarea data-annotation-text aria-label="Plot label text" rows="3">${text}</textarea>
+            </label>
+        `);
+
+        return `<div class="drawing-properties-block">
+            <div class="drawing-properties-title">${object.name}</div>
+            ${rows.join("")}
+        </div>`;
+    }
+
     if (object.type === "line") {
         const dx = geometry.end.x - geometry.start.x;
         const dy = geometry.end.y - geometry.start.y;
@@ -21493,6 +21957,32 @@ function handleCanvasClick(
  * Returns true when the click was consumed as a selection, so the
  * caller knows whether the tool that was active also got a turn.
  */
+function graphPlotObjectIds(object) {
+    const graphPlotId = object?.engineering?.graphPlotId;
+
+    if (!graphPlotId) {
+        return object ? [object.id] : [];
+    }
+
+    const graphPlotGroup = object.engineering.graphPlotGroup;
+    if (graphPlotGroup) {
+        return drawingState.objects
+            .filter(candidate =>
+                candidate.engineering?.graphPlotId === graphPlotId &&
+                candidate.engineering?.graphPlotGroup === graphPlotGroup
+            )
+            .map(candidate => candidate.id);
+    }
+
+    if (object.engineering.graphPlotRole === "label") {
+        return [object.id];
+    }
+
+    return drawingState.objects
+        .filter(candidate => candidate.engineering?.graphPlotId === graphPlotId)
+        .map(candidate => candidate.id);
+}
+
 function selectFromCanvasClick(
     event
 ) {
@@ -21524,23 +22014,20 @@ function selectFromCanvasClick(
      */
     if (event.shiftKey) {
         if (object) {
-            const selected =
-                drawingState.selection
-                    .selectedObjectIds;
+            const targetIds = graphPlotObjectIds(object);
+            const targetIsSelected = targetIds.every(
+                id => selectedIds.includes(id)
+            );
 
             enggDrawingState.selectObjects(
                 drawingState,
-                selected.includes(
-                    object.id
-                )
-                    ? selected.filter(
-                        id =>
-                            id !==
-                            object.id
-                    )
+                targetIsSelected
+                    ? selectedIds.filter(id => !targetIds.includes(id))
                     : [
-                        ...selected,
-                        object.id
+                        ...new Set([
+                            ...selectedIds,
+                            ...targetIds
+                        ])
                     ]
             );
         }
@@ -21556,9 +22043,9 @@ function selectFromCanvasClick(
             featurePanelView === "tree" &&
             featureTreePickedId === object.id;
 
-        enggDrawingState.selectObject(
+        enggDrawingState.selectObjects(
             drawingState,
-            object.id
+            graphPlotObjectIds(object)
         );
 
         if (pickedAlready) {
@@ -22675,6 +23162,110 @@ function handleAtPoint(
         Math.max(scale, 1e-6);
 
     let best = null;
+    const selectedIds = new Set(
+        drawingState.selection.selectedObjectIds
+    );
+    const pointedObject = objectAtPoint(point);
+
+    if (
+        pointedObject?.engineering?.graphPlotRole === "label" &&
+        pointedObject.engineering.graphPlotDraggable !== false &&
+        selectedIds.has(pointedObject.id)
+    ) {
+        return {
+            object: pointedObject,
+            handle: { kind: "plot-label", point: pointedObject.placement },
+            graphPlotMembers: [pointedObject.id],
+            distance: Math.hypot(
+                pointedObject.placement.x - point.x,
+                pointedObject.placement.y - point.y
+            )
+        };
+    }
+
+    const graphGroups = new Map();
+
+    drawingState.objects.forEach(object => {
+        const graphPlotId = object.engineering?.graphPlotId;
+        if (!selectedIds.has(object.id) || !graphPlotId) {
+            return;
+        }
+
+        if (!graphGroups.has(graphPlotId)) {
+            graphGroups.set(graphPlotId, []);
+        }
+        graphGroups.get(graphPlotId).push(object);
+    });
+
+    graphGroups.forEach((graphObjects, graphPlotId) => {
+        const allGraphObjects = drawingState.objects.filter(
+            candidate => candidate.engineering?.graphPlotId === graphPlotId
+        );
+        const selectedGroup = graphObjects[0]?.engineering?.graphPlotGroup;
+        const groupObjects = selectedGroup
+            ? allGraphObjects.filter(
+                candidate => candidate.engineering?.graphPlotGroup === selectedGroup
+            )
+            : [];
+        const wholePlotSelected = graphObjects.length === allGraphObjects.length;
+        const wholeGroupSelected = Boolean(selectedGroup) &&
+            graphObjects.length === groupObjects.length &&
+            graphObjects.every(object =>
+                object.engineering?.graphPlotGroup === selectedGroup
+            );
+
+        if (!wholePlotSelected && !wholeGroupSelected) {
+            return;
+        }
+
+        if (
+            wholePlotSelected &&
+            pointedObject?.engineering?.graphPlotId === graphPlotId &&
+            pointedObject.engineering.graphPlotRole === "label" &&
+            pointedObject.engineering.graphPlotDraggable !== false
+        ) {
+            return;
+        }
+
+        const resizeObjects = wholePlotSelected ? graphObjects : groupObjects;
+        const frame = wholeGroupSelected && !wholePlotSelected
+            ? resizeObjects.find(object =>
+                object.engineering?.graphPlotGroupRole === "frame"
+            )
+            : null;
+        const graphBounds = window.enggGraphPlotter?.boundsOfObjects(
+            frame ? [frame] : resizeObjects
+        );
+        if (!graphBounds) {
+            return;
+        }
+
+        const corners = [
+            { x: graphBounds.left, y: graphBounds.bottom },
+            { x: graphBounds.right, y: graphBounds.bottom },
+            { x: graphBounds.right, y: graphBounds.top },
+            { x: graphBounds.left, y: graphBounds.top }
+        ];
+
+        corners.forEach((corner, index) => {
+            const distance = Math.hypot(
+                corner.x - point.x,
+                corner.y - point.y
+            );
+
+            if (distance <= tolerance && (!best || distance < best.distance)) {
+                best = {
+                    object: resizeObjects[0],
+                    handle: { kind: `graph-corner-${index}`, point: corner },
+                    graphPlotId,
+                    graphBounds,
+                    graphObjects: resizeObjects,
+                    graphPlotMembers: resizeObjects.map(object => object.id),
+                    distance
+                };
+            }
+        });
+    });
 
     drawingState.objects.forEach(
         object => {
@@ -22684,6 +23275,17 @@ function handleAtPoint(
                     .includes(
                         object.id
                     )
+            ) {
+                return;
+            }
+
+            if (object.engineering?.graphPlotDraggable === false) {
+                return;
+            }
+
+            if (
+                object.engineering?.graphPlotId &&
+                object.engineering?.graphPlotRole !== "label"
             ) {
                 return;
             }
@@ -22708,6 +23310,9 @@ function handleAtPoint(
                         best = {
                             object,
                             handle,
+                            graphPlotMembers: object.engineering?.graphPlotId
+                                ? [object.id]
+                                : null,
                             distance
                         };
                     }
@@ -22846,6 +23451,34 @@ function beginManipulationDrag(
             false
         );
 
+    const plotLabel = [...drawingState.objects].reverse().find(object =>
+        object.engineering?.graphPlotRole === "label" &&
+        object.engineering.graphPlotDraggable !== false &&
+        annotationContainsPoint(object, point)
+    );
+
+    if (plotLabel) {
+        enggDrawingState.selectObjects(
+            drawingState,
+            [plotLabel.id]
+        );
+
+        manipulationDrag = {
+            pointerId: event.pointerId,
+            object: plotLabel,
+            kind: "plot-label",
+            graphPlotMembers: [plotLabel.id],
+            moved: false,
+            start: { ...point },
+            originals: {
+                [plotLabel.id]: JSON.parse(JSON.stringify(plotLabel))
+            }
+        };
+
+        drawingCanvas.setPointerCapture(event.pointerId);
+        return true;
+    }
+
     const hit =
         handleAtPoint(
             point
@@ -22860,6 +23493,9 @@ function beginManipulationDrag(
             pointerId: event.pointerId,
             object: hit.object,
             kind: hit.handle.kind,
+            graphPlotId: hit.graphPlotId,
+            graphBounds: hit.graphBounds,
+            graphPlotMembers: hit.graphPlotMembers,
 
             moved: false,
             start: { ...point },
@@ -22880,14 +23516,12 @@ function beginManipulationDrag(
              * and future, whatever part of them the drag happens to
              * touch.
              */
-            originals: {
-                [hit.object.id]:
-                    JSON.parse(
-                        JSON.stringify(
-                            hit.object
-                        )
-                    )
-            }
+            originals: Object.fromEntries(
+                (hit.graphObjects || [hit.object]).map(object => [
+                    object.id,
+                    JSON.parse(JSON.stringify(object))
+                ])
+            )
         };
 
         drawingCanvas.setPointerCapture(
@@ -22918,10 +23552,46 @@ function beginManipulationDrag(
      * only becomes a manipulation if the pointer moves; a press
      * that stays put is left for the tool.
      */
-    const object =
+    let object =
         objectAtPoint(
             point
         );
+
+    if (
+        object?.engineering?.graphPlotRole === "label" &&
+        object.engineering.graphPlotDraggable === false
+    ) {
+        return false;
+    }
+
+    if (!object) {
+        const selectedGraphIds = new Set(
+            drawingState.objects
+                .filter(item =>
+                    drawingState.selection.selectedObjectIds.includes(item.id) &&
+                    item.engineering?.graphPlotId
+                )
+                .map(item => item.engineering.graphPlotId)
+        );
+
+        for (const graphPlotId of selectedGraphIds) {
+            const graphObjects = drawingState.objects.filter(
+                item => item.engineering?.graphPlotId === graphPlotId
+            );
+            const bounds = window.enggGraphPlotter?.boundsOfObjects(graphObjects);
+
+            if (
+                bounds &&
+                point.x >= bounds.left &&
+                point.x <= bounds.right &&
+                point.y >= bounds.bottom &&
+                point.y <= bounds.top
+            ) {
+                object = graphObjects[0];
+                break;
+            }
+        }
+    }
 
     if (
         object &&
@@ -22931,22 +23601,47 @@ function beginManipulationDrag(
                 object.id
             )
     ) {
+        const graphPlotId = object.engineering?.graphPlotId;
+        const graphPlotGroup = object.engineering?.graphPlotGroup;
+        const allGraphObjects = graphPlotId
+            ? drawingState.objects.filter(
+                item => item.engineering?.graphPlotId === graphPlotId
+            )
+            : [];
+        const dragObjects = graphPlotGroup
+            ? allGraphObjects.filter(
+                item => item.engineering?.graphPlotGroup === graphPlotGroup
+            )
+            : graphPlotId && object.engineering?.graphPlotRole === "label"
+                ? [object]
+                : graphPlotId
+                    ? allGraphObjects
+            : objectsByIds(
+                drawingState.selection.selectedObjectIds
+            );
+
         manipulationDrag = {
             pointerId: event.pointerId,
             object,
             kind: "body",
+            graphPlotId: graphPlotId && dragObjects.length === allGraphObjects.length
+                ? graphPlotId
+                : null,
+            graphPlotMembers: graphPlotId
+                ? dragObjects.map(item => item.id)
+                : null,
+            graphBounds: graphPlotId
+                ? window.enggGraphPlotter?.boundsOfObjects(dragObjects)
+                : null,
             moved: false,
             start: { ...point },
             originals: Object.fromEntries(
-                objectsByIds(
-                    drawingState.selection
-                        .selectedObjectIds
-                ).map(
+                dragObjects.map(
                     item => [
                         item.id,
                         JSON.parse(
                             JSON.stringify(
-                                item.geometry
+                                graphPlotId ? item : item.geometry
                             )
                         )
                     ]
@@ -23056,6 +23751,10 @@ function finishManipulationDrag(
         return;
     }
 
+    if (drag.graphPlotMembers?.length) {
+        selectionClickSuppressed = true;
+    }
+
     /*
      * The geometry changed live during the drag, so the
      * history entry has to record the geometry as it was
@@ -23109,6 +23808,99 @@ function finishManipulationDrag(
     renderCurrentDrawing();
 }
 
+function transformGraphPlotGroup(drag, transformObject) {
+    const memberIds = new Set(drag.graphPlotMembers || []);
+    drawingState.objects.forEach(object => {
+        if (!memberIds.has(object.id)) {
+            return;
+        }
+
+        const original = drag.originals[object.id];
+        if (!original) {
+            return;
+        }
+
+        const transformed = JSON.parse(JSON.stringify(original));
+        transformObject(transformed);
+        Object.assign(object, transformed);
+    });
+}
+
+function translateGraphPlotGroup(drag, point) {
+    const deltaX = point.x - drag.start.x;
+    const deltaY = point.y - drag.start.y;
+
+    transformGraphPlotGroup(drag, object => {
+        if (object.type === "annotation" && object.placement) {
+            object.placement.x += deltaX;
+            object.placement.y += deltaY;
+            return;
+        }
+
+        translateObject(object, deltaX, deltaY);
+    });
+}
+
+function resizeGraphPlotGroup(drag, point) {
+    const bounds = drag.graphBounds;
+    if (!bounds) {
+        return;
+    }
+
+    const cornerIndex = Number(drag.kind.slice("graph-corner-".length));
+    const minimumSize = 0.5;
+    let { left, right, bottom, top } = bounds;
+
+    if (cornerIndex === 0) {
+        left = Math.min(point.x, right - minimumSize);
+        bottom = Math.min(point.y, top - minimumSize);
+    } else if (cornerIndex === 1) {
+        right = Math.max(point.x, left + minimumSize);
+        bottom = Math.min(point.y, top - minimumSize);
+    } else if (cornerIndex === 2) {
+        right = Math.max(point.x, left + minimumSize);
+        top = Math.max(point.y, bottom + minimumSize);
+    } else if (cornerIndex === 3) {
+        left = Math.min(point.x, right - minimumSize);
+        top = Math.max(point.y, bottom + minimumSize);
+    } else {
+        return;
+    }
+
+    const scaleX = (right - left) / (bounds.right - bounds.left);
+    const scaleY = (top - bottom) / (bounds.top - bounds.bottom);
+    const styleScale = Math.sqrt(scaleX * scaleY);
+    const mapPoint = source => ({
+        x: left + (source.x - bounds.left) * scaleX,
+        y: bottom + (source.y - bounds.bottom) * scaleY
+    });
+
+    transformGraphPlotGroup(drag, object => {
+        const geometry = object.geometry || {};
+
+        if (object.type === "line") {
+            geometry.start = mapPoint(geometry.start);
+            geometry.end = mapPoint(geometry.end);
+        } else if (object.type === "polyline") {
+            geometry.points = (geometry.points || []).map(mapPoint);
+        } else if (object.type === "circle") {
+            geometry.center = mapPoint(geometry.center);
+            geometry.radius *= styleScale;
+        } else if (object.type === "rectangle") {
+            geometry.position = mapPoint(geometry.position);
+            geometry.width *= scaleX;
+            geometry.height *= scaleY;
+        } else if (object.type === "annotation" && object.placement) {
+            object.placement = mapPoint(object.placement);
+            object.style.fontSize *= styleScale;
+        }
+
+        if (object.style && object.style.lineWidth) {
+            object.style.lineWidth *= styleScale;
+        }
+    });
+}
+
 /*
  * Apply the drag to the real feature data.
  */
@@ -23121,6 +23913,30 @@ function applyManipulation(
 
     const g =
         object.geometry;
+
+    if (drag.kind === "plot-label") {
+        const original = drag.originals[object.id];
+        if (!original?.placement) {
+            return false;
+        }
+
+        object.placement = {
+            x: original.placement.x + point.x - drag.start.x,
+            y: original.placement.y + point.y - drag.start.y
+        };
+        object.placementMode = "manual";
+        return true;
+    }
+
+    if (drag.graphPlotMembers?.length) {
+        if (drag.kind === "body") {
+            translateGraphPlotGroup(drag, point);
+        } else if (drag.graphPlotId && drag.kind.startsWith("graph-corner-")) {
+            resizeGraphPlotGroup(drag, point);
+        }
+
+        return;
+    }
 
     /*
      * AN ANNOTATION MOVES BY ITS PLACEMENT, and nothing else.
@@ -31123,6 +31939,17 @@ if (
 
                     if (pointed.type === "dimension") {
                         openDimensionEditorFor(pointed);
+                    } else if (pointed.engineering?.graphPlotRole === "label") {
+                        enggDrawingState.selectObjects(
+                            drawingState,
+                            [pointed.id]
+                        );
+                        featurePanelView = "edit";
+                        featureTreePickedId = null;
+                        renderProperties();
+                        drawingProperties
+                            .querySelector('[data-annotation-text]')
+                            ?.focus();
                     }
 
                     return;
@@ -31189,6 +32016,8 @@ if (
     drawingCanvas.addEventListener(
         "pointerdown",
         event => {
+            selectionClickSuppressed = false;
+
             /*
              * An armed eyedropper pre-empts every other
              * canvas interaction, so it works no matter

@@ -4747,8 +4747,48 @@
                 class: `drawing-manipulation-handle${kind ? ` ${kind}` : ""}`
             }));
         };
+        const selectedGraphIds = new Set(
+            state.objects
+                .filter(object => selected.has(object.id))
+                .map(object => object.engineering?.graphPlotId)
+                .filter(Boolean)
+        );
+
+        selectedGraphIds.forEach(graphPlotId => {
+            const graphObjects = state.objects.filter(
+                object => object.engineering?.graphPlotId === graphPlotId
+            );
+            const graphBounds = window.enggGraphPlotter?.boundsOfObjects(graphObjects);
+
+            if (!graphBounds) {
+                return;
+            }
+
+            const topLeft = toScreen({ x: graphBounds.left, y: graphBounds.top });
+            const bottomRight = toScreen({ x: graphBounds.right, y: graphBounds.bottom });
+            svg.appendChild(createSvgElement("rect", {
+                x: topLeft.x,
+                y: topLeft.y,
+                width: bottomRight.x - topLeft.x,
+                height: bottomRight.y - topLeft.y,
+                fill: "none",
+                stroke: "#1f5c38",
+                "stroke-width": 1,
+                "stroke-dasharray": "4 3",
+                "pointer-events": "none"
+            }));
+
+            [
+                { x: graphBounds.left, y: graphBounds.bottom },
+                { x: graphBounds.right, y: graphBounds.bottom },
+                { x: graphBounds.right, y: graphBounds.top },
+                { x: graphBounds.left, y: graphBounds.top }
+            ].forEach((point, index) => add(point, `graph-corner-${index}`));
+        });
+
         state.objects.forEach(object => {
             if (!selected.has(object.id)) return;
+            if (object.engineering?.graphPlotId) return;
             const geometry = object.geometry || {};
             if (object.type === "point") {
                 add(geometry.position || geometry.point || geometry);

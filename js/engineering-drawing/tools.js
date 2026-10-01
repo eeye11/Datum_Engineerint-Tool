@@ -172,6 +172,7 @@ const toolIcons = {
 	 * width beneath it.
 	 */
 	"Shear Force (SFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M4 4v12h4V4zM8 6v8h4V6zM12 8v4h4V8z"/>`),
+	"Shear Force Diagram": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M4 4v12h4V4zM8 6v8h4V6zM12 8v4h4V8z"/>`),
 
 	/*
 	 * BMD: a moment profile, drawn as a smooth bow over a full-width
@@ -231,6 +232,8 @@ const toolIcons = {
 	Function: drawingIcon(`<path ${iconStroke} d="M4 14c2-8 4 4 6-3s4-5 6-5"/>`),
 	Vector: drawingIcon(`<path ${iconStroke} d="M4 15L15 4M10 4h5v5"/>`),
 	Graph: drawingIcon(`<path ${iconStroke} d="M4 16V4M4 16h12M7 13l3-4 2 2 3-5"/>`),
+	"Graph Plotter": drawingIcon(`<path ${iconStroke} d="M3 16V4M3 16h14M5 13c2-7 4 4 6-2s3-5 6-7"/>`),
+	Diagrams: drawingIcon(`<path ${iconStroke} d="M3 16V4M3 16h14M5 13h3V9h3V6h4"/>`),
 	Equation: drawingIcon(`<path ${iconStroke} d="M4 6h4M6 4v4M10 10h6M4 15h4"/>`)
 };
 
@@ -373,7 +376,7 @@ const disciplineToolGroups = {
 			tools: [
 				{ id: "resultant", label: "Resultant" },
 				{ id: "force-components", label: "Force Components" },
-				{ id: "shear-force-diagram", label: "Shear Force (SFD)" },
+				{ id: "sfd-menu", label: "Shear Force Diagram", submenu: true },
 				{ id: "bending-moment-diagram", label: "Bending Moment (BMD)" },
 				{ id: "axial-force-diagram", label: "Axial Force (AFD)" }
 			]

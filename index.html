@@ -539,6 +539,21 @@
         >
             <!-- Shared CAD workspace: toolsets change, canvas and inspector persist. -->
             <div class="drawing-workspace">
+                <nav class="drawing-toolbar" aria-label="Engineering toolsets">
+                    <span class="drawing-workspace-title">EnggDraw</span>
+                    <button class="drawing-category active" data-category="GEOMETRY">GEOMETRY</button>
+                    <button class="drawing-category" data-category="ANNOTATE">ANNOTATE</button>
+                    <button class="drawing-category" data-category="STATICS">STATICS</button>
+                    <button class="drawing-category" data-category="DYNAMICS">DYNAMICS</button>
+                    <button class="drawing-category" data-category="FLUIDS">FLUIDS</button>
+                    <button class="drawing-category" data-category="THERMODYNAMICS">THERMODYNAMICS</button>
+                    <button class="drawing-category" data-category="HEAT TRANSFER">HEAT TRANSFER</button>
+                    <button class="drawing-category" data-category="SOLID MECHANICS">SOLID MECHANICS</button>
+                    <button class="drawing-category" data-category="MECHANICAL DESIGN">MECHANICAL DESIGN</button>
+                    <button class="drawing-category" data-category="CONTROLS">CONTROLS</button>
+                    <button class="drawing-category" data-category="MATH / ANALYSIS">MATH / ANALYSIS</button>
+                </nav>
+
                 <div class="drawing-app-toolbar" aria-label="Global drawing tools">
                     <div class="drawing-app-toolbar-group" aria-label="File">
                         <span class="drawing-app-toolbar-group-label">File</span>
@@ -583,21 +598,6 @@
                     </div>
                     <div id="drawingGlobalToolGroups" class="drawing-app-toolbar-groups"></div>
                 </div>
-
-                <nav class="drawing-toolbar" aria-label="Engineering toolsets">
-                    <span class="drawing-workspace-title">EnggDraw</span>
-                    <button class="drawing-category active" data-category="GEOMETRY">GEOMETRY</button>
-                    <button class="drawing-category" data-category="ANNOTATE">ANNOTATE</button>
-                    <button class="drawing-category" data-category="STATICS">STATICS</button>
-                    <button class="drawing-category" data-category="DYNAMICS">DYNAMICS</button>
-                    <button class="drawing-category" data-category="FLUIDS">FLUIDS</button>
-                    <button class="drawing-category" data-category="THERMODYNAMICS">THERMODYNAMICS</button>
-                    <button class="drawing-category" data-category="HEAT TRANSFER">HEAT TRANSFER</button>
-                    <button class="drawing-category" data-category="SOLID MECHANICS">SOLID MECHANICS</button>
-                    <button class="drawing-category" data-category="MECHANICAL DESIGN">MECHANICAL DESIGN</button>
-                    <button class="drawing-category" data-category="CONTROLS">CONTROLS</button>
-                    <button class="drawing-category" data-category="MATH / ANALYSIS">MATH / ANALYSIS</button>
-                </nav>
 
                 <div class="drawing-style-strip" aria-label="Drawing style controls">
                     <label>Thickness <select id="drawingThickness"><option value="0.25">0.25 mm</option><option value="0.5" selected>0.50 mm</option><option value="0.75">0.75 mm</option><option value="1">1.00 mm</option></select></label>
@@ -733,6 +733,8 @@
     <script src="js/engineering-drawing/object-snap.js"></script>
     <script src="js/engineering-drawing/drawing-reference.js"></script>
     <script src="js/engineering-drawing/sheet-tabs.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@14.8.1/lib/browser/math.js"></script>
+    <script src="js/engineering-drawing/graph-plotter.js"></script>
     <script src="js/engineering-drawing/drawing.js"></script>
     <script src="js/engineering-drawing/drawing-delete.js"></script>
     <script src="js/engineering-drawing/toolbar.js"></script>
