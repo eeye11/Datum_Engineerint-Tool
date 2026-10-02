@@ -723,31 +723,40 @@
      * every sheet starts at, so opening an older document changes
      * nothing about how it looks.
      *
-     * They are listed shrinking-first and then growing, which is the order
-     * a user reaches for them in: "too big, smaller" down to a tenth,
-     * then "too small, larger" up to a thousand times.
+     * They are listed in INCREASING ORDER.
      *
-     * A CUSTOM value is offered alongside them, because the decades are a
-     * starting point rather than a cage - there is no reason a sheet
-     * should not want 1.5x or 250x, and a list that cannot express a
-     * number the user already has in mind is a list that gets worked
-     * around by editing the file.
+     * They used to be listed shrinking-first then growing - "too big,
+     * smaller" down to a thousandth, then "too small, larger" up to a
+     * thousand times. That is the order a user reaches for them in, and
+     * it was the wrong thing to optimise for: a scale control read top to
+     * bottom should read small to large the way every other quantity on
+     * a sheet does, and a list that jumps 1, 0.1, 0.01, 0.001, 10 makes
+     * the user hunt for the one they want and cannot tell at a glance
+     * which side of 1 it is on.
      *
-     * It is stored once, on the drawing's Statics settings, and NOT on
-     * any individual force or load. There is deliberately no per-feature
-     * copy: one setting that every vector obeys is the thing a user can
-     * reason about, and per-feature scales would let a sheet end up with
-     * arrows that cannot be compared by eye.
+     * THE ORDER IS DERIVED, NOT TYPED, so that adding a value later cannot
+     * put it back out of sequence. An earlier version listed the entries
+     * literally and relied on them being written in the right order, which
+     * is a thing that stops being true the moment someone adds a decade.
      */
-    const VECTOR_SCALE_OPTIONS = [
-        { value: 1, label: "1.0×" },
-        { value: 0.1, label: "0.1×" },
-        { value: 0.01, label: "0.01×" },
-        { value: 0.001, label: "0.001×" },
-        { value: 10, label: "10×" },
-        { value: 100, label: "100×" },
-        { value: 1000, label: "1000×" }
+    const VECTOR_SCALE_VALUES = [
+        0.001,
+        0.01,
+        0.1,
+        1,
+        10,
+        100,
+        1000
     ];
+
+    const VECTOR_SCALE_OPTIONS = [
+        ...VECTOR_SCALE_VALUES
+    ]
+        .sort((a, b) => a - b)
+        .map(value => ({
+            value,
+            label: `${value}×`
+        }));
 
     const DEFAULT_VECTOR_SCALE = 1;
 

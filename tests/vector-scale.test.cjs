@@ -67,9 +67,15 @@ check(
 );
 
 check(
-    "the offered scales are decades, in the order they are shown",
-    JSON.stringify(values) ===
-        JSON.stringify([1, 0.1, 0.01, 0.001, 10, 100, 1000]),
+    "the offered scales are the decades, smallest first",
+    values.length === 7 &&
+        values.every(
+            (value, index) =>
+                index === 0 || value > values[index - 1]
+        ) &&
+        [0.001, 0.01, 0.1, 1, 10, 100, 1000].every(v =>
+            values.includes(v)
+        ),
     `values: ${values.join(", ")}`
 );
 
