@@ -1426,11 +1426,38 @@
         state,
         deletedIds
     ) {
-        if (!state || !deletedIds || !deletedIds.length) {
+        /*
+         * THE GUARD MUST ACCEPT A SET AS WELL AS AN ARRAY.
+         *
+         * This checked `deletedIds.length`, and a Set has no length - it
+         * has `size`. So a Set argument made the guard read `undefined`,
+         * which is falsy, and the function returned without doing
+         * anything at all.
+         *
+         * That is not a theoretical shape: the guard below normalises the
+         * argument to a Set anyway, and the delete handler passes an
+         * ARRAY of ids - but any caller passing a Set, which is the
+         * natural type for a set of deleted ids and the type this
+         * function goes on to build, silently got no cleanup. Deleting a
+         * force then left a Force Components and a Resultant on the
+         * sheet, still drawn, still describing a force that was no longer
+         * there - which is the exact failure the code below exists to
+         * prevent, and it failed quietly, with no error anywhere.
+         */
+        const ids =
+            deletedIds instanceof Set
+                ? [...deletedIds]
+                : Array.isArray(deletedIds)
+                    ? deletedIds
+                    : deletedIds
+                        ? [deletedIds]
+                        : [];
+
+        if (!state || !ids.length) {
             return [];
         }
 
-        const gone = new Set(deletedIds);
+        const gone = new Set(ids);
         const removed = [];
 
         state.objects = state.objects.filter(object => {
