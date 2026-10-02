@@ -13642,6 +13642,20 @@ function objectAtPoint(
  * has to hit to the pixel is a result they cannot select. Only the
  * PICK is widened - nothing is drawn any thicker for it.
  */
+/*
+ * HOW FAR PAST THE BODY A DIAGRAM'S PICKABLE REGION REACHES.
+ *
+ * Must cover the axis margin the renderer draws beyond the member, plus
+ * the arrowhead and the axis label that sit past that. If it is smaller
+ * than what is drawn, the part of the frame outside it cannot be clicked
+ * - which is how an axis label ends up being something you can read but
+ * not select.
+ *
+ * Kept as one number, and named, rather than folded into the expression,
+ * so that a change to the drawn margin has an obvious counterpart here.
+ */
+const ANALYSIS_FRAME_PICK_MARGIN = 60;
+
 function analysisObjectHit(
     object,
     point,
@@ -13687,15 +13701,43 @@ function analysisObjectHit(
          * drawn rectangle because nothing is drawn there - it is
          * space the student is meant to draw in, and an invisible
          * target is the only way it can be both empty and clickable.
+         *
+         * IT HAS TO COVER WHAT IS DRAWN, OR THE FRAME BECOMES
+         * UNSELECTABLE.
+         *
+         * The right edge used to be the body's own far end, which was
+         * right while the axis stopped there. The axis now runs on past
+         * the body to leave room for its arrowhead and the "x (m)"
+         * label, and both of those sit OUTSIDE the old box - so clicking
+         * the label selected nothing at all, which is a feature that
+         * cannot be selected by clicking the one thing added to say what
+         * it is.
+         *
+         * So the region is built from the same numbers the frame is drawn
+         * from, and extends right to cover the axis margin. If those two
+         * ever disagree again the failure is the same one, which is why
+         * the values are named here rather than being a bare 90.
          */
         if (axis) {
             const height =
                 Number(geometry.drawingHeight) || 90;
 
+            /*
+             * The vertical extents are symmetric here, as they were: the
+             * drawn frame is not, but the pick region is deliberately
+             * generous rather than exact, because a pick target smaller
+             * than what the student can see is the failure worth avoiding.
+             */
             const left =
                 Math.min(axis.from.x, axis.to.x);
+
+            /*
+             * RIGHT, TO THE END OF THE AXIS AND ITS LABEL.
+             */
             const right =
-                Math.max(axis.from.x, axis.to.x);
+                Math.max(axis.from.x, axis.to.x) +
+                ANALYSIS_FRAME_PICK_MARGIN;
+
             const top =
                 Math.max(
                     axis.from.y,
