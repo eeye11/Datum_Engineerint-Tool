@@ -18990,7 +18990,22 @@ function featurePropertyMarkup(object) {
                 <span></span>
             </div>
         `);
-        rows.push(reverseDirectionMarkup("data-moment-reverse-direction"));
+
+        /*
+         * NO FLIP BUTTON HERE, DELIBERATELY.
+         *
+         * The Direction dropdown immediately above already offers both
+         * senses, so a "Switch Direction" control on a Moment would be a
+         * second way of doing what the dropdown does - and a second way
+         * is a second place for the two to disagree about what the moment
+         * currently is.
+         *
+         * The load and force tools keep their flip button because their
+         * direction is an ANGLE they type, and flipping is a shortcut
+         * across a continuous range. A moment has only two senses, CW and
+         * CCW, both named in the list; there is nothing for a button to
+         * shortcut.
+         */
 
         rows.push(section("POSITION"));
         rows.push(coordinate("Application Point X", "position.x", geometry.position.x));
@@ -19036,7 +19051,22 @@ function featurePropertyMarkup(object) {
                 <span></span>
             </div>
         `);
-        rows.push(reverseDirectionMarkup("data-moment-reverse-direction"));
+
+        /*
+         * NO FLIP BUTTON HERE, DELIBERATELY.
+         *
+         * The Direction dropdown immediately above already offers both
+         * senses, so a "Switch Direction" control on a Moment would be a
+         * second way of doing what the dropdown does - and a second way
+         * is a second place for the two to disagree about what the moment
+         * currently is.
+         *
+         * The load and force tools keep their flip button because their
+         * direction is an ANGLE they type, and flipping is a shortcut
+         * across a continuous range. A moment has only two senses, CW and
+         * CCW, both named in the list; there is nothing for a button to
+         * shortcut.
+         */
 
         rows.push(section("POSITION"));
         rows.push(coordinate("Position X", "position.x", geometry.position.x));
@@ -19953,60 +19983,6 @@ function bindFeaturePropertyControls(object) {
         });
     });
 
-    /*
-     * A Moment reverses the way round it acts, which is one flag
-     * on the geometry and nothing else.
-     *
-     * The application point is NOT touched: a moment applied at a
-     * point stays applied at that point, and only the direction
-     * its curved arrow sweeps changes. That is what makes the
-     * control a reversal rather than a move, and it is why the
-     * magnitude, the position and the parent are all untouched.
-     */
-    drawingProperties.querySelectorAll('[data-moment-reverse-direction]').forEach(button => {
-        button.addEventListener('click', () => {
-            const previous =
-                enggDrawingState.snapshotDrawing(
-                    drawingState
-                );
-
-            /*
-             * CCW <-> CW.
-             *
-             * One field is written, and it is the feature's own
-             * `direction`. The arrowhead moves to the other end of the
-             * opening and the curve sweeps the other way, both of which
-             * the shared rotational renderer works out from this one
-             * value - so there is no second place that has to be
-             * updated and no way for the head to end up on the wrong
-             * end of an unchanged curve.
-             *
-             * And NOTHING ELSE IS TOUCHED. Not the position, not the
-             * radius, not the magnitude, not the parent. A reversal is
-             * a change of sense and nothing more, which is why this
-             * writes a single field rather than recomputing a
-             * geometry.
-             */
-            object.geometry.direction =
-                momentDirectionOf(object.geometry) === "CW"
-                    ? "CCW"
-                    : "CW";
-
-            enggDrawingState.commitDrawingChange(
-                drawingState,
-                previous
-            );
-
-            setToolMessage(
-                object.geometry.direction === "CW"
-                    ? "Moment direction reversed to clockwise"
-                    : "Moment direction reversed to anticlockwise"
-            );
-
-            renderProperties();
-            renderCurrentDrawing();
-        });
-    });
 
     drawingProperties.querySelectorAll('[data-truss-optimize]').forEach(button => {
         button.addEventListener('click', () => {
