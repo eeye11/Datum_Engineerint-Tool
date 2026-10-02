@@ -158,7 +158,7 @@
      * WHAT EACH DIAGRAM'S ORDINATE ACTUALLY MEASURES.
      *
      * The three look alike - a frame, an axis, some station marks -
-     * and without this they are told apart only by their heading text.
+     * and the axis label is what tells them apart.
      * A diagram whose vertical axis is unlabelled is not a drawing
      * anybody can read: the student is being asked to plot a value on
      * it, and the sheet does not say which value.
@@ -1696,40 +1696,14 @@
                     svg.appendChild(tick);
                 });
 
-                if (
-                    geometry.heading
-                ) {
-                    const label =
-                        createSvgElement("text", {
-                            x: from.x,
-                            y:
-                                Math.min(
-                                    from.y,
-                                    to.y
-                                ) - 40,
-                            "font-size": 10,
-                            fill: stroke,
-                            "fill-opacity": 0.7
-                        });
-
-                    label.setAttribute(
-                        "pointer-events",
-                        "none"
-                    );
-
-                    label.textContent =
-                        geometry.heading;
-
-                    svg.appendChild(label);
-                }
-
                 /*
                  * WHAT THE TWO AXES MEASURE.
                  *
                  * A diagram whose axes are unlabelled asks the student
                  * to plot a value on it without saying which value, and
-                 * the only thing on the sheet distinguishing an SFD from
-                 * a BMD is its heading text. So each axis is named,
+                 * the axis is the only thing on the sheet
+                 * distinguishing an SFD from
+                 * a BMD. So each axis is named,
                  * with its unit, in the place a reader looks for it:
                  * the vertical one turned up the left-hand end of the
                  * axis, the horizontal one along the bottom.
@@ -5399,7 +5373,6 @@
                         start: axisPlacement.start,
                         end: axisPlacement.end,
                         diagramType: axisPlacement.diagramType,
-                        heading: axisPlacement.heading,
                         drawingHeight: 90,
                         backgroundVisible: true,
                         referencePositions: []

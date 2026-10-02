@@ -1064,12 +1064,11 @@
                  *
                  * `diagramType` is the identity. It drives the label, the
                  * icon, the tint and the Features-panel entry, so the three
-                 * are distinguishable at a glance without reading the
-                 * heading.
+                 * are distinguishable at a glance without a heading drawn
+                 * on the sheet.
                  */
                 "analysis-diagram": (
                     diagramType,
-                    heading,
                     start,
                     end,
                     options
@@ -1080,7 +1079,6 @@
                             start,
                             end,
                             diagramType,
-                            heading,
 
                             /*
                              * The zero axis is the line the student
@@ -1195,7 +1193,6 @@
                 "shear-force-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
                         "sfd",
-                        "Shear Force Diagram",
                         start,
                         end,
                         options
@@ -1204,7 +1201,6 @@
                 "bending-moment-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
                         "bmd",
-                        "Bending Moment Diagram",
                         start,
                         end,
                         options
@@ -1213,7 +1209,6 @@
                 "axial-force-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
                         "afd",
-                        "Axial Force Diagram",
                         start,
                         end,
                         options

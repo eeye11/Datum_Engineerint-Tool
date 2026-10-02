@@ -2566,21 +2566,6 @@ const ANALYSIS_DIAGRAM_NAMES = {
 };
 
 /*
- * The long heading drawn on the diagram itself.
- *
- * The abbreviation is the feature's NAME - what the Features list and
- * the Feature Tree call it - and the full name is the heading on the
- * drawing, where there is room for it. Two vocabularies, deliberately:
- * a student looking for "SFD" in a list wants the abbreviation, and a
- * reader looking at a sheet wants to know what the diagram is.
- */
-const ANALYSIS_DIAGRAM_HEADINGS = {
-    "shear-force-diagram": "Shear Force Diagram",
-    "bending-moment-diagram": "Bending Moment Diagram",
-    "axial-force-diagram": "Axial Force Diagram"
-};
-
-/*
  * SKETCH OR PLOT, PER DIAGRAM TOOL.
  *
  * The three diagrams differ only in WHICH force they carry, and a student
@@ -9178,11 +9163,7 @@ function updatePreview(
                 start: axis.start,
                 end: axis.end,
                 diagramType:
-                    interaction.analysisKind,
-                heading:
-                    ANALYSIS_DIAGRAM_HEADINGS[
-                        interaction.analysisKind
-                    ] || ""
+                    interaction.analysisKind
             };
         }
 
