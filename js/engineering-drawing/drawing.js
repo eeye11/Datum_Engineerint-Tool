@@ -2812,7 +2812,28 @@ function beginAnalysisDiagram(
      */
     const source =
         analysisSourceBody(
-            selectedStaticsFeatures()
+            /*
+             * ONLY WHAT THE STUDENT ACTUALLY SELECTED.
+             *
+             * `selectedStaticsFeatures()` returns EVERY Statics feature
+             * when the selection is empty, and that is right for the
+             * Resultant and Force Components: they read the sheet, so with
+             * nothing picked there is nothing excluded.
+             *
+             * It is wrong for a diagram, which measures ONE member. With
+             * an empty selection it handed back the only body on the
+             * sheet, so arming SFD Sketch silently adopted a beam nobody
+             * had chosen - and because the source was then already set,
+             * the FIRST click committed the diagram instead of choosing
+             * the body. Two clicks became one, and the diagram belonged to
+             * a member the student had never picked.
+             *
+             * So the empty case is made explicit: no selection means no
+             * source, and the tool waits for a click to name one.
+             */
+            drawingState.selection.selectedObjectIds.length
+                ? selectedStaticsFeatures()
+                : []
         );
 
     /*
