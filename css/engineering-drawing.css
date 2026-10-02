@@ -1595,6 +1595,31 @@
         minmax(0, 14px);
 }
 
+/*
+ * A ROW WITH TWO VALUES IN IT.
+ *
+ * The varying distributed load lists one point per row, and each point
+ * carries a magnitude AND a position - so the row is: label, magnitude,
+ * position, unit. Four children, and the unit is the last of them.
+ *
+ * It must not use `drawing-property-grid`. That grid's fourth track is a
+ * fixed 14px column reserved for the Fix checkbox, and a row built here has
+ * no checkbox - so with four children the position input fell into the
+ * 18px unit track and the unit text into the 14px one. The number field
+ * was then squeezed to about 9px, and its stepper - which is a fixed 15px
+ * and does not shrink - sat on top of the input and took its clicks.
+ *
+ * So the tracks are declared for the children this row actually has: three
+ * flexible ones and the unit sized to its content.
+ */
+.drawing-property-grid-pair {
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 1fr)
+        minmax(0, 1fr)
+        min-content;
+}
+
 .drawing-property-grid-head {
     color: var(--cad-muted);
     font-size: 8px;

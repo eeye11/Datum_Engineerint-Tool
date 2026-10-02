@@ -18172,8 +18172,16 @@ function distributedLoadPanelMarkup(
     `);
 
     points.forEach((point, index) => {
+        /*
+         * `drawing-property-grid-pair`, not `drawing-property-grid`:
+         * this row has a magnitude AND a position, so its unit is the
+         * fourth child. The ordinary grid's fourth track is a fixed 14px
+         * Fix-checkbox column, and with no checkbox here the position
+         * input fell into the unit track and was squeezed under its own
+         * stepper.
+         */
         rows.push(`
-            <div class="drawing-property-grid">
+            <div class="drawing-property-grid drawing-property-grid-pair">
                 <span class="drawing-property-grid-label">Point ${index + 1}</span>
                 <input type="number" step="any"
                     data-property="loadPoint.${index}.magnitude"
