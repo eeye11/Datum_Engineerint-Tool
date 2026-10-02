@@ -30,7 +30,22 @@
     color: var(--cad-ink);
     display: grid;
     flex: 1 1 auto;
-    grid-template-columns: 202px minmax(0, 1fr) 168px;
+    /*
+     * The Features rail is 236px, not 168px.
+     *
+     * A property row is four tracks - label, value, unit, fix - and on a
+     * statics quantity the unit track also carries the `?` unknown toggle.
+     * At 168px the panel body was 131px, which is not enough for four
+     * columns of readable content: the label and value tracks compressed
+     * to nothing while the unit track stayed at its minimum, so the toggle
+     * overflowed onto the Fix checkbox.
+     *
+     * The canvas takes the difference. It is the one column that can give
+     * up width without losing anything, and the same widening is applied
+     * to the collapsed-state and responsive variants so the rail never
+     * goes back to being too narrow in another layout.
+     */
+    grid-template-columns: 202px minmax(0, 1fr) 236px;
     /*
      * Rows: the global toolbar, the toolset nav, the style strip, the
      * three panels, then the sheet bar and the status bar.
@@ -475,7 +490,7 @@
  * difference and the freed width becomes drawing area.
  */
 .drawing-workspace-tools-collapsed {
-    grid-template-columns: 22px minmax(0, 1fr) 168px;
+    grid-template-columns: 22px minmax(0, 1fr) 236px;
 }
 
 .drawing-workspace-features-collapsed {
@@ -1560,10 +1575,23 @@
 }
 
 .drawing-property-grid-value {
+    /*
+     * The unit track is sized to its CONTENT, not to a fixed 18px.
+     *
+     * On a statics quantity this track holds the unit AND the `?` unknown
+     * toggle beside it - "mm" plus a 12px control and a 3px gap needs 31px.
+     * At 18px the toggle could not fit, and because the track was allowed
+     * to compress the button overflowed into the Fix checkbox's column and
+     * sat on top of it, taking its clicks.
+     *
+     * `min-content` asks the track to be as wide as it must be to avoid
+     * that, and leaves the difference to the label and value tracks, which
+     * are `minmax(0, 1fr)` and compress on their own if they need to.
+     */
     grid-template-columns:
         minmax(0, 1fr)
         minmax(0, 1.25fr)
-        minmax(0, 18px)
+        min-content
         minmax(0, 14px);
 }
 
@@ -2122,8 +2150,13 @@
 }
 
 @media (max-width: 900px) {
+    /*
+     * The tools rail gives up width before the Features rail does: the
+     * property grid needs its four columns far more than a tool button
+     * needs its label, so the narrow layouts take it from the left.
+     */
     .drawing-workspace {
-        grid-template-columns: 126px minmax(0, 1fr) 168px;
+        grid-template-columns: 96px minmax(0, 1fr) 236px;
     }
 
     .drawing-tool {
@@ -2145,7 +2178,7 @@
 
 @media (max-width: 720px) {
     .drawing-workspace {
-        grid-template-columns: 108px minmax(0, 1fr) 150px;
+        grid-template-columns: 82px minmax(0, 1fr) 236px;
     }
 
     .drawing-category {
@@ -2167,7 +2200,7 @@
 
 @media (max-width: 560px) {
     .drawing-workspace {
-        grid-template-columns: 96px minmax(0, 1fr) 140px;
+        grid-template-columns: 74px minmax(0, 1fr) 236px;
     }
 
     .drawing-toolbar {
