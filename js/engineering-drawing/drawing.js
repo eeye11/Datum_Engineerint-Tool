@@ -8149,9 +8149,39 @@ function updateInteractionFeedback(
     const point =
         resolution.effectiveConstructionPoint;
 
-    if (point) {
+    /*
+     * ONLY A POINT CAN BE REPORTED AS A COORDINATE.
+     *
+     * Not every tool's construction point is a point. Placing an analysis
+     * diagram sets it to the axis SEGMENT - { start, end } - because what
+     * is being chosen is a line and what the preview draws is that line.
+     * Reading point.x off a segment gives undefined, and Number(undefined)
+     * gives NaN, so the readout showed "X: NaN Y: NaN mm" for the whole of
+     * the diagram workflow.
+     *
+     * A segment has no single x and y, so there is nothing truthful to
+     * print from one. The axis is placed at the student's chosen height, so
+     * the middle of the axis is the point that actually corresponds to
+     * what they are doing, and that is what gets reported.
+     */
+    const readable =
+        point &&
+        Number.isFinite(point.x) &&
+        Number.isFinite(point.y)
+            ? point
+            : point &&
+                point.start &&
+                point.end
+              ? {
+                    x: (point.start.x + point.end.x) / 2,
+                    y: (point.start.y + point.end.y) / 2
+                }
+              : null;
+
+    if (readable) {
         drawingCoordinates.textContent =
-            `X: ${Number(point.x).toFixed(1)} Y: ${Number(point.y).toFixed(1)} mm`;
+            `X: ${Number(readable.x).toFixed(1)} ` +
+            `Y: ${Number(readable.y).toFixed(1)} mm`;
     }
 
     /*

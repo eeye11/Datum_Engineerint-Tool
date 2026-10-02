@@ -1194,7 +1194,7 @@
 
                 "shear-force-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
-                        "SFD",
+                        "sfd",
                         "Shear Force Diagram",
                         start,
                         end,
@@ -1203,7 +1203,7 @@
 
                 "bending-moment-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
-                        "BMD",
+                        "bmd",
                         "Bending Moment Diagram",
                         start,
                         end,
@@ -1212,7 +1212,7 @@
 
                 "axial-force-diagram": (start, end, options) =>
                     geometryFactories["analysis-diagram"](
-                        "AFD",
+                        "afd",
                         "Axial Force Diagram",
                         start,
                         end,

@@ -1279,7 +1279,23 @@
             entity.type === "beam" ||
             entity.type === "truss" ||
             entity.type === "cable" ||
-            entity.type === "shaft"
+            entity.type === "shaft" ||
+            /*
+             * A diagram frame belongs here for one reason only, and it is
+             * a mechanical one: this block is where the start/end test
+             * and the shared stroke live, and the diagram branch below
+             * reads both. It is NOT a diagram being a slender member.
+             *
+             * While the diagram was left out of this list, its branch
+             * was still nested inside the block, so it was unreachable -
+             * an analysis-diagram could never satisfy this test - and
+             * every diagram was dropped without a word. The group was
+             * built, left empty, and then discarded by the
+             * `if (svg.childNodes.length)` guard below. Nothing threw,
+             * so it surfaced as a tool that reported success, listed the
+             * feature in the panel, and drew nothing.
+             */
+            entity.type === "analysis-diagram"
         ) {
             const start = geometry.start;
             const end = geometry.end;
