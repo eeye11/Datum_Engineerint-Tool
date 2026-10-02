@@ -1840,6 +1840,74 @@ function openStaticsMenu(
 }
 
 /*
+ * OPEN SKETCH OR PLOT FOR ONE OF THE THREE DIAGRAMS.
+ *
+ * These are the only three tools in the Analysis section that do NOT know
+ * everything they need when the button is pressed. A student picking a
+ * diagram has two honest ways of going on - sketch the answer, or type the
+ * equations and have it drawn - and neither is "let the program work it
+ * out", so there is no automated mode to fall back to. So the first press
+ * asks which, and the tool is armed from HERE rather than from the
+ * toolbar click: arming on the press and then stopping would leave a tool
+ * active, waiting on a choice the student has not been shown.
+ *
+ * The list is the ordinary submenu, so the positioning, the
+ * click-outside dismissal and the keyboard handling are the ones every
+ * other submenu already has.
+ */
+function openAnalysisModeMenu(
+    button,
+    item
+) {
+    openToolSubmenu(
+        button,
+        ANALYSIS_DIAGRAM_MODES.map(mode => ({
+            id: mode,
+            label: ANALYSIS_DIAGRAM_MODE_LABELS[mode]
+        })),
+        modeId => {
+            if (
+                !ANALYSIS_DIAGRAM_MODES.includes(
+                    modeId
+                )
+            ) {
+                return;
+            }
+
+            enggDrawingState.setActiveTool(
+                drawingState,
+                item.id
+            );
+
+            /*
+             * The mode is carried onto the interaction, and
+             * beginAnalysisDiagram reads it back rather than
+             * replacing it. A body the student already had
+             * selected is used immediately; otherwise the tool
+             * waits for one, which is the same two-stage shape
+             * every other body-attached Statics tool uses.
+             */
+            enggDrawingState.setInteraction(
+                drawingState,
+                {
+                    analysisMode: modeId
+                }
+            );
+
+            beginAnalysisDiagram(
+                ANALYSIS_DIAGRAM_TOOLS[item.id]
+            );
+
+            renderEngineeringTools(
+                activeCategory()
+            );
+
+            renderCurrentDrawing();
+        }
+    );
+}
+
+/*
  * The canonical name of every Statics feature, keyed by its
  * authoritative feature type.
  *
@@ -2513,6 +2581,41 @@ const ANALYSIS_DIAGRAM_HEADINGS = {
 };
 
 /*
+ * SKETCH OR PLOT, PER DIAGRAM TOOL.
+ *
+ * The three diagrams differ only in WHICH force they carry, and a student
+ * gets to the same place either way: choose a body, then either draw the
+ * answer by hand or type the equations and have it drawn. So the choice
+ * is a property of the TOOL PICK, not of the diagram, and it is recorded
+ * once here and read by the one shared placement path.
+ *
+ * A third mode is deliberate. An automated diagram solves the exercise,
+ * which is the thing these tools exist to avoid - a scaffold that already
+ * contains the answer teaches nothing. So the default and only starting
+ * point is the student working it out.
+ */
+const ANALYSIS_DIAGRAM_MODES = ["sketch", "plot"];
+
+const ANALYSIS_DIAGRAM_MODE_LABELS = {
+    sketch: "Sketch",
+    plot: "Plot"
+};
+
+/*
+ * The quantity each diagram plots, as it is written in the equation.
+ *
+ * Shown in the equation field and on the frame, because N(x) and M(x)
+ * mean different things and a student who typed the wrong one should be
+ * able to see it. One per diagram, not one global, because the equation
+ * is the only place the three ever differ.
+ */
+const ANALYSIS_DIAGRAM_VARIABLES = {
+    "shear-force-diagram": "V(x)",
+    "bending-moment-diagram": "M(x)",
+    "axial-force-diagram": "N(x)"
+};
+
+/*
  * Selected statics features, or every statics feature when
  * nothing is selected, so a tool still does something
  * useful on a bare diagram.
@@ -2712,6 +2815,17 @@ function beginAnalysisDiagram(
             selectedStaticsFeatures()
         );
 
+    /*
+     * The mode was chosen just before this was called, and is
+     * carried through rather than re-derived: it is the student's
+     * answer to a question this function did not ask, and
+     * overwriting the interaction with a fresh object would
+     * silently discard it.
+     */
+    const mode =
+        drawingState.interaction
+            ?.analysisMode || "sketch";
+
     const span =
         source
             ? enggAnalysisDependencies.spanOf(
@@ -2741,6 +2855,7 @@ function beginAnalysisDiagram(
             phase: "analysis-axis",
 
             analysisKind: diagramType,
+            analysisMode: mode,
             sourceId: source?.id ?? null,
 
             /*
@@ -3569,22 +3684,17 @@ function renderEngineeringTools(
                             event.preventDefault();
 
                             /*
-                             * MOST analysis tools read the current
-                             * selection and report, so they never
-                             * become the active tool.
+                             * THE THREE DIAGRAMS ARE THE ONLY TOOLS HERE
+                             * THAT ASK A SECOND QUESTION.
                              *
-                             * A DIAGRAM TEMPLATE is the exception.
-                             * It is not a reading of the selection
-                             * but a thing to be placed: a frame the
-                             * student draws a solution inside, and
-                             * that takes a click-drag exactly like a
-                             * Beam. Forcing it back to the Select
-                             * tool would leave nothing able to
-                             * receive the span, so it is allowed to
-                             * become the active tool and go through
-                             * the ordinary span construction -
-                             * same snapping, same preview, same
-                             * Escape and Enter.
+                             * Resultant and Force Components read the
+                             * current selection and report, so they never
+                             * become the active tool. A diagram is a
+                             * thing to be placed and takes the ordinary
+                             * body-then-click placement, so it is armed
+                             * - but only once Sketch or Plot has been
+                             * chosen, which is what openAnalysisModeMenu
+                             * does.
                              */
                             const isTemplate =
                                 Boolean(
@@ -3594,26 +3704,22 @@ function renderEngineeringTools(
                                 );
 
                             if (isTemplate) {
-                                enggDrawingState.setActiveTool(
-                                    drawingState,
-                                    toolId
+                                openAnalysisModeMenu(
+                                    button,
+                                    { id: toolId }
                                 );
 
-                                beginAnalysisDiagram(
-                                    ANALYSIS_DIAGRAM_TOOLS[
-                                        toolId
-                                    ]
-                                );
-                            } else {
-                                enggDrawingState.setActiveTool(
-                                    drawingState,
-                                    "select"
-                                );
-
-                                runStaticsAnalysis(
-                                    toolId
-                                );
+                                return;
                             }
+
+                            enggDrawingState.setActiveTool(
+                                drawingState,
+                                "select"
+                            );
+
+                            runStaticsAnalysis(
+                                toolId
+                            );
 
                             renderEngineeringTools(
                                 activeCategory()
