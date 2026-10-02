@@ -1690,6 +1690,209 @@
 
                     svg.appendChild(xName);
                 }
+
+                /*
+                 * ========================================================
+                 * PLOT MODE: THE STUDENT'S OWN EQUATION, DRAWN
+                 * ========================================================
+                 *
+                 * Only a Plot carries a curve. A Sketch deliberately
+                 * does not: the student draws the answer by hand with
+                 * the ordinary Line tools, and this tool supplying it
+                 * would be solving the exercise rather than supporting
+                 * it.
+                 *
+                 * THE CURVE IS DERIVED FROM THE EQUATION EVERY FRAME.
+                 * The sample points are not stored on the feature - the
+                 * segments and their equations are - so editing a range
+                 * or correcting a sign re-derives the shape instead of
+                 * dragging vertices around. That is what keeps the
+                 * feature data authoritative rather than the drawing.
+                 *
+                 * MAPPED ONTO THE MEMBER'S OWN AXIS, so a station at 2 m
+                 * sits directly under the station at 2 m on the beam
+                 * above. The horizontal position comes from the
+                 * fraction along the frame, never from a screen
+                 * coordinate, and the vertical one from the value the
+                 * equation returns. NEITHER IS READ FROM THE RENDERER,
+                 * so the curve is the same curve at any zoom and the
+                 * vector scale cannot touch it.
+                 */
+                if (
+                    geometry.mode === "plot" &&
+                    Array.isArray(geometry.segments) &&
+                    geometry.segments.length
+                ) {
+                    const equations =
+                        window.enggDiagramEquations;
+
+                    /*
+                     * WITHOUT A RANGE THERE IS NO WAY TO PLACE A
+                     * STATION, so nothing is drawn rather than drawn
+                     * against a guessed scale. A curve in the wrong
+                     * place is worse than no curve, because it looks
+                     * like an answer.
+                     */
+                    const localRange =
+                        geometry.localRange;
+
+                    if (equations && localRange) {
+                        const rangeWidth =
+                            localRange.to -
+                            localRange.from;
+
+                        if (rangeWidth > 0) {
+                            /*
+                             * A FIXED SCALE IN ENGINEERING UNITS PER
+                             * PIXEL OF FRAME HEIGHT, so a value of 10
+                             * means the same thing on every diagram and
+                             * the student can read magnitudes off
+                             * their own work. The frame's own pixel
+                             * height comes from the bounding box rather
+                             * than from the world, so the curve cannot
+                             * zoom itself.
+                             */
+                            const unitHeight =
+                                rangeWidth *
+                                0.16;
+
+                            const peak =
+                                equations.peakMagnitude(
+                                    geometry.segments
+                                );
+
+                            /*
+                             * A diagram whose largest value is zero
+                             * has no scale to work in, and scaling by
+                             * zero would flatten a real curve onto the
+                             * axis.
+                             */
+                            const scale =
+                                peak > 0
+                                    ? unitHeight / peak
+                                    : 0;
+
+                            equations.sampleSegments(
+                                geometry.segments
+                            ).forEach(points => {
+                                const d = points
+                                    .map((point, index) => {
+                                        /*
+                                         * MAPPED IN THE WORLD FRAME,
+                                         * THEN TRANSFORMED ONCE.
+                                         *
+                                         * `from` and `to` are SCREEN
+                                         * points - they came out of
+                                         * toScreen. Interpolating
+                                         * between them and handing the
+                                         * result back to toScreen
+                                         * applies the transform twice,
+                                         * which threw the curve off
+                                         * the sheet entirely. So the
+                                         * frame is rebuilt here from the
+                                         * world axis, and exactly one
+                                         * toScreen call is made per
+                                         * point.
+                                         */
+                                        const t =
+                                            (point.x -
+                                                localRange.from) /
+                                            rangeWidth;
+
+                                        /*
+                                         * x is a FRACTION of the
+                                         * member's own length, so the
+                                         * curve stays locked to the
+                                         * body however the frame is
+                                         * moved, the member is
+                                         * rotated, or the view is
+                                         * zoomed.
+                                         */
+                                        const along = {
+                                            x:
+                                                geometry.start.x +
+                                                (geometry.end.x -
+                                                    geometry.start.x) *
+                                                    t,
+
+                                            /*
+                                             * A POSITIVE VALUE GOES
+                                             * UP, so the offset is
+                                             * ADDED to the world y.
+                                             *
+                                             * The world frame here is
+                                             * y-UP - the same sense the
+                                             * diagram's own zero axis
+                                             * uses - so subtracting
+                                             * would push a positive
+                                             * shear DOWN the sheet,
+                                             * under the axis, and read
+                                             * as a negative reaction.
+                                             * toScreen is what turns
+                                             * this into screen
+                                             * coordinates; this is not
+                                             * a second inversion of the
+                                             * same thing.
+                                             */
+                                            y:
+                                                geometry.start.y +
+                                                point.value * scale
+                                        };
+
+                                        const at =
+                                            toScreen(along);
+
+                                        return `${index ? "L" : "M"} ${at.x} ${at.y}`;
+                                    })
+                                    .join(" ");
+
+                                if (!d) {
+                                    return;
+                                }
+
+                                const path =
+                                    createSvgElement("path", {
+                                        d,
+                                        fill: "none",
+
+                                        /*
+                                         * THE TINT, NOT THE BODY STROKE.
+                                         *
+                                         * The curve is part of this
+                                         * diagram, so it is drawn in
+                                         * the diagram's own colour.
+                                         * Inheriting the entity style
+                                         * would put a shear curve in
+                                         * whatever colour the layer
+                                         * happened to be - and an SFD
+                                         * and a BMD are told apart by
+                                         * their colour as much as by
+                                         * their heading.
+                                         */
+                                        stroke: tint,
+                                        "stroke-width": 1.8,
+                                        "stroke-linejoin":
+                                            "round",
+                                        "stroke-linecap":
+                                            "round"
+                                    });
+
+                                /*
+                                 * The curve is part of the diagram, not
+                                 * a separate thing to pick: a student
+                                 * selecting the SFD means the whole of
+                                 * it, curve included.
+                                 */
+                                path.setAttribute(
+                                    "pointer-events",
+                                    "none"
+                                );
+
+                                svg.appendChild(path);
+                            });
+                        }
+                    }
+                }
             } else if (entity.type === "truss") {
                 /*
                  * A truss is drawn as the structure the student

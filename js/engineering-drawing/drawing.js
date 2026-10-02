@@ -3015,6 +3015,71 @@ function commitAnalysisAxis() {
         end: { ...axis.end }
     };
 
+    /*
+     * THE MODE IS RECORDED ON THE FEATURE, not left on the
+     * interaction, which has just been cleared.
+     *
+     * A Sketch frame and a Plot frame look the same when they are
+     * both empty, so without this a saved drawing reopened later
+     * would have lost the only record of which one it was - and the
+     * student would find a diagram they could not type into, or
+     * equations belonging to a frame they drew by hand.
+     */
+    const mode = interaction.analysisMode === "plot"
+        ? "plot"
+        : "sketch";
+
+    object.geometry.mode = mode;
+
+    /*
+     * A PLOT STARTS WITH ONE SEGMENT ALREADY SPANNING THE BODY.
+     *
+     * Seeded rather than empty because the range is not the
+     * student's to work out: it is the body's own, and asking for
+     * it invites the one error that matters here - a plot that does
+     * not line up with the member above it. What the student still
+     * has to supply is the equation, which is the part that is
+     * genuinely theirs.
+     */
+    if (mode === "plot") {
+        const source =
+            drawingState.objects.find(
+                entry =>
+                    entry.id ===
+                    interaction.sourceId
+            );
+
+        const span =
+            source
+                ? enggAnalysisDependencies.spanOf(
+                      source
+                  )
+                : null;
+
+        if (span) {
+            /*
+             * The range is the body's own, measured ALONG it from the
+             * start, so a sloping member gets the same 0 to L as a level
+             * one and a station at 2 m sits under the station at 2 m.
+             */
+            const length = span.length;
+
+            object.geometry.localRange = {
+                from: 0,
+                to: length
+            };
+
+            object.geometry.segments = [
+                {
+                    id: "seg-0",
+                    from: 0,
+                    to: length,
+                    equation: ""
+                }
+            ];
+        }
+    }
+
     enggAnalysisDependencies
         .registerDependency(
             object,
@@ -17254,6 +17319,69 @@ function arcRadiusRow(
  * A broken source is stated plainly rather than shown as zero. Zero is
  * a claim, and an unresolved object has no claim to make.
  */
+/*
+ * THE CHECKS UNDER A PLOT'S SEGMENTS, AS HTML.
+ *
+ * A shared builder because the list is produced in two places - once
+ * when the panel is first built, and again whenever a number changes -
+ * and two copies of the wording would be two chances for the message to
+ * disagree with the thing it describes.
+ *
+ * Nothing is fixed here. A segment running past the end of the beam, or a
+ * gap between two, is the student having made a mistake, and quietly
+ * clamping or joining it would draw a diagram that looks right and is
+ * not. Each problem is named, and the student decides what to do.
+ */
+function diagramChecksHtml(check) {
+    if (!check || check.valid) {
+        return "";
+    }
+
+    return (
+        `<div class="drawing-properties-section">CHECKS</div>` +
+        check.problems
+            .map(
+                problem =>
+                    `<div class="drawing-property-derived">${problem}</div>`
+            )
+            .join("")
+    );
+}
+
+/*
+ * REFRESH ONLY THE CHECKS.
+ *
+ * Their own element, so they can be replaced without rebuilding the
+ * inputs around them. Re-rendering the whole panel on every keystroke
+ * would put a fresh, empty input under the student's cursor and discard
+ * whatever was half-typed, which would make a long equation impossible
+ * to type at all.
+ */
+function refreshDiagramChecks(
+    object
+) {
+    const host = drawingProperties.querySelector(
+        "[data-diagram-checks]"
+    );
+
+    if (!host) {
+        return;
+    }
+
+    const equations = window.enggDiagramEquations;
+
+    if (!equations) {
+        return;
+    }
+
+    host.innerHTML = diagramChecksHtml(
+        equations.validateSegments(
+            object.geometry.segments,
+            object.geometry.localRange
+        )
+    );
+}
+
 function analysisPanelRows(
     object
 ) {
@@ -17493,6 +17621,146 @@ function analysisPanelRows(
                 geometry.backgroundVisible !== false
             )
         );
+
+        /*
+         * ========================================================
+         * PLOT MODE: THE EQUATIONS, WHICH ARE THE STUDENT'S OWN WORK
+         * ========================================================
+         *
+         * The frame, the axes and the reference ticks are all furniture
+         * the tool supplies. These segments are not: the ranges and the
+         * equations are what the student has to work out, so they are
+         * editable here, one block per segment, in the quantity this
+         * diagram plots.
+         *
+         * A SKETCH HAS NONE OF THIS, deliberately. A sketch frame with an
+         * equation box on it would be asking for the answer as well as
+         * offering the frame, and the two ways of working are meant to be
+         * genuinely different.
+         */
+        if (geometry.mode === "plot") {
+            const variable =
+                ANALYSIS_DIAGRAM_VARIABLES[
+                    object.type
+                ] || "";
+
+            const range = geometry.localRange;
+
+            const equations =
+                window.enggDiagramEquations;
+
+            rows.push(section("EQUATIONS"));
+
+            if (
+                range &&
+                Number.isFinite(range.from) &&
+                Number.isFinite(range.to)
+            ) {
+                rows.push(
+                    readOnly(
+                        "Range",
+                        `${number(range.from)} to ${number(range.to)}`
+                    )
+                );
+            }
+
+            const segments = Array.isArray(geometry.segments)
+                ? geometry.segments
+                : [];
+
+            segments.forEach((segment, index) => {
+                rows.push(
+                    `<div class="drawing-properties-section">Segment ${
+                        index + 1
+                    }</div>`
+                );
+
+                rows.push(`
+                    <div class="drawing-property-grid">
+                        <span class="drawing-property-grid-label">From</span>
+                        <input type="number" step="any"
+                            data-diagram-segment="${index}"
+                            data-diagram-field="from"
+                            value="${number(segment.from)}">
+                        <span class="drawing-property-unit">mm</span>
+                        <span></span>
+                    </div>
+                `);
+
+                rows.push(`
+                    <div class="drawing-property-grid">
+                        <span class="drawing-property-grid-label">To</span>
+                        <input type="number" step="any"
+                            data-diagram-segment="${index}"
+                            data-diagram-field="to"
+                            value="${number(segment.to)}">
+                        <span class="drawing-property-unit">mm</span>
+                        <span></span>
+                    </div>
+                `);
+
+                rows.push(`
+                    <div class="drawing-property-grid">
+                        <span class="drawing-property-grid-label">${
+                            variable || "f(x)"
+                        }</span>
+                        <input type="text"
+                            data-diagram-segment="${index}"
+                            data-diagram-field="equation"
+                            placeholder="10 - 5x"
+                            value="${String(
+                                segment.equation ?? ""
+                            ).replace(/"/g, "&quot;")}">
+                        <span class="drawing-property-unit"></span>
+                        <span></span>
+                    </div>
+                `);
+            });
+
+            rows.push(`
+                <div class="drawing-properties-actions">
+                    <button type="button"
+                        class="drawing-properties-button"
+                        data-diagram-action="add-segment">
+                        Add Segment
+                    </button>
+                    ${
+                        segments.length
+                            ? `<button type="button"
+                                class="drawing-properties-button"
+                                data-diagram-action="remove-segment"
+                                data-diagram-segment="${
+                                    segments.length - 1
+                                }">
+                                Remove Last
+                            </button>`
+                            : ""
+                    }
+                </div>
+            `);
+
+            /*
+             * THE PROBLEMS ARE SHOWN, NOT FIXED.
+             *
+             * A segment running past the end of the beam, or a gap
+             * between two segments, is the student having made a
+             * mistake. Clamping or joining it would draw a diagram that
+             * looks right and is not - so each one is named, and the
+             * student decides what to do about it.
+             */
+            if (equations) {
+                rows.push(
+                    `<div data-diagram-checks class="drawing-diagram-checks">${
+                        diagramChecksHtml(
+                            equations.validateSegments(
+                                segments,
+                                range
+                            )
+                        )
+                    }</div>`
+                );
+            }
+        }
     }
 
     rows.push(section("POSITION"));
@@ -20023,6 +20291,175 @@ function bindFeaturePropertyControls(object) {
                 renderCurrentDrawing();
                 renderProperties();
             });
+        });
+
+    /*
+     * THE PLOT SEGMENTS.
+     *
+     * Each field is written straight onto the segment and the drawing is
+     * re-rendered, so the curve is re-derived from the equation on every
+     * keystroke rather than being nudged. A stored polyline would have to
+     * be resampled by hand here, and would then disagree with the
+     * equation the student can still see in the box.
+     *
+     * The snapshot goes in BEFORE the change and the commit after it, so
+     * a whole run of edits is ONE undo step rather than one per
+     * keystroke - the same rule every other continuous interaction
+     * follows.
+     */
+    const previousSegments =
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
+
+    let segmentsChanged = false;
+
+    drawingProperties
+        .querySelectorAll('[data-diagram-segment]')
+        .forEach(input => {
+            const commit = () => {
+                const index = Number(
+                    input.dataset.diagramSegment
+                );
+
+                const field = input.dataset.diagramField;
+
+                const segments =
+                    object.geometry.segments;
+
+                if (
+                    !Array.isArray(segments) ||
+                    !segments[index]
+                ) {
+                    return;
+                }
+
+                const value =
+                    field === "equation"
+                        ? input.value
+                        : Number(input.value);
+
+                if (segmentsChanged) {
+                    /*
+                     * A LATER FIELD IN THE SAME EDIT PASS, so the
+                     * snapshot has already been replaced. The original
+                     * one is the one that must go back on undo, and
+                     * snapshotDrawing returns a copy each time, so
+                     * the first of them is kept.
+                     */
+                    return;
+                }
+
+                segmentsChanged = true;
+
+                segments[index] = {
+                    ...segments[index],
+                    [field]: value
+                };
+
+                enggDrawingState.commitDrawingChange(
+                    drawingState,
+                    previousSegments
+                );
+
+                renderCurrentDrawing();
+
+                /*
+                 * The panel is NOT re-rendered here. Doing so would
+                 * rebuild the inputs under the student's cursor and
+                 * throw away whatever was half-typed, which makes a
+                 * long equation untypeable. Only the CHECKS are
+                 * refreshed, because those do change as the numbers do -
+                 * and they live in their own element precisely so they
+                 * can be refreshed alone.
+                 */
+                refreshDiagramChecks(
+                    object
+                );
+            };
+
+            input.addEventListener(
+                "change",
+                commit
+            );
+        });
+
+    drawingProperties
+        .querySelectorAll('[data-diagram-action]')
+        .forEach(button => {
+            button.addEventListener(
+                "click",
+                () => {
+                    const action =
+                        button.dataset.diagramAction;
+
+                    const before =
+                        enggDrawingState.snapshotDrawing(
+                            drawingState
+                        );
+
+                    const segments =
+                        Array.isArray(object.geometry.segments)
+                            ? object.geometry.segments
+                            : [];
+
+                    const range =
+                        object.geometry.localRange;
+
+                    if (action === "add-segment") {
+                        /*
+                         * THE NEW SEGMENT STARTS WHERE THE LAST ONE
+                         * ENDED.
+                         *
+                         * That is the usual next thing a student wants
+                         * - the next load, the next reaction - and
+                         * starting it anywhere else means guessing a
+                         * number they then have to correct. The range
+                         * check still catches it if that was wrong.
+                         */
+                        const previous = segments[segments.length - 1];
+
+                        const from = previous
+                            ? previous.to
+                            : range?.from ?? 0;
+
+                        const to = previous
+                            ? previous.to +
+                              (range?.to - range.from) / 2
+                            : range?.to ?? 0;
+
+                        segments.push({
+                            id: `seg-${segments.length}`,
+                            from,
+                            to: Math.min(
+                                to,
+                                range?.to ?? to
+                            ),
+                            equation: ""
+                        });
+                    }
+
+                    if (action === "remove-segment") {
+                        const index = Number(
+                            button.dataset.diagramSegment
+                        );
+
+                        if (index >= 0) {
+                            segments.splice(index, 1);
+                        }
+                    }
+
+                    object.geometry.segments = segments;
+
+                    enggDrawingState.commitDrawingChange(
+                        drawingState,
+                        before
+                    );
+
+                    renderProperties();
+                    renderCurrentDrawing();
+                }
+            );
         });
 
     /*
