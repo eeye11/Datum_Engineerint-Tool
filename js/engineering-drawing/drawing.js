@@ -9838,29 +9838,18 @@ function updatePreview(
                             ? "Click to add another point, Enter to finish"
                             : "Move to set the first force direction and magnitude, then click"
                     )
-                );            } else if (
-                    isBodyAttachedTool(
-                        drawingState.activeTool
-                    ) &&
-                    interaction.phase ===
-                        "moment-radius"
-                ) {
-                    /*
-                     * THE MOMENT'S SECOND CLICK.
-                     *
-                     * The application point is already fixed; the cursor
-                     * has been sizing the arc. So this click only commits,
-                     * and the moment is created at the point the FIRST
-                     * click chose rather than at the pointer - which is
-                     * what keeps the symbol centred on the load it acts
-                     * at rather than wherever the student happened to size
-                     * it.
-                     */
-                    commitMomentPlacement();
+                );
+            }
 
-                    return;
-                }
-
+                /*
+                 * A body-attached feature takes one or more points on
+                 * its body and is created only once it has all of them,
+                 * so nothing is committed on this click.
+                 *
+                 * Guarded by the tool as well as the phase: a truss under
+                 * construction is a different operation that lives in the
+                 * same interaction and must not be swallowed here.
+                 */
                 if (
                     isBodyAttachedTool(
                         drawingState.activeTool
@@ -11254,6 +11243,43 @@ function beginOrCompleteGeometry(
         );
 
         renderCurrentDrawing();
+        return;
+    }
+
+    /*
+     * A MOMENT BEING SIZED, ON A CLICK.
+     *
+     * This is where the commit belongs, and where it used to be missing.
+     * It lived in the pointer-MOVE handler, which is worse than leaving
+     * it out: a student moving the pointer along a beam to choose where
+     * the moment goes would have the moment commit under the cursor
+     * without a click, and by the time they clicked - the very thing the
+     * status line told them to do - the phase had already been consumed
+     * and the click did nothing.
+     *
+     * Enter masked it, because the Enter route is a separate path to the
+     * same commit. So the tool appeared to work for anyone who noticed
+     * Enter, and did nothing at all for everyone following the
+     * instruction on screen.
+     *
+     * The application point is still the FIRST click's point, not this
+     * one: the pointer has been sizing the arc, and a moment drawn around
+     * wherever the pointer happened to be would be a different moment
+     * from the one the student chose.
+     *
+     * Guarded on the PHASE as well as the tool, so it cannot fire twice
+     * for one moment: the commit clears the interaction, and a second
+     * click then finds no phase to match.
+     */
+    if (
+        isBodyAttachedTool(
+            drawingState.activeTool
+        ) &&
+        drawingState.interaction.phase ===
+            "moment-radius"
+    ) {
+        commitMomentPlacement();
+
         return;
     }
 

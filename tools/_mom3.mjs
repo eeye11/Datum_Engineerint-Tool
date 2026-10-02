@@ -182,20 +182,22 @@ export default async function run(page) {
     const afterFirst = await read();
     out[`phase_${label}`] = afterFirst.phase;
 
-    /* Move away to size the arc, then commit. */
+    /*
+     * COMMIT WITH A SECOND CLICK - the way the status line tells the
+     * student to. This is the path that was broken: the commit lived in
+     * the pointer-MOVE handler, so a move fired it first, the phase was
+     * already gone by the time the click arrived, and the click the tool
+     * asks for did nothing.
+     *
+     * Enter is tested separately, because it is a different route to the
+     * same commit and it is the one that kept working - which is what
+     * made this look like a broken commit rather than broken routing.
+     */
     await page.mouse.move(x + 25, box.y + 30);
     await page.waitForTimeout(300);
-
-    /*
-     * COMMIT BY ENTER, NOT BY A SECOND CLICK.
-     *
-     * There are two documented ways out of this phase - a second click
-     * (drawing.js:9859) and Enter (25977) - and both call the same
-     * commit. If Enter works and the click does not, the commit is fine
-     * and the CLICK ROUTING is broken, which is a completely different
-     * bug in a completely different place.
-     */
-    await page.keyboard.press("Enter");
+    await page.mouse.down();
+    await page.waitForTimeout(60);
+    await page.mouse.up();
     await page.waitForTimeout(800);
 
     const after = await read();
@@ -273,16 +275,27 @@ export default async function run(page) {
    * useless - which is how the previous run came back uninformative. So
    * the finding is reduced to a few numbers, on its own, last.
    */
+  /*
+   * NO DOUBLE COMMIT.
+   *
+   * There are two routes out of this phase - a click and Enter - and
+   * both call the same commit. If the click handler also ran on Enter, or
+   * ran twice for one moment, the student would get two moments from one
+   * decision. The count after the two placements above is the check: it
+   * must be exactly 2, not 3 or 4.
+   */
+  out.doubleCommitCheck = {
+    moments: out.atThreeQuarter.momentCount,
+    expected: 2
+  };
+
   out.FINDING = {
-    quarterPhaseAfterFirst: out.phase_quarter,
-    quarterPhaseAfterEnter: out.phaseAfterCommit_quarter,
-    quarterTypesAfterEnter: out.objectTypes_quarter,
-    quarterCountAfterEnter: out.atQuarter.momentCount,
-    threeQuarterCountAfterEnter: out.atThreeQuarter.momentCount,
+    quarterPhaseAfterClick: out.phaseAfterCommit_quarter,
+    quarterTypes: out.objectTypes_quarter,
+    quarterCount: out.atQuarter.momentCount,
+    threeQuarterCount: out.atThreeQuarter.momentCount,
     quarterRecoveredFraction: out.recovered.quarter,
     threeQuarterRecoveredFraction: out.recovered.threeQuarter,
-    quarterPosition: out.atQuarter.moment?.position ?? null,
-    threeQuarterPosition: out.atThreeQuarter.moment?.position ?? null,
     quarterParent: out.atQuarter.moment?.parentId ?? null,
     threeQuarterParent: out.atThreeQuarter.moment?.parentId ?? null
   };
