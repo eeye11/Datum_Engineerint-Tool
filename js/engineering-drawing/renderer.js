@@ -169,23 +169,121 @@
      * and no scale are implied, because those are the solution and the
      * student supplies them.
      */
+    /*
+     * ========================================================
+     * THE ANALYSIS FRAME, IN ONE PLACE
+     * ========================================================
+     *
+     * One set of numbers for all three diagrams and both modes, because
+     * six independently sized frames would mean a student comparing an
+     * SFD with a BMD is comparing two drawing conventions rather than
+     * two results.
+     *
+     * THESE ARE SCREEN PIXELS, and they scale with the zoom so the frame
+     * keeps its proportions at any magnification - a frame drawn at fixed
+     * pixels becomes a stamp at high zoom and swallows the sheet at low.
+     *
+     * THE MARGINS ARE NOT PART OF THE ENGINEERING DOMAIN. The body runs
+     * from `from` to `to`, and that span is what every value is plotted
+     * against. The axis reaching further right is PRESENTATION - it makes
+     * room for the arrowhead and the axis label - and nothing is ever
+     * plotted into that margin, because the curve is mapped by fraction
+     * along `from`-`to` and not along the drawn axis.
+     *
+     * That distinction is the whole reason the margin is safe. Stretching
+     * the plot to fill the axis would silently rescale every value the
+     * student drew against it.
+     */
+    const ANALYSIS_FRAME = {
+        /* The y-axis, above the zero line. */
+        positiveHeightPx: 92,
+
+        /* And below it, so a negative ordinate has somewhere to go. */
+        negativeHeightPx: 46,
+
+        /* How far the x-axis runs past the body's far end. */
+        axisExtensionPx: 46,
+
+        /* The axis arrowhead, and the gap before the axis label. */
+        arrowHeadPx: 7,
+        labelGapPx: 7,
+
+        /* Padding around the frame, and the corner rounding. */
+        paddingPx: 8,
+        radiusPx: 3
+    };
+
+    /* The frame's extents, all in screen pixels from the zero line. */
+    function analysisFrameExtents() {
+        return {
+            top: -ANALYSIS_FRAME.positiveHeightPx,
+            bottom: ANALYSIS_FRAME.negativeHeightPx,
+            right: ANALYSIS_FRAME.axisExtensionPx,
+            arrowHead: ANALYSIS_FRAME.arrowHeadPx,
+            labelGap: ANALYSIS_FRAME.labelGapPx,
+            padding: ANALYSIS_FRAME.paddingPx,
+            radius: ANALYSIS_FRAME.radiusPx
+        };
+    }
+
+    /*
+     * DOES THE STUDENT HAVE PUT ANYTHING ON THIS YET?
+     *
+     * The plot-area highlight appears only once there is something to
+     * highlight. An empty frame with a large tinted region over it reads
+     * as a finished diagram with nothing in it, which is a different
+     * thing from a blank sheet waiting to be worked on.
+     *
+     * Tested rather than assumed, because "has content" has three
+     * independent answers - Plot segments, a sketch, or an in-progress
+     * preview - and a highlight that appeared on any one of them while
+     * another meant "not yet" would flicker.
+     */
+    function analysisHasContent(
+        geometry,
+        interaction
+    ) {
+        if (
+            Array.isArray(geometry.segments) &&
+            geometry.segments.some(
+                segment =>
+                    String(segment?.equation ?? "").trim()
+                        .length > 0
+            )
+        ) {
+            return true;
+        }
+
+        /* A sketch: the student's own lines and arcs on the frame. */
+        if (geometry.sketchContent !== false) {
+            return false;
+        }
+
+        /* A live preview of something not yet committed. */
+        return Boolean(
+            interaction &&
+            Array.isArray(interaction.previewObjects) &&
+            interaction.previewObjects.length
+        );
+    }
+
     const ANALYSIS_DIAGRAM_AXES = {
         sfd: {
             y: "Shear force",
             unit: "kN",
-            x: "Distance along beam",
+            x: "x",
             xUnit: "m"
         },
         bmd: {
             y: "Bending moment",
             unit: "kN·m",
-            x: "Distance along beam",
+            x: "x",
             xUnit: "m"
         },
         afd: {
             y: "Axial force",
             unit: "kN",
-            x: "Distance along member",
+            x: "x",
             xUnit: "m"
         }
     };
@@ -1388,6 +1486,9 @@
                 const from = toScreen(start);
                 const to = toScreen(end);
 
+                const axisTop = Math.min(from.y, to.y);
+                const axisBottom = Math.max(from.y, to.y);
+
                 /*
                  * The background is a fixed SCREEN tint rather
                  * than a world-space region, because it is
@@ -1396,38 +1497,53 @@
                  * further the student zoomed out, which is the
                  * opposite of subordinate.
                  */
-                const background =
-                    createSvgElement("rect", {
-                        x: Math.min(from.x, to.x) - 6,
-                        y: Math.min(
-                            from.y,
-                            to.y
-                        ) - 54,
+                const frame = analysisFrameExtents();
+
+                /*
+                 * THE PLOT-AREA HIGHLIGHT, ONLY ONCE THERE IS SOMETHING
+                 * TO HIGHLIGHT.
+                 *
+                 * It used to be drawn unconditionally, which made an empty
+                 * frame look like a finished diagram with nothing in it.
+                 * A blank sheet waiting to be worked on and a completed
+                 * diagram with a zero curve are different things, and the
+                 * student should not have to open the model to tell them
+                 * apart.
+                 */
+                const highlighted =
+                    geometry.backgroundVisible !== false &&
+                    analysisHasContent(
+                        geometry,
+                        state.interaction
+                    );
+
+                let background = null;
+
+                if (highlighted) {
+                    background = createSvgElement("rect", {
+                        x:
+                            Math.min(from.x, to.x) -
+                            frame.padding,
+                        y: axisTop + frame.top,
                         width:
-                            Math.abs(
-                                to.x - from.x
-                            ) + 12,
-                        height: 108,
-                        rx: 3,
+                            Math.abs(to.x - from.x) +
+                            frame.right +
+                            frame.padding * 2,
+                        height:
+                            frame.top +
+                            frame.bottom +
+                            frame.padding * 2,
+                        rx: frame.radius,
                         fill: tint,
                         "fill-opacity": 0.1,
                         stroke: "none"
                     });
 
-                if (geometry.backgroundVisible === false) {
                     /*
-                     * Not created at all, rather than created and
-                     * removed: the background is the largest thing a
-                     * diagram draws, and building a node to throw it
-                     * away on every frame would be work for nothing.
-                     */
-                } else {
-                    /*
-                     * `pointer-events: none`: the template is a
-                     * reference, so the cursor passes straight through
-                     * it to whatever is drawn on top. A background
-                     * that swallowed clicks would make the lines above
-                     * it very hard to pick.
+                     * `pointer-events: none` either way. The highlight is
+                     * never the thing being aimed at - the axes and the
+                     * curve are - so it must not swallow a click meant for
+                     * them, and must not be pickable itself.
                      */
                     background.setAttribute(
                         "pointer-events",
@@ -1448,11 +1564,31 @@
                 if (
                     geometry.showZeroAxis !== false
                 ) {
+                    /*
+                     * THE ZERO AXIS RUNS PAST THE BODY.
+                     *
+                     * It is drawn from the body's near end to a little
+                     * beyond its far end, and finished with an arrowhead.
+                     * Without the extension the axis stops exactly where
+                     * the member does, which reads as "the diagram ends
+                     * here" rather than "the beam ends here" - and leaves
+                     * nowhere to put the axis label without it sitting on
+                     * top of the beam's end.
+                     *
+                     * THE EXTENSION IS NOT ENGINEERING DOMAIN. `to` stays
+                     * the body's far end, so every value is still plotted
+                     * against the member and nothing is drawn into the
+                     * margin beyond it.
+                     */
+                    const axisEndX =
+                        (from.x <= to.x ? to.x : to.x) +
+                        frame.right;
+
                     const zeroAxis =
                         createSvgElement("line", {
                             x1: from.x,
                             y1: from.y,
-                            x2: to.x,
+                            x2: axisEndX,
                             y2: to.y,
                             stroke,
                             "stroke-width":
@@ -1468,6 +1604,34 @@
                     );
 
                     svg.appendChild(zeroAxis);
+
+                    /*
+                     * THE AXIS ARROWHEAD, POINTING POSITIVE x.
+                     *
+                     * Built from the axis's OWN direction - it always runs
+                     * left to right, because it is drawn from the near
+                     * end to the extension - rather than from a guessed
+                     * angle, so it cannot come out backwards for a member
+                     * drawn right to left.
+                     */
+                    const arrowTipX = axisEndX;
+
+                    const head = createSvgElement("path", {
+                        d:
+                            `M ${arrowTipX} ${to.y}` +
+                            ` L ${arrowTipX - frame.arrowHead} ${to.y - frame.arrowHead / 2}` +
+                            ` L ${arrowTipX - frame.arrowHead} ${to.y + frame.arrowHead / 2}`,
+                        fill: stroke,
+                        "fill-opacity": 0.55,
+                        stroke: "none"
+                    });
+
+                    head.setAttribute(
+                        "pointer-events",
+                        "none"
+                    );
+
+                    svg.appendChild(head);
                 }
 
                 /*
@@ -1589,20 +1753,29 @@
                         Math.min(from.x, to.x);
 
                     /*
-                     * The vertical axis arrow, drawn from the zero
-                     * line up to the top of the region the student is
-                     * expected to use. It gives the ordinate a
-                     * direction, which a bare label on a bare line does
-                     * not: without it, a diagram could be read as
-                     * decreasing upward as easily as increasing.
+                     * THE VERTICAL AXIS RUNS BOTH WAYS.
+                     *
+                     * It used to be drawn from the zero line upwards
+                     * only, which left a negative shear or moment with
+                     * nowhere to go - the very quantities these diagrams
+                     * exist to show are the ones that change sign. So it
+                     * extends below the baseline as well, by the shared
+                     * frame's negative height.
+                     *
+                     * The arrow is still on the POSITIVE end only: a
+                     * two-headed vertical axis would say the ordinate has
+                     * two positive directions.
                      */
                     const arrowTop =
-                        axisTop - 58;
+                        axisTop + frame.top;
+
+                    const arrowBottom =
+                        axisTop + frame.bottom;
 
                     const axisArrow =
                         createSvgElement("path", {
                             d:
-                                `M ${axisLeft} ${axisTop - 4}` +
+                                `M ${axisLeft} ${arrowBottom}` +
                                 ` L ${axisLeft} ${arrowTop}`,
                             fill: "none",
                             stroke,
@@ -1643,7 +1816,9 @@
                     const yName =
                         createSvgElement("text", {
                             x: axisLeft - 5,
-                            y: axisTop - 20,
+                            y:
+                                axisTop +
+                                frame.top / 2,
                             "font-size": 8,
                             fill: stroke,
                             "fill-opacity": 0.75,
@@ -1656,7 +1831,9 @@
                              * there, and "Bending moment" is not.
                              */
                             transform:
-                                `rotate(-90 ${axisLeft - 5} ${axisTop - 20})`,
+                                `rotate(-90 ${
+                                    axisLeft - 5
+                                } ${axisTop + frame.top / 2})`,
                             "text-anchor": "middle"
                         });
 
@@ -1670,14 +1847,31 @@
 
                     svg.appendChild(yName);
 
+                    /*
+                     * THE X-AXIS LABEL, AT THE END OF THE AXIS.
+                     *
+                     * It used to sit under the middle of the axis and
+                     * read "Distance along beam". Both are wrong for a
+                     * reader: the middle of the axis is where the
+                     * diagram is, not where its name belongs, and the
+                     * axis is an axis, so it takes the symbol and the
+                     * unit the rest of the drawing uses - "x (m)".
+                     *
+                     * Placed just beyond the arrowhead, so it labels the
+                     * direction the arrow points in.
+                     */
                     const xName =
                         createSvgElement("text", {
-                            x: (from.x + to.x) / 2,
-                            y: axisTop + 13,
+                            x:
+                                (from.x <= to.x ? to.x : from.x) +
+                                frame.right +
+                                frame.arrowHead +
+                                frame.labelGap,
+                            y: to.y + 3,
                             "font-size": 8,
                             fill: stroke,
                             "fill-opacity": 0.75,
-                            "text-anchor": "middle"
+                            "text-anchor": "start"
                         });
 
                     xName.setAttribute(

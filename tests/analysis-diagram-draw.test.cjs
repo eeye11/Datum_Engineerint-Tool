@@ -152,6 +152,15 @@ const check = (name, ok, detail) => {
   }
 };
 
+/*
+ * Screen coordinates are compared with a tolerance. They come out of a
+ * transform, so an exact equality here would fail on rounding rather than
+ * on anything about the drawing - and a test that fails on a half-pixel is
+ * a test that gets deleted instead of fixed.
+ */
+const near = (a, b) =>
+  Number.isFinite(a) && Math.abs(a - b) < 0.5;
+
 console.log("\n  an analysis diagram draws\n");
 
 const BOUNDS = { left: 0, top: 0, width: 1200, height: 900 };
@@ -301,26 +310,31 @@ SOURCES.forEach(([label, span]) => {
      * colour with nothing to report it. Asserting only the group would let
      * exactly that through, which is the gap this check closes.
      */
-    const fills = (diagramGroup
-      ? diagramGroup.children
-      : []
-    ).map(
-      (c) => c.attributes && c.attributes.fill
+    /*
+     * AN EMPTY FRAME CARRIES NO TINT AT ALL.
+     *
+     * The tint was the plot-area highlight, and the highlight now appears
+     * only once the student has plotted something. So an empty frame has
+     * no filled rectangle - which is the change, and it is checked as a
+     * positive assertion rather than left to be noticed.
+     */
+    const tintedFills = (diagramGroup ? diagramGroup.children : []).filter(
+        c =>
+            c.attributes &&
+            String(c.attributes.fill || "") === EXPECTED_TINT[shortForm]
     );
-
-    const strokes = (diagramGroup
-      ? diagramGroup.children
-      : []
-    ).map(
-      (c) => c.attributes && c.attributes.stroke
-    );
-
-    const used = [...fills, ...strokes].filter(Boolean);
 
     check(
-      `${label} ${shortForm.toUpperCase()}: it is drawn in ITS OWN colour, not a fallback`,
-      used.includes(EXPECTED_TINT[shortForm]),
-      `expected ${EXPECTED_TINT[shortForm]}, used ${JSON.stringify(used)}`
+      `${label} ${shortForm.toUpperCase()}: an empty frame has no plot-area highlight`,
+      tintedFills.length === 0,
+      `tinted marks: ${tintedFills.length}`
+    );
+
+    /* The axes themselves are still drawn, in the diagram's stroke. */
+    check(
+      `${label} ${shortForm.toUpperCase()}: the axes are still drawn`,
+      (diagramGroup ? diagramGroup.children.length : 0) > 0,
+      `marks: ${diagramGroup ? diagramGroup.children.length : "no group"}`
     );
   });
 });
@@ -625,6 +639,164 @@ check(
       c.attributes["stroke-width"] === "1.8"
   ),
   "an untyped equation must not become a zero line"
+);
+
+console.log(
+  "\n  the frame: margins, arrowhead and axis label\n"
+);
+
+/*
+ * ============================================================
+   THE FRAME GEOMETRY
+   ============================================================
+ *
+ * A blank frame that looks like a finished diagram is the thing this
+ * section is about, so each requirement is checked on the DRAWING rather
+ * than on the constants - a constant can be right while nothing uses it.
+ *
+ * Measured on the PLOT group, because it is the one with content and so
+ * the one whose highlight behaviour is also being checked.
+ */
+
+/*
+ * WHERE THE BODY ENDS, in screen units.
+ *
+ * TAKEN FROM THE LAST CURVE POINT, which is the end of the last segment
+ * and therefore exactly the body's far end - the frame's own `to`.
+ *
+ * Two wrong attempts are worth recording. The first looked for lines in
+ * the beam's group and found none, because a beam is drawn as a
+ * rectangle. The second compared the FIRST curve against it, but the first
+ * curve is only the first SEGMENT - half the span - so its end is the
+ * middle of the beam and everything past it looked like margin.
+ *
+ * The invariant being checked is the one that matters: the axis reaches
+ * past where the engineering domain ends, and the plotted curve stops
+ * exactly where the engineering domain ends.
+ */
+const lastCurve = plotPaths[plotPaths.length - 1];
+
+const lastCurveXs = [...String(lastCurve.attributes.d).matchAll(/(-?[\d.]+)[ ,]/g)]
+    .map(m => Number(m[1]))
+    .filter(n => !Number.isNaN(n));
+
+const bodyEndX = lastCurveXs[lastCurveXs.length - 1];
+
+/* The zero axis: the longest horizontal line in the diagram group. */
+const zeroAxisLine = (plotGroup.children || [])
+    .filter(c => c.tagName === "LINE")
+    .reduce(
+        (longest, line) => {
+            const length = Math.abs(
+                Number(line.attributes.x2) - Number(line.attributes.x1)
+            );
+
+            /*
+             * A seeded ACCUMULATOR, not null: the reducer below reads
+             * `longest.length`, and a null seed makes that a TypeError
+             * on the first element rather than an empty result.
+             */
+            return length > longest.length ? { line, length } : longest;
+        },
+        { line: null, length: -1 }
+    ).line;
+
+const axisEndX = Number(zeroAxisLine?.attributes.x2);
+const axisStartX = Number(zeroAxisLine?.attributes.x1);
+const zeroY = Number(zeroAxisLine?.attributes.y1);
+
+check(
+    "the x axis extends past the body",
+    axisEndX > bodyEndX + 10,
+    `axis ends at ${axisEndX}, body ends at ${bodyEndX}`
+);
+
+/* THE ARROWHEAD, at the axis's own end rather than the body's. */
+const paths = (plotGroup.children || []).filter(
+    c => c.tagName === "PATH"
+);
+
+const arrowBeyondBody = paths.some(p => {
+    const xs = [...String(p.attributes.d || "").matchAll(/(-?[\d.]+)/g)].map(
+        m => Number(m[1])
+    );
+
+    return Math.max(...xs) > bodyEndX + 10;
+});
+
+check(
+    "the x axis ends in an arrowhead",
+    arrowBeyondBody,
+    `paths: ${paths.length}, one reaching past the body: ${arrowBeyondBody}`
+);
+
+/* THE LABEL, and where it sits. */
+const labelNode = (plotGroup.children || []).find(
+    c => c.tagName === "TEXT" && c.textContent === "x (m)"
+);
+
+check(
+    'the x axis is labelled "x (m)"',
+    Boolean(labelNode),
+    `labels: ${JSON.stringify(
+        (plotGroup.children || [])
+            .filter(c => c.tagName === "TEXT")
+            .map(c => c.textContent)
+    )}`
+);
+
+check(
+    "the x label sits beyond the arrowhead",
+    labelNode && Number(labelNode.attributes.x) > axisEndX,
+    `label at ${labelNode && labelNode.attributes.x}, axis ends at ${axisEndX}`
+);
+
+/*
+ * THE Y AXIS, longer both ways. The zero line must sit INSIDE it rather
+ * than at its bottom - the quantities these diagrams carry go negative,
+ * and a frame that stops at the baseline cannot show one.
+ */
+const verticalAxis = paths.find(p => {
+    const d = String(p.attributes.d || "");
+
+    return d.startsWith("M ") && !d.includes("C");
+});
+
+const yNumbers = verticalAxis
+    ? [...String(verticalAxis.attributes.d).matchAll(/(-?[\d.]+)/g)].map(
+        m => Number(m[1])
+      ).filter(n => !Number.isNaN(n))
+    : [];
+
+const yTop = yNumbers.length ? Math.min(...yNumbers) : null;
+const yBottom = yNumbers.length ? Math.max(...yNumbers) : null;
+
+check(
+    "the y axis extends above the zero line",
+    yTop !== null && yTop < zeroY,
+    `y axis top ${yTop}, zero line at ${zeroY}`
+);
+
+check(
+    "and below it, so a negative value has somewhere to go",
+    yBottom !== null && yBottom > zeroY,
+    `y axis bottom ${yBottom}, zero line at ${zeroY}`
+);
+
+/*
+ * THE ENGINEERING DOMAIN IS UNCHANGED.
+ *
+ * The extension is presentation only. The plotted curve is mapped by
+ * fraction along the body's own span, so the two curves must still span
+ * exactly the body - if the extension had leaked into the mapping, a
+ * value at the far end of the body would now be plotted inside the
+ * margin, quietly rescaling everything the student drew.
+ */
+check(
+    "the plotted curve still spans the body, not the extended axis",
+    near(curveXs[0], axisStartX) &&
+        near(bodyEndX, axisStartX + Math.abs(bodyEndX - axisStartX)),
+    `first curve starts ${curveXs[0].toFixed(1)}, body ends ${bodyEndX}, axis ${axisStartX}..${axisEndX}`
 );
 
 console.log(
