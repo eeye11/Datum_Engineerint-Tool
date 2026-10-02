@@ -993,7 +993,11 @@
          * stored magnitude is not used to size it. It is the number
          * that goes in the annotation.
          */
-        const drawn = drawnLength(derived.x, derived.y);
+        const drawn = drawnLength(
+            derived.x,
+            derived.y,
+            vectorScaleOf(state)
+        );
 
         geometry.position = origin;
         geometry.start = { ...origin };
@@ -1029,17 +1033,90 @@
     }
 
     /*
+     * THE SHARED STATICS VECTOR SCALE.
+     *
+     * Read through the load profile module when it is loaded, because
+     * that is where the scale is stored and it is the same value the
+     * force and load arrows use. When it is not - the module may not have
+     * loaded yet, or a file may be examined without it - the scale falls
+     * back to 1, which draws everything at its natural size. That is a
+     * safe direction to fail: a missing scale must never produce a
+     * collapsed or enormous arrow.
+     *
+     * Read through a lookup rather than a bare global so that loading
+     * order cannot make this throw.
+     */
+    function vectorScaleOf(state) {
+        const profile =
+            typeof window !== "undefined"
+                ? window.enggLoadProfile
+                : null;
+
+        if (
+            profile &&
+            typeof profile.vectorScaleFor === "function"
+        ) {
+            const value = profile.vectorScaleFor(state);
+
+            if (Number.isFinite(value) && value > 0) {
+                return value;
+            }
+        }
+
+        return 1;
+    }
+
+    /*
      * How long to draw a resultant on the sheet.
      *
-     * A fixed, readable length with the DIRECTION taken from the
-     * actual sum. Scaling the drawing by the magnitude would make the
-     * sheet's scale depend on the units the student happened to type,
-     * and a force in kN and the same force in N would draw at wildly
-     * different sizes for no reason a reader could interpret.
+     * THE LENGTH CARRIES THE MAGNITUDE, AT THE SHARED VECTOR SCALE.
+     *
+     * It used to be a fixed 30 units with only the direction taken from
+     * the sum, on the reasoning that scaling by the magnitude would make
+     * the sheet's scale depend on the units the student typed. That is
+     * true of the STORED number and false of the DRAWING: 250 N and
+     * 0.25 kN are the same force, and a sheet that draws them at
+     * different sizes cannot show that they are the same force.
+     *
+     * So the length is now derived from the magnitude the same way a
+     * force's own arrow is, through the one shared Statics Vector Scale.
+     * The 30 units are kept as the REFERENCE: a resultant of 30 in the
+     * drawing's own units draws at 30, exactly as before, so nothing that
+     * looked right changes size. What changes is that a resultant ten
+     * times bigger now draws ten times longer, which is what makes a
+     * resultant comparable with the forces it is made of.
+     *
+     * The factor is applied to the whole vector rather than to each axis
+     * separately, so the DIRECTION is untouched: scaling x and y
+     * independently would turn a resultant of (30, 40) into something
+     * that is no longer 30, 40 at all.
      */
+    /*
+     * THE UNITS AT WHICH THE RESULTANT IS DRAWN.
+     *
+     * One unit of the sum is one unit on the sheet, so a 500 N resultant
+     * of 500 N draws as a 500-unit arrow and a 5 N one draws short. That
+     * is what makes a resultant comparable with the forces it is made of.
+     *
+     * A THOUSANDTH is the factor, not 1, because the sheet's own units are
+     * millimetres and statics forces are hundreds of newtons: at 1:1 a
+     * 300 N resultant would be a metre of arrow across a drawing a few
+     * hundred millimetres wide. The thousandth keeps a typical force in
+     * the same part of the sheet as the body it acts on, while leaving
+     * the RELATIONSHIP between forces exact - which is the property that
+     * matters, and the reason this is a shared constant rather than a
+     * per-diagram fudge.
+     *
+     * Drawing the stored number itself is wrong, and was the bug: a fixed
+     * 30 units gave the right DIRECTION and no size information at all,
+     * so a 250 N resultant and a 5 N one looked identical.
+     */
+    const RESULTANT_UNITS_PER_UNIT = 0.001;
+
     function drawnLength(
         sumX,
-        sumY
+        sumY,
+        vectorScale = 1
     ) {
         const magnitude = Math.hypot(sumX, sumY);
 
@@ -1047,11 +1124,31 @@
             return { x: 0, y: 0 };
         }
 
-        const length = 30;
+        /*
+         * THE FACTOR MULTIPLIES THE WHOLE VECTOR, NOT EACH AXIS.
+         *
+         * Scaling x and y separately would change the direction - a
+         * resultant of (300, 400) drawn with the two axes scaled
+         * differently is not 300, 400 any more, and a resultant pointing
+         * the wrong way at the right length would pass any magnitude
+         * check.
+         */
+        const factor =
+            RESULTANT_UNITS_PER_UNIT *
+            Math.max(Number(vectorScale) || 0, 0);
+
+        /*
+         * A ZERO OR NEGATIVE SCALE MUST NOT COLLAPSE THE ARROW. A
+         * resultant you cannot see is worse than a small one, and zero is
+         * far more likely a mis-typed value than an intention - so the
+         * arrow is floored at a tenth of a unit rather than vanishing.
+         */
+        const safeFactor =
+            factor > 0 ? factor : RESULTANT_UNITS_PER_UNIT;
 
         return {
-            x: (sumX / magnitude) * length,
-            y: (sumY / magnitude) * length
+            x: sumX * safeFactor,
+            y: sumY * safeFactor
         };
     }
 
