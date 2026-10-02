@@ -25309,14 +25309,65 @@ function commitStaticsAttachment(
         type === "fixed-support" ||
         type === "smooth-support"
     ) {
+        /*
+         * ========================================================
+         * A FIXED SUPPORT IS BUILT INTO AN END, AND ONLY AN END
+         * ========================================================
+         *
+         * A pin, a roller and a smooth support can sit anywhere along a
+         * member, because each restrains one DOF wherever it is built
+         * in. A fixed support is different in kind: it restrains EVERY
+         * DOF at the point it is built into, so one built into the
+         * middle of a member restrains that member at three places and
+         * makes it indeterminate in a way the student never drew. The
+         * member on the sheet is then not the member being modelled.
+         *
+         * So the point is SNAPPED to whichever end is nearer, and the
+         * support is placed there. Snapping rather than refusing: a
+         * student clicking near an end means that end, and "no" would be
+         * a worse answer than the nearest thing they wanted.
+         *
+         * ONLY the fixed support is treated this way. Making every
+         * support endpoint-only would break the commonest case in
+         * statics - a roller under the middle of a simply supported
+         * beam - so the shared placement must keep behaving exactly as
+         * it did.
+         *
+         * The point is snapped HERE rather than inside the factory
+         * because the factory is shared by all four supports and has no
+         * business knowing which of them has a placement rule. Snapping
+         * the point going in keeps the rule with the rule and leaves the
+         * factory a pure function of its arguments.
+         */
+        const supportPoint =
+            type === "fixed-support" && body
+                ? nearestBodyEnd(body, start)
+                : start;
+
+        const snappedToEnd =
+            supportPoint !== start;
+
         object =
             enggDrawingState.geometryFactories[type](
-                start,
+                supportPoint,
                 staticsAttachedStyle(
                     toolId,
                     body
                 )
             );
+
+        if (snappedToEnd) {
+            /*
+             * THE STUDENT IS TOLD, because the click and the result
+             * disagree. Silence would leave a support somewhere they did
+             * not put it, and the only clue would be an analysis that
+             * does not match their own drawing.
+             */
+            setToolMessage(
+                "A fixed support must be built into an end of the " +
+                    "body, so it was placed at the nearest end"
+            );
+        }
     } else if (isConnectionType(type)) {
         object =
             enggDrawingState.geometryFactories[type](
@@ -25403,6 +25454,75 @@ function commitStaticsAttachment(
  * It is the same record every other Statics feature gets, so
  * an attached feature is identified exactly like a free one.
  */
+/*
+ * ========================================================
+ * NEAREST BODY END
+ * ========================================================
+ *
+ * Which end of a body is nearer a point, as a point ON that body.
+ *
+ * Used only for the Fixed Support, which may be built into an end and not
+ * a midpoint. The comparison is made along the body's own centreline
+ * rather than in screen space, so a member drawn at an angle is handled
+ * correctly and the result does not change with the zoom.
+ *
+ * The body is read through the shared frame helper, so a body with any
+ * stored members - a truss, a cable - is measured the same way a plain
+ * beam is, instead of this needing to know what a beam looks like.
+ *
+ * The ORIGINAL point is returned when it already sits at an end, and when
+ * the body cannot be measured at all, because snapping a support to a
+ * guessed end is worse than leaving the student's own point alone.
+ */
+function nearestBodyEnd(
+    body,
+    point
+) {
+    const frame = enggBodyFrames.frameOf(body);
+
+    if (!frame || !(frame.length > 0)) {
+        return point;
+    }
+
+    const placement =
+        enggBodyFrames.supportPlacement(
+            body,
+            point,
+            false
+        );
+
+    if (!placement) {
+        return point;
+    }
+
+    const distance = placement.distance ?? 0;
+
+    const length = frame.length;
+
+    /*
+     * Already at an end, or so close that moving it would be a
+     * rounding artefact rather than a correction. Left exactly as the
+     * student placed it, so a support deliberately drawn on a corner
+     * does not get nudged off it.
+     */
+    if (
+        distance <= 1e-6 ||
+        distance >= length - 1e-6
+    ) {
+        return point;
+    }
+
+    const nearerEndDistance =
+        length - distance < distance ? length : 0;
+
+    return (
+        enggBodyFrames.pointAt(
+            frame,
+            nearerEndDistance
+        ) || point
+    );
+}
+
 function staticsAttachedStyle(
     toolId,
     body

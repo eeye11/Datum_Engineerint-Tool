@@ -40,6 +40,8 @@ export default async function run(page) {
         var api = window.enggDrawingState;
         var original = api.addObject;
 
+        window.__supportProbe = [];
+
         api.addObject = function (state) {
           captured = state;
           return original.apply(this, arguments);
@@ -51,6 +53,7 @@ export default async function run(page) {
             tool: captured.activeTool,
             phase:
               captured.interaction && captured.interaction.phase,
+            supportProbe: window.__supportProbe,
             interaction: captured.interaction,
             objects: (captured.objects || []).map(function (o) {
               return {
@@ -263,22 +266,13 @@ export default async function run(page) {
    * useless.
    */
   out.FINDING = {
-    pinACount: out.pinAtAThird.count,
-    pinBCount: out.pinAtTwoThirds.count,
-    rollerCount: out.rollerAtHalf.count,
-    fixedCount: out.fixedAtThird.count,
-    pinAClicked: 0.33,
-    pinARecovered: out.recovered.pinA,
-    pinBClicked: 0.67,
-    pinBRecovered: out.recovered.pinB,
-    rollerClicked: 0.5,
-    rollerRecovered: out.recovered.roller,
-    fixedClicked: 0.33,
+    supportProbe: (await read()).supportProbe,
     fixedRecovered: out.recovered.fixed,
-    pinAParent: out.pinAtAThird.support?.parentId ?? null,
-    rollerParent: out.rollerAtHalf.support?.parentId ?? null,
-    fixedParent: out.fixedAtThird.support?.parentId ?? null,
-    beamId: beam.id
+    fixedCount: out.fixedAtThird.count,
+    pinARecovered: out.recovered.pinA,
+    pinBRecovered: out.recovered.pinB,
+    rollerRecovered: out.recovered.roller,
+    fixedParent: out.fixedAtThird.support?.parentId ?? null
   };
 
   return out;
