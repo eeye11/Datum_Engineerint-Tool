@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN THE HISTORY TAKE THE SHEETS WITH IT?
@@ -29,16 +36,10 @@
  *      throws must not be able to stop a feature being placed, because
  *      history is a convenience and drawing is the product.
  */
-const fs = require("fs");
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
-const drawingDir = path.join(
-  projectRoot,
-  "js",
-  "engineering-drawing",
-);
+const drawingDir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -56,7 +57,7 @@ const check = (name, ok, detail) => {
 };
 
 const read = name =>
-  fs.readFileSync(path.join(drawingDir, name), "utf8");
+  fs.readFileSync(locate(name), "utf8");
 
 const drawingSource = read("drawing.js");
 const sheetsSource = read("sheets.js");
@@ -149,7 +150,7 @@ global.window.crypto = {
   randomUUID: () => "test-uuid",
 };
 
-require(path.join(drawingDir, "drawing-state.js"));
+require(locate("drawing-state.js"));
 
 const S = global.window.enggDrawingState;
 

@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The Annotation model, tested directly.
  *
@@ -8,10 +12,11 @@
  *
  * Pure module, so it is exercised in Node.
  */
+
 global.window = { crypto: { randomUUID: () => "annotation-uuid" } };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
 
 global.window.enggDrawingState = {
   polygonVertices: () => []
@@ -20,7 +25,7 @@ global.window.enggFeatureGeometry = {
   rectangleCorners: () => []
 };
 
-require("../js/engineering-drawing/annotation-model.js");
+require(modulePath("annotation-model.js"));
 
 const model = global.window.enggAnnotationModel;
 

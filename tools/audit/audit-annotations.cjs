@@ -23,7 +23,11 @@ const F = h.state.geometryFactories;
 function stateWith(objects) {
   return {
     objects,
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -32,7 +36,9 @@ function stateWith(objects) {
   };
 }
 
-console.log("\n== A magnitude annotation reads its source, and carries a unit ==\n");
+console.log(
+  "\n== A magnitude annotation reads its source, and carries a unit ==\n",
+);
 
 {
   const force = F.force({ x: 0, y: 0 }, { x: 0, y: -100 });
@@ -49,7 +55,11 @@ console.log("\n== A magnitude annotation reads its source, and carries a unit ==
   const state = stateWith([force, annotation]);
   const text = A.textFor(annotation, state);
 
-  check("the annotation has text", Boolean(text), `got ${JSON.stringify(text)}`);
+  check(
+    "the annotation has text",
+    Boolean(text),
+    `got ${JSON.stringify(text)}`,
+  );
   check(
     "the text carries the engineering unit",
     /\bN\b/.test(String(text)),
@@ -139,7 +149,9 @@ console.log("\n== The annotation does NOT own the engineering value ==\n");
   );
 }
 
-console.log("\n== Deleting the source leaves the annotation explicitly unresolved ==\n");
+console.log(
+  "\n== Deleting the source leaves the annotation explicitly unresolved ==\n",
+);
 
 {
   const force = F.force({ x: 0, y: 0 }, { x: 0, y: -100 });
@@ -177,7 +189,9 @@ console.log("\n== A moment annotation carries a moment unit ==\n");
 
   check(
     "the moment annotation reads a value with its unit",
-    Boolean(text) && !/NaN|undefined/.test(String(text)) && !String(text).includes("~"),
+    Boolean(text) &&
+      !/NaN|undefined/.test(String(text)) &&
+      !String(text).includes("~"),
     `got ${JSON.stringify(text)}`,
   );
 }

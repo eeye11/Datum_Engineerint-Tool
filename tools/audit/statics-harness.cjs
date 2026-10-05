@@ -11,7 +11,7 @@ const path = require("path");
 const { JSDOM } = require("jsdom");
 
 const projectRoot = path.join(__dirname, "..", "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const { locate } = require("../../tests/helpers/source-path.cjs");
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -38,7 +38,7 @@ const LOAD = [
 ];
 
 for (const name of LOAD) {
-  require(path.join(dir, name));
+  require(locate(name));
 }
 
 for (const name of [
@@ -59,7 +59,15 @@ for (const name of [
 
 module.exports = {
   dom,
-  dir,
+  /*
+   * The source lookup, not a directory.
+   *
+   * This used to be `dir` - one flat folder under js/ - and a consumer
+   * did path.join(dir, "x.js"). The sources are organised by ownership
+   * now, so the harness hands out the LOOKUP instead: locate("x.js") is
+   * the same call shape and finds the file wherever it lives.
+   */
+  locate,
   state: global.window.enggDrawingState,
   renderer: global.window.enggDrawingRenderer,
   deps: global.window.enggAnalysisDependencies,

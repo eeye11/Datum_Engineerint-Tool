@@ -1,3 +1,8 @@
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE DISTRIBUTED LOAD CREATION WORKFLOW
@@ -21,11 +26,10 @@
  * exist, that each has an instruction of its own, and that nothing commits
  * before the last one.
  */
-const fs = require("fs");
-const path = require("path");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -41,12 +45,12 @@ const check = (name, ok, detail) => {
 };
 
 const source = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
 const stateSource = fs.readFileSync(
-  path.join(dir, "drawing-state.js"),
+  locate("drawing-state.js"),
   "utf8",
 );
 

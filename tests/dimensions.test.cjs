@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The document scale, tested directly.
  *
@@ -8,8 +12,9 @@
  * never rewritten, and that a value survives the round trip through
  * the conversion without drift.
  */
+
 global.window = {};
-require("../js/engineering-drawing/dimensions.js");
+require(modulePath("dimensions.js"));
 const d = global.window.enggDimensions;
 
 let pass = 0;

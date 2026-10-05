@@ -1,3 +1,11 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE PLOT EDITOR SAY WHAT A STUDENT NEEDS?
@@ -25,7 +33,7 @@
  *     picture that is stale - the failure mode of removing the button
  *     without adding the live update.
  */
-const { JSDOM } = require("jsdom");
+
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -40,9 +48,6 @@ global.document = dom.window.document;
  * editor draws through the SAME marks the sheet uses - a stub would make
  * that true by construction and prove nothing.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -50,7 +55,7 @@ global.window.enggDiagramEquations = undefined;
 
 vm.runInThisContext(
   fs.readFileSync(
-    path.join(projectRoot, "js", "engineering-drawing", "diagram-equations.js"),
+    locate("diagram-equations.js"),
     "utf8",
   ),
   { filename: "diagram-equations.js" },
@@ -62,7 +67,7 @@ const rendererDom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 const rendererSource = fs.readFileSync(
-  path.join(projectRoot, "js", "engineering-drawing", "renderer.js"),
+  locate("renderer.js"),
   "utf8",
 );
 
@@ -90,7 +95,7 @@ global.window.enggDrawingRenderer = { analysisPlotMarks };
 
 vm.runInThisContext(
   fs.readFileSync(
-    path.join(projectRoot, "js", "engineering-drawing", "plot-editor.js"),
+    locate("plot-editor.js"),
     "utf8",
   ),
   { filename: "plot-editor.js" },

@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A REVERSED LOAD KEEP ITS OUTLINE?
@@ -40,8 +46,7 @@
  * the outline polygon, before and after a reversal. Reading the model
  * cannot catch a bug that is in how the model is drawn.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -85,11 +90,7 @@ for (const name of [
 ]) {
   try {
     require(
-      path.join(
-        projectRoot,
-        "js",
-        "engineering-drawing",
-        name,
+      locate(name,
       ),
     );
   } catch (error) {

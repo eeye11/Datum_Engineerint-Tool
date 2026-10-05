@@ -62,7 +62,7 @@ export default async function run(page) {
     step: "beam",
     rows: await page.evaluate(() =>
       [...document.querySelectorAll(".drawing-component-row")].map((r) =>
-        r.textContent.replace(/\s+/g, " ").trim()
+        r.textContent.replace(/\s+/g, " ").trim(),
       ),
     ),
   });
@@ -78,8 +78,8 @@ export default async function run(page) {
   out.steps.push({
     step: "statics tools",
     ids: await page.evaluate(() =>
-      [...document.querySelectorAll(".drawing-tool")].map((b) =>
-        b.dataset.toolId
+      [...document.querySelectorAll(".drawing-tool")].map(
+        (b) => b.dataset.toolId,
       ),
     ),
   });
@@ -121,7 +121,7 @@ export default async function run(page) {
     status: await status(),
     rows: await page.evaluate(() =>
       [...document.querySelectorAll(".drawing-component-row")].map((r) =>
-        r.textContent.replace(/\s+/g, " ").trim()
+        r.textContent.replace(/\s+/g, " ").trim(),
       ),
     ),
   });

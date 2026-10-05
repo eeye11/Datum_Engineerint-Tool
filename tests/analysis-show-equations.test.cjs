@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * SHOW EQUATIONS
@@ -17,11 +23,10 @@
  * label; stacking them in one corner would put two on top of each other and
  * leave a third describing nothing.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -61,7 +66,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(path.join(dir, name));
+  require(locate(name));
 }
 
 /*

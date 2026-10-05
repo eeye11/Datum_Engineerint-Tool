@@ -14,7 +14,7 @@ const path = require("path");
 const { JSDOM } = require("jsdom");
 
 const projectRoot = path.join(__dirname, "..", "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const { locate } = require("../../tests/helpers/source-path.cjs");
 
 let pass = 0;
 let fail = 0;

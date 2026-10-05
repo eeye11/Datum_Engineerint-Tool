@@ -29,11 +29,7 @@ const labels = h.profile.VECTOR_SCALE_OPTIONS.map((o) => o.label);
 
 console.log("  implementation offers:", values.join(", "));
 
-check(
-  "1.0x is available",
-  values.includes(1),
-  values.join(", "),
-);
+check("1.0x is available", values.includes(1), values.join(", "));
 check(
   "the specification's four multipliers are all present",
   [0.25, 0.5, 2, 4].every((v) => values.includes(v)),

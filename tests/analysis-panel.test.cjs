@@ -1,3 +1,9 @@
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * WHAT THE FEATURES PANEL NOW SAYS ABOUT A PLOT
@@ -17,9 +23,7 @@
  * panel's own builder out of the source and running it against a real
  * analysis diagram.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -39,7 +43,7 @@ const check = (name, ok, detail) => {
 };
 
 const drawingSource = fs.readFileSync(
-  path.join(projectRoot, "js", "engineering-drawing", "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -52,11 +56,7 @@ const drawingSource = fs.readFileSync(
 global.window = {};
 
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "diagram-equations.js",
+  locate("diagram-equations.js",
   ),
 );
 

@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * A green outline of an analysis graph survives a move and a delete.
  *
@@ -13,8 +19,7 @@
  * This counts analysis features and their plotted marks before and after a
  * move and a delete.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -58,7 +63,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(path.join(projectRoot, "js", "engineering-drawing", name));
+  require(locate(name));
 }
 
 for (const name of Object.keys(global.window)) {

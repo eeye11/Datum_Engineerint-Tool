@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The zoom sanitiser, tested directly.
  *
@@ -9,8 +13,9 @@
  * of the displayed percentage, which quietly made every zoom between
  * 25% and 500% unreachable and made the zoom buttons do nothing at all.
  */
+
 global.window = {};
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("drawing-state.js"));
 const state = global.window.enggDrawingState;
 
 let pass = 0;

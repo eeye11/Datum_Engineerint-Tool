@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DO THE COMPONENT ARROWHEADS POINT ALONG THEIR COMPONENTS?
  *
@@ -18,6 +22,7 @@
  * arrow must sit at the far end of that component's own shaft, in the
  * direction of the component's own sign.
  */
+
 global.window = {
   crypto: { randomUUID: () => "components-render-uuid" }
 };
@@ -111,11 +116,11 @@ global.window.document = {
 };
 global.document = global.window.document;
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
-require("../js/engineering-drawing/drawing-state.js");
-require("../js/engineering-drawing/renderer.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
+require(modulePath("drawing-state.js"));
+require(modulePath("renderer.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

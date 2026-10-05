@@ -18,9 +18,7 @@ export default async function run(page, ui) {
     smart: !!window.enggSmartDimension,
     dims: !!window.enggDimensions,
     canvas: !!document.querySelector("canvas"),
-    dimensionTools: Array.from(
-      document.querySelectorAll("[data-tool-id]"),
-    )
+    dimensionTools: Array.from(document.querySelectorAll("[data-tool-id]"))
       .map((el) => el.getAttribute("data-tool-id"))
       .filter((id) => id && id.includes("dimension")),
   }));

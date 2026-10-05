@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * WHAT THE ANALYSIS GRAPH ALREADY DOES
@@ -14,12 +21,10 @@
  * anything PRESENT means the requirement is already met and re-implementing
  * it would be a regression, not progress.
  */
-const fs = require("fs");
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const root = path.join(__dirname, "..");
-const dir = path.join(root, "js", "engineering-drawing");
+const dir = sourceDir();
 
 /*
  * One requirement is answered by LOADING the module rather than reading it -
@@ -31,11 +36,11 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>");
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(path.join(dir, "sketch-editor.js"));
+require(locate("sketch-editor.js"));
 
 const editor = global.window.enggSketchEditor;
 
-const read = (name) => fs.readFileSync(path.join(dir, name), "utf8");
+const read = (name) => fs.readFileSync(locate(name), "utf8");
 
 const renderer = read("renderer.js");
 const deps = read("analysis-dependencies.js");

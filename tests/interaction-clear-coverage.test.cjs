@@ -8,8 +8,9 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
-const root = path.join(__dirname, "..", "js", "engineering-drawing");
+const root = path.join(__dirname, "..");
 
 const files = fs
   .readdirSync(root)
@@ -53,7 +54,7 @@ for (const file of files) {
  * therefore could not be trusted.
  */
 const stateText = fs.readFileSync(
-  path.join(root, "drawing-state.js"),
+  locate("drawing-state.js"),
   "utf8",
 );
 

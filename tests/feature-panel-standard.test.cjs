@@ -23,11 +23,13 @@
  * than carrying a private dialect). The second is what stops a later edit from
  * quietly reintroducing the defect while the module still tests green.
  */
+
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const dir = path.join(__dirname, "..", "js", "engineering-drawing");
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const dir = path.join(__dirname, "..");
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -36,11 +38,11 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(path.join(dir, "property-panel.js"));
+require(locate("property-panel.js"));
 
 const panels = global.window.enggPropertyPanel;
 
-const code = fs.readFileSync(path.join(dir, "drawing.js"), "utf8");
+const code = fs.readFileSync(locate("drawing.js"), "utf8");
 
 let pass = 0;
 let fail = 0;

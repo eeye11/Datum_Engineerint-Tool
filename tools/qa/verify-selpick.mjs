@@ -1,13 +1,17 @@
 export default async function run(page, ui) {
   const errs = [];
-  page.on("pageerror", (e) => errs.push("PAGEERROR: " + e.message.slice(0, 200)));
+  page.on("pageerror", (e) =>
+    errs.push("PAGEERROR: " + e.message.slice(0, 200)),
+  );
   page.on("console", (m) => {
     if (m.type() === "error") errs.push("CONSOLE: " + m.text().slice(0, 160));
   });
 
   await page.goto("http://localhost:8099/", { waitUntil: "load" });
   await page.waitForTimeout(2000);
-  const tab = page.locator("button", { hasText: "Engineering Drawing" }).first();
+  const tab = page
+    .locator("button", { hasText: "Engineering Drawing" })
+    .first();
   if (await tab.count()) await tab.click();
   await page.waitForTimeout(1500);
 
@@ -19,12 +23,17 @@ export default async function run(page, ui) {
     seq += 1;
     const key = "data-t" + seq;
     return page
-      .evaluate((src) => {
-        const s = document.createElement("script");
-        s.textContent = src;
-        document.body.appendChild(s);
-        return null;
-      }, "(function(){\n" + lines.join("\n").split("__K__").join(key) + "\n})();")
+      .evaluate(
+        (src) => {
+          const s = document.createElement("script");
+          s.textContent = src;
+          document.body.appendChild(s);
+          return null;
+        },
+        "(function(){\n" +
+          lines.join("\n").split("__K__").join(key) +
+          "\n})();",
+      )
       .then(() => page.getAttribute("html", key))
       .then((v) => (v === null ? null : JSON.parse(v)));
   };
@@ -35,7 +44,7 @@ export default async function run(page, ui) {
       "  const sel = st.selection.selectedObjectIds;",
       "  document.documentElement.setAttribute('__K__', JSON.stringify(sel.map(",
       "    id => (st.objects.find(o => o.id === id) || {}).type",
-      "  )));"
+      "  )));",
     ]);
 
   await page.locator('#drawingToolList [data-tool-id="line"]').click();
@@ -55,7 +64,7 @@ export default async function run(page, ui) {
     "  const r = g.getBoundingClientRect();",
     "  document.documentElement.setAttribute('__K__', JSON.stringify({",
     "    x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2)",
-    "  }));"
+    "  }));",
   ]);
 
   await page.mouse.click(lineBox.x, lineBox.y);
@@ -65,7 +74,9 @@ export default async function run(page, ui) {
   await page.mouse.click(lineBox.x, lineBox.y - 90);
   await page.waitForTimeout(800);
 
-  if (await page.evaluate(() => !!document.querySelector(".drawing-scale-dialog"))) {
+  if (
+    await page.evaluate(() => !!document.querySelector(".drawing-scale-dialog"))
+  ) {
     await page.locator("#scaleRealDistance").fill("125");
     await page.locator("[data-scale-confirm]").click();
     await page.waitForTimeout(900);
@@ -99,7 +110,7 @@ export default async function run(page, ui) {
     "    text: t ? centre(t) : null,",
     "    arrowhead: polys.length ? centre(polys[0]) : null,",
     "    firstLine: lines.length ? centre(lines[0]) : null",
-    "  }));"
+    "  }));",
   ]);
 
   out.marks = marks;
@@ -111,7 +122,7 @@ export default async function run(page, ui) {
       results[name] = "no mark";
       return;
     }
-    await page.mouse.click(bb.x + 40, bb.y + 40);   // clear
+    await page.mouse.click(bb.x + 40, bb.y + 40); // clear
     await page.waitForTimeout(350);
     await page.mouse.click(point[0], point[1]);
     await page.waitForTimeout(500);

@@ -11,21 +11,15 @@ export default async function run(page, ui) {
   const result = {};
 
   const snap = await ui.snapshot();
-  await ui.click(
-    snap.match(/@(e\d+) button "Engineering Drawing"/i)[1],
-  );
+  await ui.click(snap.match(/@(e\d+) button "Engineering Drawing"/i)[1]);
 
   await page
-    .locator('.drawing-tool-list button')
+    .locator(".drawing-tool-list button")
     .first()
     .waitFor({ timeout: 15000 });
   await page.waitForTimeout(1200);
 
-  const box =
-    await page
-      .locator('.drawing-canvas')
-      .first()
-      .boundingBox();
+  const box = await page.locator(".drawing-canvas").first().boundingBox();
 
   const X = (fx) => box.x + box.width * fx;
   const Y = (fy) => box.y + box.height * fy;
@@ -45,50 +39,32 @@ export default async function run(page, ui) {
 
   const label = () =>
     page.evaluate(
-      () =>
-        document.getElementById('drawingToolMessage')
-          ?.textContent,
+      () => document.getElementById("drawingToolMessage")?.textContent,
     );
 
   const tree = () =>
     page.evaluate(() =>
-      Array.from(
-        document.querySelectorAll(
-          '.drawing-component-row',
-        ),
-      ).map(
-        (n) =>
-          n.textContent
-            .trim()
-            .replace(/\s+/g, ' '),
+      Array.from(document.querySelectorAll(".drawing-component-row")).map((n) =>
+        n.textContent.trim().replace(/\s+/g, " "),
       ),
     );
 
   const loadTool = async (id) => {
+    await page.locator('.drawing-category[data-category="STATICS"]').click();
+    await page.waitForTimeout(500);
     await page
-      .locator(
-        '.drawing-category[data-category="STATICS"]',
-      )
+      .locator('.drawing-tool-list button[data-tool-id="load"]')
       .click();
     await page.waitForTimeout(500);
     await page
-      .locator(
-        '.drawing-tool-list button[data-tool-id="load"]',
-      )
-      .click();
-    await page.waitForTimeout(500);
-    await page
-      .locator(
-        '.drawing-coordinate-submenu ' +
-          `[data-submenu-id="${id}"]`,
-      )
+      .locator(".drawing-coordinate-submenu " + `[data-submenu-id="${id}"]`)
       .click();
     await page.waitForTimeout(500);
   };
 
   /* ---- DISTRIBUTED LOAD, from empty space ---- */
 
-  await loadTool('distributed-load');
+  await loadTool("distributed-load");
   result.constantArmed = await label();
 
   /* Well away from anything: 0.2,0.2 is empty canvas. */
@@ -104,7 +80,7 @@ export default async function run(page, ui) {
 
   /* ---- VARYING DISTRIBUTED LOAD, from empty space ---- */
 
-  await loadTool('varying-distributed-load');
+  await loadTool("varying-distributed-load");
   result.varyingArmed = await label();
 
   await click(0.2, 0.7);
@@ -121,7 +97,7 @@ export default async function run(page, ui) {
   await click(0.5, 0.75);
   result.varyingAfterSecond = await label();
 
-  await page.keyboard.press('Enter');
+  await page.keyboard.press("Enter");
   await page.waitForTimeout(500);
 
   result.varyingFinished = await label();

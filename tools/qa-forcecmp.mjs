@@ -26,14 +26,11 @@ export default async function run(page, ui) {
 
   const draw = async (toolId, category, y) => {
     if (category) {
-      await page.evaluate(
-        (c) => {
-          document
-            .querySelector(`.drawing-category[data-category="${c}"]`)
-            ?.click();
-        },
-        category
-      );
+      await page.evaluate((c) => {
+        document
+          .querySelector(`.drawing-category[data-category="${c}"]`)
+          ?.click();
+      }, category);
       await page.waitForTimeout(350);
     }
 
@@ -70,7 +67,7 @@ export default async function run(page, ui) {
         clickAt(0.08, yy);
         clickAt(0.7, yy);
       },
-      { id: toolId, yy: y }
+      { id: toolId, yy: y },
     );
     await page.waitForTimeout(500);
   };
@@ -95,13 +92,13 @@ export default async function run(page, ui) {
     if (svg && vb.length === 4) {
       svg.setAttribute(
         "viewBox",
-        `${vb[0]} ${vb[1]} ${vb[2] / 2.2} ${vb[3] / 2.2}`
+        `${vb[0]} ${vb[1]} ${vb[2] / 2.2} ${vb[3] / 2.2}`,
       );
     }
 
     return {
-      strokes: Array.from(svg?.querySelectorAll("line") || []).map(
-        (el) => Number(el.getAttribute("stroke-width"))
+      strokes: Array.from(svg?.querySelectorAll("line") || []).map((el) =>
+        Number(el.getAttribute("stroke-width")),
       ),
     };
   });

@@ -8,7 +8,7 @@ export default async function run(page, ui) {
   await page
     .waitForFunction(
       () => document.querySelectorAll("[data-tool-id]").length > 0,
-      { timeout: 30000 }
+      { timeout: 30000 },
     )
     .catch(() => null);
 
@@ -21,9 +21,7 @@ export default async function run(page, ui) {
 
   const msg = () =>
     page.evaluate(
-      () =>
-        document.getElementById("drawingToolMessage")
-          ?.innerText || ""
+      () => document.getElementById("drawingToolMessage")?.innerText || "",
     );
 
   /*
@@ -35,14 +33,11 @@ export default async function run(page, ui) {
    * nothing, silently, and every later click then reports "Ready".
    */
   const arm = async (category, id) => {
-    await page.evaluate(
-      (c) => {
-        document
-          .querySelector(`.drawing-category[data-category="${c}"]`)
-          ?.click();
-      },
-      category
-    );
+    await page.evaluate((c) => {
+      document
+        .querySelector(`.drawing-category[data-category="${c}"]`)
+        ?.click();
+    }, category);
     await page.waitForTimeout(400);
 
     const armed = await page.evaluate((i) => {
@@ -68,11 +63,17 @@ export default async function run(page, ui) {
           button: 0,
           detail: 1,
         };
-        ["pointermove", "mousemove", "pointerdown", "mousedown",
-         "click", "pointerup", "mouseup"].forEach((t) =>
-          c.dispatchEvent(new MouseEvent(t, o)));
+        [
+          "pointermove",
+          "mousemove",
+          "pointerdown",
+          "mousedown",
+          "click",
+          "pointerup",
+          "mouseup",
+        ].forEach((t) => c.dispatchEvent(new MouseEvent(t, o)));
       },
-      { x: dx, y: dy }
+      { x: dx, y: dy },
     );
     await page.waitForTimeout(300);
     return await msg();
@@ -82,9 +83,7 @@ export default async function run(page, ui) {
     page.evaluate(() => {
       const svg = document.querySelector(".drawing-canvas svg");
       return svg
-        ? svg.querySelectorAll(
-            "path,line,rect,circle,polygon,polyline"
-          ).length
+        ? svg.querySelectorAll("path,line,rect,circle,polygon,polyline").length
         : 0;
     });
 

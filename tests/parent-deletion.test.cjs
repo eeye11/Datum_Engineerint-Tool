@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DELETING A BODY TAKES ITS DEPENDENTS WITH IT
@@ -25,8 +31,7 @@
  * parent links - the shape a half-written save leaves behind - terminates
  * instead of hanging the delete.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -53,11 +58,7 @@ global.window = dom.window;
 global.document = dom.window.document;
 
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "drawing-state.js",
+  locate("drawing-state.js",
   ),
 );
 

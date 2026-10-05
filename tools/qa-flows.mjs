@@ -9,7 +9,7 @@ export default async function run(page, ui) {
   await page
     .waitForFunction(
       () => document.querySelectorAll("[data-tool-id]").length > 0,
-      { timeout: 30000 }
+      { timeout: 30000 },
     )
     .catch(() => null);
 
@@ -22,9 +22,7 @@ export default async function run(page, ui) {
 
   const msg = () =>
     page.evaluate(
-      () =>
-        document.getElementById("drawingToolMessage")
-          ?.innerText || ""
+      () => document.getElementById("drawingToolMessage")?.innerText || "",
     );
 
   const shapes = () =>
@@ -32,12 +30,9 @@ export default async function run(page, ui) {
       const svg = document.querySelector(".drawing-canvas svg");
       if (!svg) return 0;
       return Array.from(
-        svg.querySelectorAll(
-          "path,line,rect,circle,polygon,polyline"
-        )
-      ).filter(
-        (el) => !el.classList.contains("drawing-engineering-grid")
-      ).length;
+        svg.querySelectorAll("path,line,rect,circle,polygon,polyline"),
+      ).filter((el) => !el.classList.contains("drawing-engineering-grid"))
+        .length;
     });
 
   const at = async (dx, dy) => {
@@ -46,16 +41,24 @@ export default async function run(page, ui) {
         const c = document.querySelector(".drawing-canvas");
         const r = c.getBoundingClientRect();
         const o = {
-          bubbles: true, cancelable: true,
+          bubbles: true,
+          cancelable: true,
           clientX: r.left + r.width * x,
           clientY: r.top + r.height * y,
-          button: 0, detail: 1,
+          button: 0,
+          detail: 1,
         };
-        ["pointermove", "mousemove", "pointerdown", "mousedown",
-         "click", "pointerup", "mouseup"].forEach((t) =>
-          c.dispatchEvent(new MouseEvent(t, o)));
+        [
+          "pointermove",
+          "mousemove",
+          "pointerdown",
+          "mousedown",
+          "click",
+          "pointerup",
+          "mouseup",
+        ].forEach((t) => c.dispatchEvent(new MouseEvent(t, o)));
       },
-      { x: dx, y: dy }
+      { x: dx, y: dy },
     );
     await page.waitForTimeout(260);
   };
@@ -63,24 +66,23 @@ export default async function run(page, ui) {
   const clear = async () => {
     await page.evaluate(() => {
       document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
     });
     await page.waitForTimeout(200);
 
     for (let i = 0; i < 60; i += 1) {
       const more = await page.evaluate(() => {
-        const rows = document.querySelectorAll(
-          ".drawing-component-row"
-        );
+        const rows = document.querySelectorAll(".drawing-component-row");
         if (!rows.length) return false;
         rows[0].dispatchEvent(
-          new MouseEvent("click", { bubbles: true, detail: 1 })
+          new MouseEvent("click", { bubbles: true, detail: 1 }),
         );
         document.dispatchEvent(
           new KeyboardEvent("keydown", {
-            key: "Delete", bubbles: true
-          })
+            key: "Delete",
+            bubbles: true,
+          }),
         );
         return true;
       });
@@ -92,18 +94,15 @@ export default async function run(page, ui) {
   const arm = async (category, id) => {
     await page.evaluate(() => {
       document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
     });
     await page.waitForTimeout(200);
-    await page.evaluate(
-      (c) => {
-        document
-          .querySelector(`.drawing-category[data-category="${c}"]`)
-          ?.click();
-      },
-      category
-    );
+    await page.evaluate((c) => {
+      document
+        .querySelector(`.drawing-category[data-category="${c}"]`)
+        ?.click();
+    }, category);
     await page.waitForTimeout(420);
     await page.evaluate((i) => {
       document.querySelector(`[data-tool-id="${i}"]`)?.click();
@@ -132,7 +131,7 @@ export default async function run(page, ui) {
     out[`${id}:free`] = {
       armed,
       shapes: await shapes(),
-      after: (await msg()).slice(0, 40)
+      after: (await msg()).slice(0, 40),
     };
 
     /* OVER AN EXISTING LINE, two clicks. */
@@ -146,7 +145,7 @@ export default async function run(page, ui) {
     out[`${id}:onLine`] = {
       armed: armed2,
       shapes: await shapes(),
-      after: (await msg()).slice(0, 40)
+      after: (await msg()).slice(0, 40),
     };
   }
 

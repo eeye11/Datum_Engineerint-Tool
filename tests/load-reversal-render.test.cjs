@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES A REVERSED LOAD STILL HAVE ITS OUTLINE?
  *
@@ -16,6 +20,7 @@
  * end of each vector. One fewer outline stroke is invisible in a
  * screenshot and obvious in a count.
  */
+
 global.window = {
   crypto: { randomUUID: () => "load-reversal-uuid" }
 };
@@ -119,12 +124,12 @@ global.window.document = {
 };
 global.document = global.window.document;
 
-require("../js/engineering-drawing/load-profile.js");
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/load-profile.js");
-require("../js/engineering-drawing/drawing-state.js");
-require("../js/engineering-drawing/renderer.js");
+require(modulePath("load-profile.js"));
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("load-profile.js"));
+require(modulePath("drawing-state.js"));
+require(modulePath("renderer.js"));
 
 const state = global.window.enggDrawingState;
 const profile = global.window.enggLoadProfile;

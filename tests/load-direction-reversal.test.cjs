@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES REVERSING A LOAD MOVE IT?
  *
@@ -16,11 +20,12 @@
  * the flag being read by the renderer, are both already true; what is in
  * question is whether any other field moves with it.
  */
+
 global.window = {};
 
 /* The model pieces a load is made of, with no renderer involved. */
-require("../js/engineering-drawing/load-profile.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("load-profile.js"));
+require(modulePath("drawing-state.js"));
 
 const state = global.window.enggDrawingState;
 const profile = global.window.enggLoadProfile;

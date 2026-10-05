@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE STATICS VECTOR SCALE - model guard.
  *
@@ -16,13 +20,14 @@
  * profile rising 2 -> 8 stays in that ratio at every scale.
  */
 
+
 global.window = {
     crypto: {
         randomUUID: () => "vector-scale-uuid"
     }
 };
 
-require("../js/engineering-drawing/load-profile.js");
+require(modulePath("load-profile.js"));
 
 const profile = global.window.enggLoadProfile;
 

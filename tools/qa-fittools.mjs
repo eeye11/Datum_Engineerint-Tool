@@ -8,17 +8,17 @@ export default async function run(page, ui) {
   await page
     .waitForFunction(
       () => document.querySelectorAll("[data-tool-id]").length > 0,
-      { timeout: 30000 }
+      { timeout: 30000 },
     )
     .catch(() => null);
 
   return await page.evaluate(() => {
-    const sidebar = Array.from(
-      document.querySelectorAll("[data-tool-id]")
-    ).map((b) => b.dataset.toolId);
+    const sidebar = Array.from(document.querySelectorAll("[data-tool-id]")).map(
+      (b) => b.dataset.toolId,
+    );
 
     const global = Array.from(
-      document.querySelectorAll("[data-global-tool]")
+      document.querySelectorAll("[data-global-tool]"),
     ).map((b) => b.dataset.globalTool);
 
     return {

@@ -27,7 +27,11 @@ const F = S.geometryFactories;
 function freshState(objects) {
   return {
     objects,
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -40,7 +44,10 @@ console.log("\n== The analysis domain is the body's engineering length ==\n");
 
 {
   const beam = F.beam({ x: 0, y: 0 }, { x: 1000, y: 0 });
-  const diagram = F["analysis-diagram"]({ x: 0, y: -200 }, { x: 1000, y: -200 });
+  const diagram = F["analysis-diagram"](
+    { x: 0, y: -200 },
+    { x: 1000, y: -200 },
+  );
   diagram.geometry.diagramType = "sfd";
   diagram.geometry.mode = "plot";
   D.registerDependency(diagram, [beam.id]);
@@ -59,7 +66,9 @@ console.log("\n== The analysis domain is the body's engineering length ==\n");
   check(
     "and the source span is reported as the beam's",
     Math.abs(diagram.geometry.sourceSpan.length - 1000) < 1e-6,
-    JSON.stringify(diagram.geometry.sourceSpan && diagram.geometry.sourceSpan.length),
+    JSON.stringify(
+      diagram.geometry.sourceSpan && diagram.geometry.sourceSpan.length,
+    ),
   );
 
   /* Lengthen the beam and re-derive. */
@@ -80,7 +89,10 @@ console.log("\n== Source markers sit at the correct station ==\n");
   const load = F.load({ x: 250, y: 0 }, { x: 750, y: 0 }, 5);
   load.parentId = beam.id;
 
-  const diagram = F["analysis-diagram"]({ x: 0, y: -200 }, { x: 1000, y: -200 });
+  const diagram = F["analysis-diagram"](
+    { x: 0, y: -200 },
+    { x: 1000, y: -200 },
+  );
   diagram.geometry.diagramType = "sfd";
   diagram.geometry.mode = "plot";
   D.registerDependency(diagram, [beam.id]);
@@ -106,11 +118,16 @@ console.log("\n== Source markers sit at the correct station ==\n");
   );
 }
 
-console.log("\n== A deleted body leaves the diagram unresolved, not silently stale ==\n");
+console.log(
+  "\n== A deleted body leaves the diagram unresolved, not silently stale ==\n",
+);
 
 {
   const beam = F.beam({ x: 0, y: 0 }, { x: 1000, y: 0 });
-  const diagram = F["analysis-diagram"]({ x: 0, y: -200 }, { x: 1000, y: -200 });
+  const diagram = F["analysis-diagram"](
+    { x: 0, y: -200 },
+    { x: 1000, y: -200 },
+  );
   diagram.geometry.diagramType = "bmd";
   diagram.geometry.mode = "plot";
   D.registerDependency(diagram, [beam.id]);

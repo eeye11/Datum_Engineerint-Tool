@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * A MAGNITUDE BOX IS A BOX, NOT A PART OF THE FORCE
@@ -20,11 +26,10 @@
  * So editing the force moves the NUMBER and editing the box moves the box,
  * and neither can affect the other.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -64,7 +69,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(path.join(dir, name));
+  require(locate(name));
 }
 
 for (const name of Object.keys(global.window)) {

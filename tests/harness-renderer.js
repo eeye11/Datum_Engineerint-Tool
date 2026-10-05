@@ -59,7 +59,7 @@ const SCRIPTS = [
 /**
  * Build a document with the application modules loaded into it.
  *
- * @param {string} projectRoot  repository root, holding js/engineering-drawing
+ * @param {string} projectRoot  repository root, holding the js/ source tree
  * @param {object} jsdom        the JSDOM class
  * @param {object} require      the caller's require, so paths resolve from it
  */
@@ -86,10 +86,19 @@ function createHarness(projectRoot, jsdom, require) {
     randomUUID: () => "harness-uuid",
   };
 
-  const path = require("path");
+  const { locate } = require("./helpers/source-path.cjs");
 
+  /*
+   * LOADED BY NAME, NOT BY ADDRESS.
+   *
+   * The sources live in an ownership-based tree - core/, features/,
+   * rendering/ and so on - so there is no longer one directory a harness
+   * can join a file name onto. `locate` answers "where is this module"
+   * from the real tree, which is what lets this harness keep working
+   * through a reorganisation instead of breaking on it.
+   */
   SCRIPTS.forEach((name) => {
-    require(path.join(projectRoot, "js", "engineering-drawing", name));
+    require(locate(name));
   });
 
   MODULES.forEach((name) => {

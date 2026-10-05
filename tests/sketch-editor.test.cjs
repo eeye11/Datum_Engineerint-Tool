@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE SKETCH EDITOR
@@ -23,9 +29,7 @@
  * asserting a screen number would pass even if the scale were wrong in a
  * way that happened to cancel out.
  */
-const fs = require("fs");
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -52,11 +56,7 @@ global.document = dom.window.document;
 global.navigator = dom.window.navigator;
 
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "sketch-editor.js",
+  locate("sketch-editor.js",
   ),
 );
 

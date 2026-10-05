@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DELETING AN ANALYSIS DIAGRAM MUST TAKE ITS WHOLE GRAPH WITH IT
@@ -13,8 +19,7 @@
  * that reads that branch would pass whether or not the canvas actually
  * clears.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -49,7 +54,7 @@ global.window.cancelAnimationFrame = id => clearTimeout(id);
 
 const load = file =>
   require(
-    path.join(projectRoot, "js", "engineering-drawing", file),
+    locate(file),
   );
 
 /*

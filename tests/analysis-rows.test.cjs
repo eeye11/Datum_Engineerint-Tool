@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ANALYSIS ROWS OF THE MAPPING TABLE.
  *
@@ -22,29 +26,37 @@
  *      That is a FEATURE gap, not a dimension or annotation one, and it
  *      is out of scope for this system.
  *
- *   3. SFD, BMD AND AFD DO NOT EXIST AT ALL - no feature type and no
- *      annotation kind. This is consistent with the analysis philosophy
- *      the specification insists on: EnggDraw does not compute shear,
- *      bending or axial values, and does not infer the student's
- *      solution. A student draws those diagrams as ordinary geometry,
- *      which is already covered by the geometry rows of the feature
- *      matrix. Dimensioning and annotating them is therefore covered
- *      too - there is simply no distinct feature type to cover.
+ *   3. SFD, BMD AND AFD ARE REAL FEATURE TYPES. `shear-force-diagram`,
+ *      `bending-moment-diagram` and `axial-force-diagram` each have a
+ *      factory, a tool, a Feature Panel and a dependency relationship to
+ *      their source body, and the plot editor that draws them is shared.
+ *      The ANALYSIS rows below assert the annotation half - what a
+ *      resultant and a components pair SAY - because that is what this
+ *      file can reach as pure modules. The diagram features themselves
+ *      are covered by the browser verification and by the panel tests.
+ *
+ * A NOTE ON WHAT ENGGDRAW DOES NOT DO. It does not COMPUTE shear,
+ * bending or axial values, and it does not infer the student's
+ * solution. The diagrams are drawn from expressions the student enters,
+ * against a source body whose length and events the application derives
+ * from the geometry - which is the distinction the analysis philosophy
+ * rests on.
  *
  * So this file asserts what genuinely works, and says plainly which
  * rows are not covered rather than quietly omitting them.
  *
  * Pure modules, so this runs in Node.
  */
+
 global.window = { crypto: { randomUUID: () => "analysis-uuid" } };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/smart-dimension.js");
-require("../js/engineering-drawing/dimension-model.js");
-require("../js/engineering-drawing/annotation-model.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
+require(modulePath("feature-geometry.js"));
+require(modulePath("smart-dimension.js"));
+require(modulePath("dimension-model.js"));
+require(modulePath("annotation-model.js"));
+require(modulePath("drawing-state.js"));
 
 const factories = global.window.enggDrawingState.geometryFactories;
 const annotationModel = global.window.enggAnnotationModel;
@@ -138,18 +150,21 @@ console.log(`\n${pass} passed, ${fail} failed`);
  * moment someone implements them - which is the wrong incentive.
  */
 console.log("\nWhat exists as a feature today:");
-["resultant", "force-components"].forEach((type) => {
+[
+  "resultant",
+  "force-components",
+  "shear-force-diagram",
+  "bending-moment-diagram",
+  "axial-force-diagram",
+].forEach((type) => {
   console.log(`  - ${type}: has a factory`);
 });
 
 console.log(
-  "\nStill no feature type, by design (spec 59): shear-force-diagram,"
+  "\nAnd a resultant / components / diagram is ANNOTATED, never solved:"
 );
 console.log(
-  "bending-moment-diagram, axial-force-diagram - the student draws those"
-);
-console.log(
-  "as ordinary geometry, which the geometry rows already cover."
+  "the values come from the source features the student placed."
 );
 
 process.exit(fail ? 1 : 0);

@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * SHOW MAGNITUDES, FROM A REAL FEATURE
@@ -14,8 +20,7 @@
  * These check the real path: a real force, the real renderer, no
  * annotation supplied.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -58,7 +63,7 @@ for (const name of [
   "renderer.js",
 ]) {
   require(
-    path.join(projectRoot, "js", "engineering-drawing", name),
+    locate(name),
   );
 }
 

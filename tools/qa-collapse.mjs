@@ -4,90 +4,75 @@
  * not move. Verification aid, not part of the application.
  */
 export default async function run(page, ui) {
-    const snap = await ui.snapshot();
+  const snap = await ui.snapshot();
 
-    const tab = snap.match(/@e\d+ [^\n]*Drawing[^\n]*/)?.[0];
+  const tab = snap.match(/@e\d+ [^\n]*Drawing[^\n]*/)?.[0];
 
-    if (!tab) {
-        return { error: "no drawing tab", snap };
-    }
+  if (!tab) {
+    return { error: "no drawing tab", snap };
+  }
 
-    await ui.click(tab.match(/@e\d+/)[0]);
-    await page.waitForTimeout(600);
+  await ui.click(tab.match(/@e\d+/)[0]);
+  await page.waitForTimeout(600);
 
-    const read = () =>
-        page.evaluate(() => {
-            const canvas = document.querySelector(
-                ".drawing-canvas"
-            );
+  const read = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector(".drawing-canvas");
 
-            return {
-                canvasWidth: canvas?.clientWidth,
-                zoom: document.getElementById(
-                    "drawingZoomValue"
-                )?.value,
-                toolPanelVisible: !!document
-                    .getElementById("drawingToolPanel")
-                    ?.offsetParent,
-                featuresPanelVisible:
-                    !!document
-                        .getElementById(
-                            "drawingFeaturesPanel"
-                        )?.offsetParent,
-                leftToggleVisible: !!document
-                    .getElementById(
-                        "drawingToolPanelToggle"
-                    )
-                    ?.offsetParent,
-                rightToggleVisible: !!document
-                    .getElementById(
-                        "drawingFeaturesPanelToggle"
-                    )
-                    ?.offsetParent
-            };
-        });
-
-    const before = await read();
-
-    /* Put the zoom somewhere distinctive first. */
-    await page.evaluate(() => {
-        const input = document.getElementById(
-            "drawingZoomValue"
-        );
-        input.value = "150%";
-        input.dispatchEvent(
-            new KeyboardEvent("keydown", {
-                key: "Enter",
-                bubbles: true
-            })
-        );
+      return {
+        canvasWidth: canvas?.clientWidth,
+        zoom: document.getElementById("drawingZoomValue")?.value,
+        toolPanelVisible:
+          !!document.getElementById("drawingToolPanel")?.offsetParent,
+        featuresPanelVisible: !!document.getElementById("drawingFeaturesPanel")
+          ?.offsetParent,
+        leftToggleVisible: !!document.getElementById("drawingToolPanelToggle")
+          ?.offsetParent,
+        rightToggleVisible: !!document.getElementById(
+          "drawingFeaturesPanelToggle",
+        )?.offsetParent,
+      };
     });
-    await page.waitForTimeout(400);
 
-    const atZoom = await read();
+  const before = await read();
 
-    await page.click("#drawingToolPanelToggle");
-    await page.waitForTimeout(400);
+  /* Put the zoom somewhere distinctive first. */
+  await page.evaluate(() => {
+    const input = document.getElementById("drawingZoomValue");
+    input.value = "150%";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+      }),
+    );
+  });
+  await page.waitForTimeout(400);
 
-    const leftCollapsed = await read();
+  const atZoom = await read();
 
-    await page.click("#drawingFeaturesPanelToggle");
-    await page.waitForTimeout(400);
+  await page.click("#drawingToolPanelToggle");
+  await page.waitForTimeout(400);
 
-    const bothCollapsed = await read();
+  const leftCollapsed = await read();
 
-    /* Reopen both. */
-    await page.click("#drawingToolPanelToggle");
-    await page.click("#drawingFeaturesPanelToggle");
-    await page.waitForTimeout(400);
+  await page.click("#drawingFeaturesPanelToggle");
+  await page.waitForTimeout(400);
 
-    const reopened = await read();
+  const bothCollapsed = await read();
 
-    return {
-        before,
-        atZoom,
-        leftCollapsed,
-        bothCollapsed,
-        reopened
-    };
+  /* Reopen both. */
+  await page.click("#drawingToolPanelToggle");
+  await page.click("#drawingFeaturesPanelToggle");
+  await page.waitForTimeout(400);
+
+  const reopened = await read();
+
+  return {
+    before,
+    atZoom,
+    leftCollapsed,
+    bothCollapsed,
+    reopened,
+  };
 }

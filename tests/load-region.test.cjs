@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A LOAD ACT WHERE IT SAYS IT DOES?
@@ -30,8 +37,7 @@
  * fact about the region, not a consequence of which way it currently
  * pushes.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -62,11 +68,7 @@ global.document = dom.window.document;
  * The same binding the page's own script tag creates.
  */
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "load-profile.js"
+  locate("load-profile.js"
   )
 );
 
@@ -254,13 +256,8 @@ check(
 
 console.log("\n  a load's height is derived, never typed\n");
 
-const drawingSource = require("fs").readFileSync(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "drawing.js",
-  ),
+const drawingSource = fs.readFileSync(
+  locate("drawing.js"),
   "utf8",
 );
 

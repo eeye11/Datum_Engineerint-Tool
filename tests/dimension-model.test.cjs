@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The Dimension model, tested directly.
  *
@@ -10,6 +14,7 @@
  * Pure module, so it is exercised in Node rather than through the
  * canvas.
  */
+
 global.window = {
   crypto: {
     randomUUID: () => "test-uuid-0000"
@@ -18,8 +23,8 @@ global.window = {
 
 /* ---- the modules this one needs ---- */
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
 
 global.window.enggDrawingState = {
   polygonVertices: (geometry) => {
@@ -52,7 +57,7 @@ global.window.enggFeatureGeometry = {
   }
 };
 
-require("../js/engineering-drawing/dimension-model.js");
+require(modulePath("dimension-model.js"));
 
 const model = global.window.enggDimensionModel;
 

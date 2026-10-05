@@ -500,24 +500,26 @@
 /*
  * ONCE THE SCREEN IS TOO NARROW FOR THE TOOL PANEL, IT IS FOLDED
  * AWAY.
-     *
-     * The panel is sized to fit its longest tool name's longest word,
-     * and that is a fixed cost - about 100px, which is a fair deal on a
-     * normal screen and a third of a 320px-wide one.
-     *
-     * Below the point where a tool name would have to be split
-     * mid-word to fit, the arrow strip is kept and the panel is not:
-     * a two-letter stub of a tool name is worse than no list, and the
-     * student can still open the panel on a wider screen or on a
-     * phone held sideways. The choice is made on WIDTH, not on
-     * scrollbars, so it is the screen that decides rather than the
-     * content.
-     */
+ *
+ * The panel is sized to fit its longest tool name's longest word, and
+ * that is a fixed cost - about 100px, which is a fair deal on a normal
+ * screen and a third of a 320px-wide one. Below the point where a tool
+ * name would have to be split mid-word to fit, the arrow strip is kept
+ * and the panel is not.
+ *
+ * THIS BLOCK AND THE LATER 720px BLOCK ARE ONE DECISION.
+ *
+ * They were two, and they disagreed: this one set the workspace to
+ * `22px 1fr 22px` - both rails folded to their arrows - while the later
+ * one set `82px 1fr 236px`, which is both rails OPEN. A later rule wins,
+ * so the folded layout never applied and a narrow screen kept a full
+ * tool panel and a full Features panel, leaving the drawing a strip.
+ *
+ * The folded columns therefore live in the later block, which also
+ * carries the small-screen type sizes, and this one keeps only the
+ * panel's `display`, which does not conflict with anything.
+ */
 @media (max-width: 720px) {
-    .drawing-workspace {
-        grid-template-columns: 22px minmax(0, 1fr) 22px;
-    }
-
     .drawing-workspace .drawing-tool-panel {
         display: none;
     }
@@ -770,25 +772,6 @@
 
     text-indent: -0.62em;
     padding-left: 0.62em;
-}
-
-    /*
-     * Compact, because the tool list is a long one.
-     *
-     * The Statics section alone carries more tools than fit on a
-     * laptop screen, so a comfortable 29px per button turned into a
-     * panel that could only be used by scrolling. Tightening the
-     * row to 25px and trimming the group headings' margins buys
-     * back most of that without making the buttons harder to hit:
-     * 25px is still comfortably larger than a comfortable reading
-     * target for a control of this kind, and the whole list now
-     * fits without a scrollbar, which is the difference between
-     * seeing that a tool exists and not seeing it.
-     */
-    min-height: 25px;
-    padding: 2px 5px;
-    text-align: left;
-    width: 100%;
 }
 
 .drawing-tool-icon {
@@ -1690,9 +1673,7 @@
     width: 100%;
     font: inherit;
     font-size: 9px;
-    min-width: 0;
     padding: 2px 3px;
-    width: 100%;
 }
 
 /*
@@ -1800,9 +1781,13 @@
     cursor: default;
 }
 
-.drawing-number-stepper button::before {
-    content: "\25B2";
-}
+/*
+ * The stepper's up arrow is declared once, above, together with the down
+ * arrow. It used to be repeated here with the same `content` but WITHOUT
+ * the `transform: scale(1.15)` - so the up arrow drew smaller than the
+ * down one, and the copy read as live code while doing nothing but
+ * undoing the scale.
+ */
 
 .drawing-property-grid input[type="number"]:disabled {
     background: #eef1f2;
@@ -1810,10 +1795,16 @@
     opacity: 0.65;
 }
 
-.drawing-property-unit {
-    color: var(--cad-muted);
-    font-size: 8px;
-}
+/*
+ * `.drawing-property-unit` is declared once, below, as the flex row that
+ * holds the unit AND the `?` unknown toggle together.
+ *
+ * It used to be declared here first as a bare colour and font-size, then
+ * re-declared there with the layout. Two blocks for one element means the
+ * earlier one reads as the definition while the later one is what actually
+ * applies - so a reader changing the unit's colour here would change
+ * nothing.
+ */
 
 .drawing-property-readonly {
     color: var(--cad-ink);
@@ -2114,8 +2105,10 @@
  */
 .drawing-property-unit {
     align-items: center;
+    color: var(--cad-muted);
     display: flex;
     flex-wrap: nowrap;
+    font-size: 8px;
     gap: 3px;
     white-space: nowrap;
 }
@@ -2202,8 +2195,14 @@
 }
 
 @media (max-width: 720px) {
+    /*
+     * BOTH RAILS FOLD TO THEIR ARROWS, and the drawing takes the width.
+     * The tool panel is `display: none` in the block above; the Features
+     * rail keeps its own collapsed width so the drawing is not squeezed
+     * by a panel that is mostly empty on a screen this narrow.
+     */
     .drawing-workspace {
-        grid-template-columns: 82px minmax(0, 1fr) 236px;
+        grid-template-columns: 22px minmax(0, 1fr) 22px;
     }
 
     .drawing-category {
@@ -2334,24 +2333,26 @@
     filter: drop-shadow(0 0 1px rgba(31, 92, 56, .45));
 }
 
-.drawing-selection-box {
-    fill: rgba(0, 169, 199, .12);
-    pointer-events: none;
-    stroke: #00a9c7;
-    stroke-dasharray: 4 3;
-    stroke-width: 1;
-}
+/*
+ * `.drawing-selection-box` is defined once, with the rest of the canvas
+ * chrome. It used to be repeated here as well, with byte-identical
+ * declarations - a copy that could only ever drift from the original.
+ */
 
 /* =========================================================
    EDITABLE COMPONENT PROPERTIES
 ========================================================= */
 
-.drawing-properties-block {
-    display: flex;
-    flex-direction: column;
-    flex: 0 0 auto;
-    gap: 5px;
-}
+/*
+ * `.drawing-properties-block` is declared once, above, as a GRID - the
+ * property rows are a grid with tracks that can shrink, and that is what
+ * keeps a numeric field inside the panel.
+ *
+ * It used to be re-declared here as `display: flex`, which silently
+ * overrode the grid and undid it: the rows lost their column tracks and
+ * the old overflow came back. A later rule wins, so the flex version was
+ * the one in force while the grid version above read as live code.
+ */
 
 .drawing-property-edit {
     align-items: center;
@@ -2971,10 +2972,11 @@
    LIVE LINE MEASUREMENT
 ========================================================= */
 
-#drawingToolMessage {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
+/*
+ * `#drawingToolMessage` is styled with the rest of the status bar,
+ * above. It used to be re-declared here with the same two declarations,
+ * which read as a second definition of one element.
+ */
 
 /* ==========================================================================
    SET DRAWING SCALE

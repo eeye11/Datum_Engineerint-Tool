@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN ONE FORCE HAVE ITS MAGNITUDE BOX AND ANOTHER NOT?
@@ -27,11 +33,10 @@
  * The engineering rule underneath all of it: none of this touches the force.
  * Showing a box and hiding a box are both presentation.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -64,7 +69,7 @@ for (const name of [
   "dimension-model.js",
   "annotation-model.js",
 ]) {
-  require(path.join(dir, name));
+  require(locate(name));
 }
 
 const model = global.window.enggAnnotationModel;

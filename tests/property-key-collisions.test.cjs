@@ -22,14 +22,9 @@
 const fs = require("fs");
 const path = require("path");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const code = fs.readFileSync(
-  path.join(
-    __dirname,
-    "..",
-    "js",
-    "engineering-drawing",
-    "drawing.js",
-  ),
+  locate("drawing.js"),
   "utf8",
 );
 

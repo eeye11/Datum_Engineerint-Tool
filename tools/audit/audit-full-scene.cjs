@@ -27,7 +27,11 @@ const F = S.geometryFactories;
 function freshState(objects = []) {
   return {
     objects,
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -120,7 +124,8 @@ console.log("\n== Move the beam: every child follows ==\n");
 
   check(
     "the beam's frame follows it",
-    Math.abs(frame.start.x - 2000) < 1e-6 && Math.abs(frame.start.y - 500) < 1e-6,
+    Math.abs(frame.start.x - 2000) < 1e-6 &&
+      Math.abs(frame.start.y - 500) < 1e-6,
     JSON.stringify(frame.start),
   );
   check(
@@ -197,7 +202,8 @@ console.log("\n== Reverse the point force: only its direction changes ==\n");
   );
   check(
     "the drawn span is unchanged",
-    force.geometry.end.x === before.end.x && force.geometry.end.y === before.end.y,
+    force.geometry.end.x === before.end.x &&
+      force.geometry.end.y === before.end.y,
   );
 }
 
@@ -250,9 +256,7 @@ console.log("\n== Move the moment: magnitude and direction unchanged ==\n");
 console.log("\n== Delete the beam: children go, independent forces stay ==\n");
 
 {
-  const state2 = freshState(
-    JSON.parse(JSON.stringify(state.objects)),
-  );
+  const state2 = freshState(JSON.parse(JSON.stringify(state.objects)));
 
   S.removeObjectsAndDescendants(state2, [beam.id]);
 
@@ -289,8 +293,12 @@ console.log("\n== Save and reload the whole scene ==\n");
   const restoredState = freshState(restored.objects);
   D.refreshAll(restoredState);
 
-  const restoredSfd = restoredState.objects.find((o) => o.type === "analysis-diagram");
-  const restoredResultant = restoredState.objects.find((o) => o.type === "resultant");
+  const restoredSfd = restoredState.objects.find(
+    (o) => o.type === "analysis-diagram",
+  );
+  const restoredResultant = restoredState.objects.find(
+    (o) => o.type === "resultant",
+  );
 
   check(
     "the object count is preserved",
@@ -305,8 +313,7 @@ console.log("\n== Save and reload the whole scene ==\n");
   check(
     "the resultant magnitude survives",
     Math.abs(
-      restoredResultant.geometry.magnitude -
-        resultant.geometry.magnitude,
+      restoredResultant.geometry.magnitude - resultant.geometry.magnitude,
     ) < 1e-6,
   );
   check(

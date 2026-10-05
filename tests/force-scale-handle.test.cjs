@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * A FORCE'S ARROWHEAD, AGAINST ITS STORED SPAN.
  *
@@ -18,13 +22,14 @@
  * what scales every other Statics arrow on the sheet.
  */
 
+
 global.window = {
   crypto: {
     randomUUID: () => "force-scale-handle-uuid"
   }
 };
 
-require("../js/engineering-drawing/load-profile.js");
+require(modulePath("load-profile.js"));
 
 const profile = global.window.enggLoadProfile;
 

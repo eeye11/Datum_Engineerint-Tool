@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * ARE THE THREE DISPLAY SETTINGS INDEPENDENT?
@@ -25,8 +31,7 @@
  * turned one of them off by setting another is exactly the kind of coupling
  * that is invisible until someone wants the combination.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -53,11 +58,7 @@ global.window = dom.window;
 global.document = dom.window.document;
 
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "annotation-model.js",
+  locate("annotation-model.js",
   ),
 );
 
@@ -175,18 +176,29 @@ check(
   `read: ${JSON.stringify(textFor({}))}`,
 );
 
-console.log("\n  the three are not coupled\n");
+console.log("\n  there are exactly TWO display settings, and units is not one\n");
 
 /*
- * MAGNITUDES AND UNITS ARE DIFFERENT QUESTIONS.
+ * UNITS ARE NOT A SETTING.
  *
- * "Show Magnitudes" is about whether the annotation is there at all;
- * "Show Units" is about what it says. They must not move together.
+ * This used to read the other way round - three independent flags, one
+ * of them deciding whether a magnitude printed its unit - and the whole
+ * point of the block was that "show magnitudes without units" was
+ * expressible. It is not, and must not be: a unit is what the number
+ * MEANS, so a magnitude drawn without one is a different and ambiguous
+ * statement rather than a plainer rendering of the same one. On a
+ * drawing carrying a 250 mm dimension beside a 250 N force, a bare
+ * "250" tells the reader nothing.
+ *
+ * So the reader returns the two settings that remain - whether
+ * MAGNITUDES are shown, and whether DIMENSIONS are - and it does not
+ * report a units flag at all. A file saved while the control existed
+ * still carries the field; it is simply not read.
  */
 const displayCode = model.displaySettingsOf;
 
 check(
-  "the model reads three independent settings",
+  "the model reads the display settings",
   Boolean(displayCode),
   "the settings reader is what the toggles are bound to",
 );
@@ -200,35 +212,64 @@ const settings = displayCode({
 });
 
 check(
-  "units can be off while magnitudes are on",
-  settings.showUnits === false &&
-    settings.showMagnitudes === true,
+  "a saved showUnits field is not read back as a setting",
+  !("showUnits" in settings),
   JSON.stringify(settings),
 );
 
 check(
-  "and dimensions can be off independently too",
-  settings.showDimensions === false,
+  "magnitudes and dimensions are read, and are independent",
+  settings.showMagnitudes === true &&
+    settings.showDimensions === false,
   JSON.stringify(settings),
+);
+
+check(
+  "and a units flag cannot turn the magnitude off",
+  model.displaySettingsOf({
+    display: { showUnits: false },
+  }).showMagnitudes === true,
+  "the setting that asks for magnitudes is not the unit flag",
 );
 
 /*
- * THE COMBINATION THAT PROVES THEY ARE SEPARATE: magnitudes shown without
- * their units. If the two were coupled this could not be expressed, which
- * is the whole reason for three toggles instead of one "Display" switch.
+ * AND THE UNIT IS PRINTED EITHER WAY, which is the visible consequence of
+ * the flag no longer existing. The two states differ in whether a
+ * magnitude is drawn at all, never in whether it carries its unit.
  */
 check(
-  "magnitudes without units is expressible",
-  textFor({
-    showMagnitudes: true,
-    showUnits: false,
-  }) === textFor({ showUnits: false }),
+  "a unit flag cannot strip the unit from a magnitude",
+  hasUnit(
+    model.textFor(
+      {
+        id: "a1",
+        type: "annotation",
+        sourceFeatureId: "f1",
+        annotationKind: "force-value",
+        textMode: "generated",
+        placement: { x: 0, y: 0 },
+      },
+      stateWith({ showUnits: false }),
+    ),
+  ),
+  "a saved showUnits:false must not produce a unitless magnitude",
 );
 
 check(
-  "and the magnitudes are still there",
-  hasNumber(textFor({ showUnits: false })),
-  "turning units off must not turn the magnitude off",
+  "and the magnitude is still there",
+  hasNumber(
+    model.textFor(
+      {
+        id: "a1",
+        type: "annotation",
+        sourceFeatureId: "f1",
+        annotationKind: "force-value",
+        textMode: "generated",
+        placement: { x: 0, y: 0 },
+      },
+      stateWith({ showUnits: false }),
+    ),
+  ),
 );
 
 console.log("\n  one unit, printed once\n");

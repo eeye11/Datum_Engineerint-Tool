@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Crash recovery, tested against a stubbed localStorage.
  *
@@ -7,6 +11,7 @@
  * convenience and must never be the reason the application will not
  * start. Every one of those has to return quietly rather than throw.
  */
+
 let store = {};
 const storage = { unavailable: false };
 
@@ -29,7 +34,7 @@ global.window = {
   clearTimeout: () => {}
 };
 
-require("../js/engineering-drawing/document-recovery.js");
+require(modulePath("document-recovery.js"));
 const r = global.window.enggRecovery;
 
 let pass = 0;

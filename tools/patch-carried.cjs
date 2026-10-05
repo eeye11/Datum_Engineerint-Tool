@@ -110,7 +110,9 @@ const helper = eol(`    /*
 
 `);
 
-const marker = eol("    function createGeometryObject(type, geometry, options = {}) {");
+const marker = eol(
+  "    function createGeometryObject(type, geometry, options = {}) {",
+);
 
 if (!source.includes(marker)) {
   console.log("createGeometryObject not found");
@@ -120,6 +122,4 @@ if (!source.includes(marker)) {
 source = source.replace(marker, helper + marker);
 
 fs.writeFileSync(path, source);
-console.log(
-  `carried fields added (file is ${CRLF ? "CRLF" : "LF"})`
-);
+console.log(`carried fields added (file is ${CRLF ? "CRLF" : "LF"})`);

@@ -129,7 +129,9 @@ console.log("\n== Deleting ONE of two sources keeps the resultant ==\n");
   );
 }
 
-console.log("\n== A deleted member leaves a diagram unresolved, not orphaned ==\n");
+console.log(
+  "\n== A deleted member leaves a diagram unresolved, not orphaned ==\n",
+);
 
 {
   const beam = F.beam({ x: 0, y: 0 }, { x: 600, y: 0 });
@@ -175,10 +177,7 @@ console.log("\n== Deleting a beam removes its children ==\n");
 
   S.removeObjectsAndDescendants(state, [beam.id]);
 
-  check(
-    "the beam is gone",
-    !state.objects.some((o) => o.id === beam.id),
-  );
+  check("the beam is gone", !state.objects.some((o) => o.id === beam.id));
   check(
     "and so are its support and load",
     !state.objects.some((o) => o.id === support.id) &&
@@ -227,7 +226,11 @@ console.log("\n== Undo restores what a commit removed ==\n");
   S.removeObjectsAndDescendants(state, [beam.id]);
   S.commitDrawingChange(state, snapshot);
 
-  check("the deletion took effect", state.objects.length === 0, `got ${state.objects.length}`);
+  check(
+    "the deletion took effect",
+    state.objects.length === 0,
+    `got ${state.objects.length}`,
+  );
   check("and there is something to undo", S.canUndo(state));
 
   S.undo(state);
@@ -245,14 +248,33 @@ console.log("\n== Undo restores what a commit removed ==\n");
 
   S.redo(state);
 
-  check("and redo removes them again", state.objects.length === 0, `got ${state.objects.length}`);
+  check(
+    "and redo removes them again",
+    state.objects.length === 0,
+    `got ${state.objects.length}`,
+  );
 }
 
 console.log("\n== A cycle of parents does not hang the delete ==\n");
 
 {
-  const a = { id: "a", type: "beam", name: "A", geometry: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }, style: {}, metadata: {} };
-  const b = { id: "b", type: "beam", name: "B", parentId: "a", geometry: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }, style: {}, metadata: {} };
+  const a = {
+    id: "a",
+    type: "beam",
+    name: "A",
+    geometry: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
+    style: {},
+    metadata: {},
+  };
+  const b = {
+    id: "b",
+    type: "beam",
+    name: "B",
+    parentId: "a",
+    geometry: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
+    style: {},
+    metadata: {},
+  };
   a.parentId = "b";
 
   const state = freshState([a, b]);

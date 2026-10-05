@@ -1,3 +1,8 @@
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A SUPPORT STAY PINNED WHILE IT IS BEING MOVED?
@@ -30,13 +35,12 @@
  * The behaviour under test is `applyStaticsManipulation`'s, so the source is
  * read and the branch is exercised through the same path a pointer takes.
  */
-const fs = require("fs");
-const path = require("path");
+
 
 const projectRoot = path.join(__dirname, "..");
 
 const drawingSource = fs.readFileSync(
-  path.join(projectRoot, "js", "engineering-drawing", "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -123,7 +127,7 @@ check(
 
 global.window = { crypto: { randomUUID: () => "support-pin-uuid" } };
 
-require("../js/engineering-drawing/body-frames.js");
+require(modulePath("body-frames.js"));
 
 const frames = global.window.enggBodyFrames;
 

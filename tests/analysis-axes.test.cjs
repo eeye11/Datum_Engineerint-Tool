@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE ANALYSIS GRAPH HAVE A COORDINATE SYSTEM?
@@ -24,8 +30,7 @@
  * length whatever has been drawn in it. That is checked here by rendering
  * the same feature with and without a curve and comparing the axis.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -68,11 +73,7 @@ for (const name of [
   "renderer.js",
 ]) {
   require(
-    path.join(
-      projectRoot,
-      "js",
-      "engineering-drawing",
-      name,
+    locate(name,
     ),
   );
 }

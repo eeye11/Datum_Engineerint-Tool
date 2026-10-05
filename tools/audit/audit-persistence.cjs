@@ -27,7 +27,11 @@ const F = S.geometryFactories;
 function freshState(objects = []) {
   return {
     objects,
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -79,7 +83,18 @@ D.registerDependency(resultant, [a.id, b.id]);
 const components = F["force-components"]({ x: 0, y: 0 }, { x: 1, y: 0 });
 D.registerDependency(components, [a.id]);
 
-const scene = [beam, support, roller, load, varying, moment, a, b, resultant, components];
+const scene = [
+  beam,
+  support,
+  roller,
+  load,
+  varying,
+  moment,
+  a,
+  b,
+  resultant,
+  components,
+];
 
 const state = freshState(scene);
 D.refreshAll(state);
@@ -93,7 +108,10 @@ const before = {
 const payload = S.serializeDrawing(state);
 const restored = JSON.parse(payload);
 
-check("the payload is valid JSON", typeof payload === "string" && payload.length > 0);
+check(
+  "the payload is valid JSON",
+  typeof payload === "string" && payload.length > 0,
+);
 check(
   "every object survives the round trip",
   restored.objects.length === scene.length,
@@ -106,7 +124,9 @@ restoredState.objects = restored.objects;
 /* Re-derive against the restored scene. */
 D.refreshAll(restoredState);
 
-const restoredResultant = restoredState.objects.find((o) => o.type === "resultant");
+const restoredResultant = restoredState.objects.find(
+  (o) => o.type === "resultant",
+);
 const restoredComponents = restoredState.objects.find(
   (o) => o.type === "force-components",
 );
@@ -120,7 +140,8 @@ check(
 
 check(
   "and recomputes to the same magnitude",
-  Math.abs(restoredResultant.geometry.magnitude - before.resultantMagnitude) < 1e-6,
+  Math.abs(restoredResultant.geometry.magnitude - before.resultantMagnitude) <
+    1e-6,
   `${before.resultantMagnitude} -> ${restoredResultant.geometry.magnitude}`,
 );
 

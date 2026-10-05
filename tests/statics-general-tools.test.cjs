@@ -1,3 +1,9 @@
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE GENERAL TOOLS, OVER EVERY STATICS FEATURE
@@ -19,12 +25,10 @@
  * hand-written object that the application cannot create describes nothing,
  * and would report a working feature as broken.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -59,7 +63,7 @@ vm.createContext(sandbox);
 
 for (const name of ["body-frames.js", "feature-geometry.js"]) {
   vm.runInContext(
-    fs.readFileSync(path.join(dir, name), "utf8"),
+    fs.readFileSync(locate(name), "utf8"),
     sandbox,
   );
 }

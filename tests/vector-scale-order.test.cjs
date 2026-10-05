@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * IS THE VECTOR SCALE LISTED IN A REASONABLE ORDER, AND A REASONABLE
  * RANGE?
@@ -17,9 +21,10 @@
  * change while reordering: the default is still 1, every value is still
  * present exactly once, and 1 still sits in the middle.
  */
+
 global.window = {};
 
-require("../js/engineering-drawing/load-profile.js");
+require(modulePath("load-profile.js"));
 
 const profile = global.window.enggLoadProfile;
 

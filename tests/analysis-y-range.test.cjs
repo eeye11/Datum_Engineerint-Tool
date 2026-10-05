@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE Y RANGE
@@ -18,12 +25,10 @@
  * their own answer. So the unit height is chosen from the larger of the two,
  * and nothing is ever quietly trimmed.
  */
-const path = require("path");
-const fs = require("fs");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -63,7 +68,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(path.join(dir, name));
+  require(locate(name));
 }
 
 const renderer = global.window.enggDrawingRenderer;
@@ -224,7 +229,7 @@ check(
 console.log("\n  the unit is the one the diagram measures\n");
 
 const source = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 

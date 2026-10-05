@@ -9,7 +9,7 @@ export default async function run(page, ui) {
   await page
     .waitForFunction(
       () => document.querySelectorAll("[data-tool-id]").length > 0,
-      { timeout: 30000 }
+      { timeout: 30000 },
     )
     .catch(() => null);
 
@@ -22,9 +22,7 @@ export default async function run(page, ui) {
 
   const msg = () =>
     page.evaluate(
-      () =>
-        document.getElementById("drawingToolMessage")
-          ?.innerText || ""
+      () => document.getElementById("drawingToolMessage")?.innerText || "",
     );
 
   const at = async (dx, dy) => {
@@ -40,11 +38,17 @@ export default async function run(page, ui) {
           button: 0,
           detail: 1,
         };
-        ["pointermove", "mousemove", "pointerdown", "mousedown",
-         "click", "pointerup", "mouseup"].forEach((t) =>
-          c.dispatchEvent(new MouseEvent(t, o)));
+        [
+          "pointermove",
+          "mousemove",
+          "pointerdown",
+          "mousedown",
+          "click",
+          "pointerup",
+          "mouseup",
+        ].forEach((t) => c.dispatchEvent(new MouseEvent(t, o)));
       },
-      { x: dx, y: dy }
+      { x: dx, y: dy },
     );
     await page.waitForTimeout(320);
     return await msg();
@@ -83,8 +87,7 @@ export default async function run(page, ui) {
   out.body3 = await at(0.5, 0.6);
 
   out.zoom = await page.evaluate(
-    () =>
-      document.getElementById("drawingZoomValue")?.value
+    () => document.getElementById("drawingZoomValue")?.value,
   );
 
   return out;

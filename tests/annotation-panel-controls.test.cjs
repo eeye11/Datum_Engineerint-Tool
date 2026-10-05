@@ -26,19 +26,20 @@
  *      string "false" written back reads as truthy next time and leaves the
  *      switch permanently on.
  */
+
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
   "js",
-  "engineering-drawing",
 );
 
 const code = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -49,7 +50,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(path.join(dir, "property-panel.js"));
+require(locate("property-panel.js"));
 
 const panels = global.window.enggPropertyPanel;
 
@@ -158,7 +159,7 @@ check(
  * than from the panel source, because the panel's correctness depends on
  * this being right, not on it having been written down again.
  */
-require(path.join(dir, "annotation-model.js"));
+require(locate("annotation-model.js"));
 
 const annotatable = global.window.enggAnnotationModel
   .annotatableTypes();

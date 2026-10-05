@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES THE DEPENDENCY SYSTEM HOLD THE WHOLE SHEET TOGETHER?
  *
@@ -20,13 +24,14 @@
  * to be - a state no student would ever see by hand, and one they would
  * quite reasonably report as Undo being broken.
  */
+
 global.window = { crypto: { randomUUID: () => "deps-uuid" } };
 
-require("../js/engineering-drawing/load-profile.js");
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("load-profile.js"));
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
+require(modulePath("drawing-state.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

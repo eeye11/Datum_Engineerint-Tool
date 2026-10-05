@@ -24,7 +24,9 @@ const check = (name, ok, detail) => {
 const F = h.state.geometryFactories;
 const P = h.profile;
 
-console.log("\n== A distributed load is picked by its FIELD, not its two points ==\n");
+console.log(
+  "\n== A distributed load is picked by its FIELD, not its two points ==\n",
+);
 
 {
   const load = F.load({ x: 0, y: 0 }, { x: 200, y: 0 }, 5);
@@ -49,13 +51,20 @@ console.log("\n== A distributed load is picked by its FIELD, not its two points 
 
   check(
     "a click inside the load field hits the load",
-    P.loadContainsPoint(load.geometry, onField, 4, pixelsPerUnit, scale) === true,
+    P.loadContainsPoint(load.geometry, onField, 4, pixelsPerUnit, scale) ===
+      true,
     `point ${JSON.stringify(onField)}`,
   );
 
   check(
     "a click far from the load misses it",
-    P.loadContainsPoint(load.geometry, { x: 100, y: 5000 }, 4, pixelsPerUnit, scale) === false,
+    P.loadContainsPoint(
+      load.geometry,
+      { x: 100, y: 5000 },
+      4,
+      pixelsPerUnit,
+      scale,
+    ) === false,
   );
 
   check(
@@ -93,12 +102,15 @@ console.log("\n== The load's clickable region follows the Vector Scale ==\n");
   );
   check(
     "at 0.25x the same point is outside the smaller field",
-    P.loadContainsPoint(load.geometry, farPoint, 4, pixelsPerUnit, 0.25) === false,
+    P.loadContainsPoint(load.geometry, farPoint, 4, pixelsPerUnit, 0.25) ===
+      false,
     "the hit region did not follow the drawn size",
   );
 }
 
-console.log("\n== A couple is ONE feature, picked along its rotational arrow ==\n");
+console.log(
+  "\n== A couple is ONE feature, picked along its rotational arrow ==\n",
+);
 
 {
   const couple = F.couple({ x: 0, y: 0 }, 100, 50, "CW");
@@ -111,7 +123,8 @@ console.log("\n== A couple is ONE feature, picked along its rotational arrow ==\
   check(
     "with one magnitude and one direction",
     Number.isFinite(Number(couple.geometry.magnitude)) &&
-      (couple.geometry.direction === "CW" || couple.geometry.direction === "CCW"),
+      (couple.geometry.direction === "CW" ||
+        couple.geometry.direction === "CCW"),
     JSON.stringify({
       magnitude: couple.geometry.magnitude,
       direction: couple.geometry.direction,
@@ -119,7 +132,9 @@ console.log("\n== A couple is ONE feature, picked along its rotational arrow ==\
   );
 }
 
-console.log("\n== Feature pick geometry is model-derived, not screen-derived ==\n");
+console.log(
+  "\n== Feature pick geometry is model-derived, not screen-derived ==\n",
+);
 
 {
   /*
@@ -164,7 +179,10 @@ console.log("\n== Renderer-only graphics are never separate features ==\n");
    */
   const cases = [
     ["a distributed load", F.load({ x: 0, y: 0 }, { x: 100, y: 0 }, 5)],
-    ["a varying load", F["varying-load"]({ x: 0, y: 0 }, { x: 100, y: 0 }, 5, 10)],
+    [
+      "a varying load",
+      F["varying-load"]({ x: 0, y: 0 }, { x: 100, y: 0 }, 5, 10),
+    ],
     ["a couple", F.couple({ x: 0, y: 0 }, 100, 50, "CW")],
     ["a moment", F.moment({ x: 0, y: 0 }, 25, "CW")],
   ];

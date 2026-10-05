@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES A FEATURE MOVE BY THE HANDLE, OR BY ITS OWN ARROW?
  *
@@ -22,10 +26,11 @@
  * handle's own position is where the student grabbed the feature and it
  * must travel with the feature rather than staying at the press point.
  */
+
 global.window = { crypto: { randomUUID: () => "move-uuid" } };
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
 
 const geometry = global.window.enggFeatureGeometry;
 

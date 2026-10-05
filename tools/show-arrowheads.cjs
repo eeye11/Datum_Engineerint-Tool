@@ -21,7 +21,7 @@ const dom = new JSDOM(
 
 global.window = dom.window;
 global.document = dom.window.document;
-global.requestAnimationFrame = cb => setTimeout(cb, 0);
+global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
 
 for (const name of [
   "measurement-core.js",
@@ -133,7 +133,7 @@ for (const angle of [0, 45, 90, 135, 180, -90, -45]) {
     .getAttribute("points")
     .trim()
     .split(/\s+/)
-    .map(pair => {
+    .map((pair) => {
       const [x, y] = pair.split(",").map(Number);
 
       return { x, y };
@@ -151,10 +151,7 @@ for (const angle of [0, 45, 90, 135, 180, -90, -45]) {
       y: (others[0].y + others[1].y) / 2,
     };
 
-    const d = Math.hypot(
-      point.x - middle.x,
-      point.y - middle.y,
-    );
+    const d = Math.hypot(point.x - middle.x, point.y - middle.y);
 
     if (!tip || d > tip.d) {
       tip = { ...point, d };
@@ -167,7 +164,7 @@ for (const angle of [0, 45, 90, 135, 180, -90, -45]) {
 
   const d = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
 
-  const crosses = bases.map(corner => {
+  const crosses = bases.map((corner) => {
     const ox = corner.x - tip.x;
     const oy = corner.y - tip.y;
 
@@ -184,12 +181,10 @@ for (const angle of [0, 45, 90, 135, 180, -90, -45]) {
     `  ${String(angle).padStart(4)}    ` +
       bases
         .map(
-          c =>
-            `(${(
-              c.x - tip.x
-            ).toFixed(1).padStart(6)},${(
-              c.y - tip.y
-            ).toFixed(1).padStart(6)})`,
+          (c) =>
+            `(${(c.x - tip.x).toFixed(1).padStart(6)},${(c.y - tip.y)
+              .toFixed(1)
+              .padStart(6)})`,
         )
         .join(" ") +
       `     ${JSON.stringify(crosses).padEnd(14)}  ` +

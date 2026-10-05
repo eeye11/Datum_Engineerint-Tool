@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES A SNAP BECOME A DIMENSION REFERENCE?
  *
@@ -12,11 +16,12 @@
  * quietly falls back to measuring the whole feature under the cursor, which
  * looks like it works.
  */
+
 global.window = {
   crypto: { randomUUID: () => "snap-anchor-uuid" }
 };
 
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("measurement-core.js"));
 
 const M = global.window.enggMeasurement;
 

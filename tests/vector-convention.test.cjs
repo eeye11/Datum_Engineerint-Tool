@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DO ALL THE VECTORS POINT THE SAME WAY?
@@ -41,8 +48,7 @@
  * loads, which use a different head SHAPE but must use the same rule for
  * which end the head is on.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -87,11 +93,7 @@ for (const name of [
   "renderer.js",
 ]) {
   require(
-    path.join(
-      projectRoot,
-      "js",
-      "engineering-drawing",
-      name,
+    locate(name,
     ),
   );
 }
@@ -639,13 +641,8 @@ console.log("\n  and so do both loads\n");
   );
 });
 
-const rendererSource = require("fs").readFileSync(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "renderer.js",
-  ),
+const rendererSource = fs.readFileSync(
+  locate("renderer.js"),
   "utf8",
 );
 

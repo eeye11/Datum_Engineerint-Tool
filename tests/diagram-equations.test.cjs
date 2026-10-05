@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES AN EQUATION MEAN WHAT IT SAYS?
  *
@@ -9,9 +13,10 @@
  *
  * So this checks the VALUES, not merely that something was returned.
  */
+
 global.window = {};
 
-require("../js/engineering-drawing/diagram-equations.js");
+require(modulePath("diagram-equations.js"));
 
 const eq = global.window.enggDiagramEquations;
 

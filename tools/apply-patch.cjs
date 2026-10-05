@@ -35,15 +35,7 @@ for (const patch of patches) {
 
   let source = fs.readFileSync(full, "utf8");
 
-  const usesCrlf = source.includes("\r\n");
-
-  const toFileNewlines = (text) =>
-    usesCrlf ? text.replace(/\r?\n/g, "\r\n") : text;
-
-  const find = toFileNewlines(patch.find);
-  const replace = toFileNewlines(patch.replace);
-
-  const occurrences = source.split(find).length - 1;
+  const occurrences = source.split(patch.find).length - 1;
 
   const expected = patch.count === undefined ? 1 : patch.count;
 
@@ -55,7 +47,7 @@ for (const patch of patches) {
     continue;
   }
 
-  source = source.split(find).join(replace);
+  source = source.split(patch.find).join(patch.replace);
 
   fs.writeFileSync(full, source, "utf8");
 

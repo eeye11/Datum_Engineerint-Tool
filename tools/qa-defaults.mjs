@@ -26,14 +26,11 @@ export default async function run(page, ui) {
 
   const draw = async (toolId, category, y) => {
     if (category) {
-      await page.evaluate(
-        (c) => {
-          document
-            .querySelector(`.drawing-category[data-category="${c}"]`)
-            ?.click();
-        },
-        category
-      );
+      await page.evaluate((c) => {
+        document
+          .querySelector(`.drawing-category[data-category="${c}"]`)
+          ?.click();
+      }, category);
       await page.waitForTimeout(350);
     }
 
@@ -70,7 +67,7 @@ export default async function run(page, ui) {
         clickAt(0.1, yy);
         clickAt(0.5, yy);
       },
-      { id: toolId, yy: y }
+      { id: toolId, yy: y },
     );
     await page.waitForTimeout(450);
   };
@@ -82,7 +79,7 @@ export default async function run(page, ui) {
   const strokes = await page.evaluate(() => {
     const svg = document.querySelector(".drawing-canvas svg");
     return Array.from(svg?.querySelectorAll("line,polyline,path") || []).map(
-      (el) => Number(el.getAttribute("stroke-width"))
+      (el) => Number(el.getAttribute("stroke-width")),
     );
   });
 

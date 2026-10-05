@@ -1,3 +1,9 @@
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * MIRROR, AND THE DEFAULT TOOL
@@ -21,12 +27,10 @@
  * through every tool handler rather than by Select being active. Naming it
  * makes the default state an ordinary one.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -49,7 +53,7 @@ const check = (name, ok, detail) => {
  * is what that function DOES, not what a copy of it would do.
  */
 const source = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -255,7 +259,7 @@ check(
 console.log("\n  SELECT IS NAMED AS THE DEFAULT\n");
 
 const stateSource = fs.readFileSync(
-  path.join(dir, "drawing-state.js"),
+  locate("drawing-state.js"),
   "utf8",
 );
 

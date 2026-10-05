@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN THE SELECT TOOL REACH A DISTRIBUTED LOAD?
@@ -23,8 +29,7 @@
  * draws with, or the hit region drifts away from the ink as soon as the
  * student zooms or changes the Vector Scale.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -51,11 +56,7 @@ global.window = dom.window;
 global.document = dom.window.document;
 
 require(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "load-profile.js",
+  locate("load-profile.js",
   ),
 );
 

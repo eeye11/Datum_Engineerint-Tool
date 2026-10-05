@@ -1,3 +1,10 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Does the FEATURES LIST still render at all?
  *
@@ -9,10 +16,7 @@
  * This loads the real file, with a DOM, and asks the tree renderer for the
  * markup it produces.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -58,6 +62,18 @@ const ids = [
   "drawingFileNew",
   "drawingFileOpen",
   "drawingFileSave",
+
+  /*
+   * script.js's own elements.
+   *
+   * The harness loads EVERY script index.html lists, in order, which is
+   * how it catches a module that only breaks when its neighbours are
+   * present. script.js is the page bootstrap and binds the image
+   * preview controls, so its elements have to exist for it to evaluate.
+   */
+  "writingImageUpload",
+  "writingImage",
+  "writingImageMessage",
 ];
 
 const body = [
@@ -95,10 +111,10 @@ dom.window.cancelAnimationFrame = (id) => clearTimeout(id);
 
 console.log("\n  drawing.js loads at all\n");
 
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 const readFile = (name) =>
-  fs.readFileSync(path.join(dir, name), "utf8");
+  fs.readFileSync(locate(name), "utf8");
 
 /*
  * The modules drawing.js reads at LOAD time, in the order index.html gives
@@ -108,7 +124,7 @@ const readFile = (name) =>
  */
 const dependencies = fs
   .readFileSync(path.join(projectRoot, "index.html"), "utf8")
-  .match(/<script src="js\/engineering-drawing\/([^"]+)"><\/script>/g)
+  .match(/<script src="js\/([^"]+)"><\/script>/g)
   .map((tag) => tag.match(/([^/"]+)">/)[1])
   .filter((name) => name !== "drawing.js");
 

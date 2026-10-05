@@ -63,9 +63,7 @@ export default async function run(page, ui) {
   return await page.evaluate(() => {
     /* Restyle each force to the weight it was drawn for. */
     const state = window.enggDrawing?.state;
-    const forces = (state?.objects || []).filter(
-      (o) => o.type === "force"
-    );
+    const forces = (state?.objects || []).filter((o) => o.type === "force");
 
     forces.forEach((f, i) => {
       f.style = f.style || {};
@@ -84,7 +82,7 @@ export default async function run(page, ui) {
     if (svg && vb.length === 4) {
       svg.setAttribute(
         "viewBox",
-        `${vb[0]} ${vb[1]} ${vb[2] / 2.5} ${vb[3] / 2.5}`
+        `${vb[0]} ${vb[1]} ${vb[2] / 2.5} ${vb[3] / 2.5}`,
       );
     }
 

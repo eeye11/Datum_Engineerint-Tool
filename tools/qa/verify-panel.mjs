@@ -1,13 +1,17 @@
 export default async function run(page, ui) {
   const errs = [];
-  page.on("pageerror", (e) => errs.push("PAGEERROR: " + e.message.slice(0, 200)));
+  page.on("pageerror", (e) =>
+    errs.push("PAGEERROR: " + e.message.slice(0, 200)),
+  );
   page.on("console", (m) => {
     if (m.type() === "error") errs.push("CONSOLE: " + m.text().slice(0, 160));
   });
 
   await page.goto("http://localhost:8099/", { waitUntil: "load" });
   await page.waitForTimeout(2000);
-  const tab = page.locator("button", { hasText: "Engineering Drawing" }).first();
+  const tab = page
+    .locator("button", { hasText: "Engineering Drawing" })
+    .first();
   if (await tab.count()) await tab.click();
   await page.waitForTimeout(1500);
 
@@ -19,12 +23,17 @@ export default async function run(page, ui) {
     seq += 1;
     const key = "data-f" + seq;
     return page
-      .evaluate((src) => {
-        const s = document.createElement("script");
-        s.textContent = src;
-        document.body.appendChild(s);
-        return null;
-      }, "(function(){\n" + lines.join("\n").split("__K__").join(key) + "\n})();")
+      .evaluate(
+        (src) => {
+          const s = document.createElement("script");
+          s.textContent = src;
+          document.body.appendChild(s);
+          return null;
+        },
+        "(function(){\n" +
+          lines.join("\n").split("__K__").join(key) +
+          "\n})();",
+      )
       .then(() => page.getAttribute("html", key))
       .then((v) => (v === null ? null : JSON.parse(v)));
   };
@@ -39,9 +48,9 @@ export default async function run(page, ui) {
 
   await page.locator('#drawingToolList [data-tool-id="circle"]').click();
   await page.waitForTimeout(300);
-  await page.mouse.click(bb.x + 280,  bb.y + 300);
+  await page.mouse.click(bb.x + 280, bb.y + 300);
   await page.waitForTimeout(300);
-  await page.mouse.click(bb.x + 340,  bb.y + 360);
+  await page.mouse.click(bb.x + 340, bb.y + 360);
   await page.waitForTimeout(700);
 
   // Switch to the Features view.
@@ -55,11 +64,11 @@ export default async function run(page, ui) {
     inPage([
       "  const st = window.enggDrawing.state;",
       "  document.documentElement.setAttribute('__K__', JSON.stringify(",
-      "    st.selection.selectedObjectIds));"
+      "    st.selection.selectedObjectIds));",
     ]);
 
   out.rows = await page.evaluate(
-    () => document.querySelectorAll(".drawing-component-row").length
+    () => document.querySelectorAll(".drawing-component-row").length,
   );
 
   // Click the FIRST row: selects it.
@@ -85,7 +94,7 @@ export default async function run(page, ui) {
 
   // Canvas and panel must agree.
   out.highlighted = await page.evaluate(
-    () => document.querySelectorAll(".drawing-component-row.selected").length
+    () => document.querySelectorAll(".drawing-component-row.selected").length,
   );
 
   return out;

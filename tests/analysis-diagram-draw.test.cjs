@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES AN ANALYSIS DIAGRAM DRAW?
  *
@@ -18,6 +22,7 @@
  * and every extra case is another DOM stub that can be wrong for reasons
  * that have nothing to do with the bug.
  */
+
 
 global.window = {
   crypto: {
@@ -115,11 +120,11 @@ global.window.document = {
 
 global.document = global.window.document;
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
-require("../js/engineering-drawing/drawing-state.js");
-require("../js/engineering-drawing/renderer.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
+require(modulePath("drawing-state.js"));
+require(modulePath("renderer.js"));
 
 const state = global.window.enggDrawingState;
 const renderer = global.window.enggDrawingRenderer;
@@ -133,7 +138,7 @@ global.enggFeatureGeometry = global.window.enggFeatureGeometry;
  * The renderer reads the equation engine as a bare global, the same way
  * the browser hands it over.
  */
-require("../js/engineering-drawing/diagram-equations.js");
+require(modulePath("diagram-equations.js"));
 
 global.enggDiagramEquations = global.window.enggDiagramEquations;
 

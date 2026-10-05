@@ -32,34 +32,64 @@ measurement core, zoom, undo/drag, and the feature/analysis matrix.
 index.html                      application entry point
 css/                            stylesheets
 js/script.js                    page bootstrap
-js/engineering-drawing/         canonical application modules (one file per system)
+
+js/app/                         drawing controller, toolbar, tool registry
+js/core/                        shared machinery: geometry, units, scale,
+                                  model state, snapping, selection
+js/features/                    persistent data models (dimensions,
+                                  annotations, analysis)
+js/rendering/                   drawing the document to the SVG canvas
+js/ui/                          feature panels, editors, popups
+js/sheets/                      sheets and their tabs
+js/file/                        save, load, export, crash recovery
+js/references/                  the written-solution reference system
+
 backend/server.js               express static server + TikZ render endpoint
 tests/                          automated tests (node:test)
-tools/                          development QA and probe scripts (not shipped)
+tools/audit/                    system-wide engineering audits
 tools/qa/                       browser-driven verification scripts
+tools/dev/                      one-off diagnostics
 tools/tikz-probes/              early TikZ integration probes
 ```
 
+## Where to look first
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — what lives where, and why.
+  Read this before hunting for a file.
+- **[TOOL-MAP.md](TOOL-MAP.md)** — every toolbar command, and the places
+  its code lives.
+
+Sources are grouped by **ownership**, not by the order they were written:
+shared machinery is separated from the tools that use it, and the folder
+tree mirrors the toolbar a user sees.
+
 ## Module map
 
-| Concern | Module |
+| Concern | Where |
 | --- | --- |
-| Tools & toolbar | `tools.js`, `toolbar.js`, `ui.js` |
-| Geometry / statics state | `drawing-state.js`, `feature-geometry.js`, `body-frames.js` |
-| Drawing & rendering | `drawing.js`, `renderer.js`, `drawing-delete.js` |
-| Snapping & selection | `object-snap.js`, `clipboard.js` |
-| Dimensions & annotations | `dimensions.js`, `dimension-model.js`, `dimension-editor.js`, `smart-dimension.js`, `annotation-model.js`, `measurement-core.js` |
-| Analysis | `analysis-dependencies.js`, `load-profile.js`, `rotational-arrow.js` |
-| Sheets | `sheets.js`, `sheet-tabs.js`, `scale-calibration.js` |
-| File / save / load / export | `document-file.js`, `file-save.js`, `document-export.js`, `document-recovery.js` |
-| Written solution | `written-references.js`, `drawing-reference.js` |
+| Tools & toolbar | `app/tools.js`, `app/toolbar.js`, `app/ui.js` |
+| Drawing controller | `app/drawing.js` |
+| Geometry / statics state | `core/model/drawing-state.js`, `core/geometry/` |
+| Drawing & rendering | `rendering/renderer.js` |
+| Snapping & selection | `core/snapping/object-snap.js`, `core/selection/` |
+| Units & quantities | `core/units/quantities.js` |
+| Sheet Universal Length Scale | `core/scale/dimensions.js` |
+| Dimensions & annotations | `features/dimensions/`, `features/annotations/` |
+| Analysis | `features/analysis/`, `ui/editors/` |
+| Sheets | `sheets/sheets.js`, `sheets/sheet-tabs.js` |
+| File / save / load / export | `file/` |
+| Written solution | `references/` |
 
 ## Notes
 
 - There is no build step. The browser loads the sources directly.
-- `tools/` scripts are development aids. The browser-driven ones under
+- `tools/` scripts are development aids, not part of the app. `tools/audit/`
+  holds the engineering audits (`node tools/audit/<name>.cjs`);
+  `tools/dev/` holds one-off diagnostics; the browser-driven scripts under
   `tools/qa/` need a Playwright-compatible driver and a static server
-  (`node tools/static-server.cjs <repo-root>`); they are not part of the app.
+  (`node tools/static-server.cjs <repo-root>`).
+- Tests locate source modules **by name**, never by path, through
+  `tests/helpers/source-path.cjs` — so moving a file does not break them.
 - Analysis philosophy: EnggDraw does not compute SFD/BMD/AFD values or infer a
   student's solution — those diagrams are drawn as ordinary geometry. See
   `tests/analysis-rows.test.cjs` for the current state of each analysis row.

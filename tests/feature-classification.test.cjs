@@ -1,3 +1,9 @@
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * IS EVERY FEATURE CLASSIFIED ONCE, AND IN ONE PLACE?
@@ -20,9 +26,7 @@
  * passing after the real classifier regressed, which is the failure this
  * whole file exists to prevent.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -42,7 +46,7 @@ const check = (name, ok, detail) => {
 };
 
 const drawingSource = fs.readFileSync(
-  path.join(projectRoot, "js", "engineering-drawing", "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 

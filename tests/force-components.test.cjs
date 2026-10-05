@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ARE THE COMPONENTS ACTUALLY THE COMPONENTS?
  *
@@ -17,11 +21,12 @@
  * problem, and a component that is arithmetically wrong is a model's
  * problem, and the two need separating.
  */
+
 global.window = {};
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 

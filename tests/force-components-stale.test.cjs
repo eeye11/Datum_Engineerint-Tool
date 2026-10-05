@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DO THE COMPONENTS FOLLOW THEIR FORCE?
  *
@@ -17,14 +21,15 @@
  * the numbers this file happens to know, so a change the test did not
  * anticipate is still caught.
  */
+
 global.window = {
   crypto: { randomUUID: () => "components-stale-uuid" }
 };
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
+require(modulePath("drawing-state.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

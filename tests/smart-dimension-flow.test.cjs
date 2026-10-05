@@ -1,3 +1,9 @@
+
+const path = require("path");
+const fs = require("fs");
+const vm = require("vm");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * SMART DIMENSION: THE REFERENCE-TO-MEASUREMENT INFERENCE
@@ -21,12 +27,10 @@
  * question is what THESE functions do and not what a reimplementation
  * would do.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
+
 
 const projectRoot = path.join(__dirname, "..");
-const dir = path.join(projectRoot, "js", "engineering-drawing");
+const dir = sourceDir();
 
 let pass = 0;
 let fail = 0;
@@ -42,7 +46,7 @@ const check = (name, ok, detail) => {
 };
 
 const source = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -287,6 +291,9 @@ const pieces = [
   "spanDimensionType",
   "resolveRefPoint",
   "referenceSpan",
+  "spanUnitDirection",
+  "sameLineReference",
+  "perpendicularDistanceDescriptor",
   "compositeSegmentPoints",
   "compositeSegmentReference",
   "distanceToSegment",

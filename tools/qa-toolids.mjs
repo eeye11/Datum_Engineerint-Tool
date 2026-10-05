@@ -9,7 +9,7 @@ export default async function run(page, ui) {
   await page
     .waitForFunction(
       () => document.querySelectorAll("[data-tool-id]").length > 0,
-      { timeout: 30000 }
+      { timeout: 30000 },
     )
     .catch(() => null);
 
@@ -22,8 +22,8 @@ export default async function run(page, ui) {
 
   const categories = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".drawing-category")).map(
-      (el) => el.dataset.category
-    )
+      (el) => el.dataset.category,
+    ),
   );
 
   const byCategory = {};
@@ -38,8 +38,8 @@ export default async function run(page, ui) {
 
     byCategory[category] = await page.evaluate(() =>
       Array.from(document.querySelectorAll("[data-tool-id]")).map(
-        (b) => b.dataset.toolId
-      )
+        (b) => b.dataset.toolId,
+      ),
     );
   }
 

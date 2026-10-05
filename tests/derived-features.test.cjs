@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DO COMPONENTS AND RESULTANTS FOLLOW THEIR SOURCES?
@@ -51,8 +57,7 @@
  * student's edit takes - rather than calling the refresh themselves, which
  * would prove the function works rather than that the product updates.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -71,11 +76,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const drawingDir = path.join(
-  projectRoot,
-  "js",
-  "engineering-drawing",
-);
+const drawingDir = sourceDir();
 
 /*
  * LOAD ORDER IS PART OF THE SUBJECT, NOT A DETAIL OF THE HARNESS.
@@ -105,7 +106,7 @@ function loadModules() {
     "analysis-dependencies.js",
     "renderer.js",
   ]) {
-    require(path.join(drawingDir, name));
+    require(locate(name));
   }
 
   for (const name of [
@@ -538,7 +539,7 @@ console.log("\n  and the tool parents it to the force\n");
 
 {
   const source = require("fs").readFileSync(
-    path.join(drawingDir, "drawing.js"),
+    locate("drawing.js"),
     "utf8",
   );
 

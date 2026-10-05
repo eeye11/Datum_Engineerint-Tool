@@ -26,14 +26,11 @@ export default async function run(page, ui) {
 
   const draw = async (toolId, category, y) => {
     if (category) {
-      await page.evaluate(
-        (c) => {
-          document
-            .querySelector(`.drawing-category[data-category="${c}"]`)
-            ?.click();
-        },
-        category
-      );
+      await page.evaluate((c) => {
+        document
+          .querySelector(`.drawing-category[data-category="${c}"]`)
+          ?.click();
+      }, category);
       await page.waitForTimeout(320);
     }
 
@@ -70,7 +67,7 @@ export default async function run(page, ui) {
         clickAt(0.1, yy);
         clickAt(0.5, yy);
       },
-      { id: toolId, yy: y }
+      { id: toolId, yy: y },
     );
     await page.waitForTimeout(450);
   };
@@ -90,9 +87,7 @@ export default async function run(page, ui) {
       const heads = Array.from(svg?.querySelectorAll("polygon") || []);
 
       return {
-        strokes: lines.map((el) =>
-          Number(el.getAttribute("stroke-width"))
-        ),
+        strokes: lines.map((el) => Number(el.getAttribute("stroke-width"))),
         headSizes: heads.map((el) => {
           const bb = el.getBBox();
           return Math.round(Math.max(bb.width, bb.height));

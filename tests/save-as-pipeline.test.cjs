@@ -23,14 +23,15 @@
  * integration point: what is under test is everything this application does
  * AROUND the native picker.
  */
+
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
   "js",
-  "engineering-drawing",
 );
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -42,8 +43,8 @@ global.document = dom.window.document;
 global.Blob = dom.window.Blob;
 global.URL = dom.window.URL;
 
-require(path.join(dir, "document-file.js"));
-require(path.join(dir, "file-save.js"));
+require(locate("document-file.js"));
+require(locate("file-save.js"));
 
 const file = global.window.enggDocumentFile;
 const save = global.window.enggFileSave;

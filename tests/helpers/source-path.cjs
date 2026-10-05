@@ -1,0 +1,143 @@
+/*
+ * ========================================================
+ * WHERE THE APPLICATION'S SOURCE FILES LIVE
+ * ========================================================
+ *
+ * Every test loads the real modules from the real source tree, so every
+ * test needs to know where that tree is. It used to answer with the
+ * literal string "js/engineering-drawing" - and that path stopped being
+ * true when the sources were reorganised by ownership into `core/`,
+ * `features/`, `rendering/` and so on.
+ *
+ * A TEST THAT HARD-CODES A DIRECTORY IS A TEST THAT BREAKS ON A MOVE.
+ *
+ * So the layout lives here, once, and a test asks for a module BY NAME:
+ *
+ *     const { modulePath } = require("./helpers/source-path.cjs");
+ *
+ *     require(modulePath("quantities.js"));
+ *
+ * The lookup is by BASENAME rather than by full path, because a test's
+ * subject is "the quantities module", not "the quantities module at a
+ * particular address". That is what makes this resilient: moving a file
+ * between folders needs a change in ONE table below, not in every test
+ * that happens to load it.
+ *
+ * The tree is scanned rather than tabulated by hand, so a module added
+ * to the application is loadable from a test the moment it exists,
+ * without anyone remembering to register it.
+ */
+const fs = require("fs");
+const path = require("path");
+
+const SOURCE_ROOT = path.join(__dirname, "..", "..", "js");
+
+/* Folders that hold application source, in no particular order. */
+const SKIP = new Set(["node_modules", ".git"]);
+
+/*
+ * Every .js file under js/, as { basename -> full path }.
+ *
+ * Built once per process. A duplicate basename would be ambiguous - two
+ * files answering to one lookup - so it is reported rather than silently
+ * resolved to whichever the walk happened to reach first.
+ */
+function collect(dir, found, duplicates) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (SKIP.has(entry.name)) {
+      continue;
+    }
+
+    const full = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      collect(full, found, duplicates);
+      continue;
+    }
+
+    if (!entry.name.endsWith(".js")) {
+      continue;
+    }
+
+    if (found.has(entry.name)) {
+      duplicates.add(entry.name);
+    }
+
+    found.set(entry.name, full);
+  }
+}
+
+const found = new Map();
+const duplicates = new Set();
+
+if (fs.existsSync(SOURCE_ROOT)) {
+  collect(SOURCE_ROOT, found, duplicates);
+}
+
+/*
+ * The absolute path of a source module, by its file name.
+ *
+ * Throws rather than returning undefined: a test that cannot find the
+ * module it is about to exercise should stop with a message naming the
+ * file, not carry on and fail later for a reason that looks like a
+ * defect in the module.
+ */
+function modulePath(name) {
+  const resolved = found.get(name);
+
+  if (!resolved) {
+    throw new Error(
+      `No source module named "${name}" under ${SOURCE_ROOT}.\n` +
+        `Known modules: ${[...found.keys()].sort().join(", ")}`
+    );
+  }
+
+  return resolved;
+}
+
+/* The directory a group of modules lives in - for a test loading many. */
+function sourceDir() {
+  return SOURCE_ROOT;
+}
+
+/*
+ * The path of a module, usable where a DIRECTORY used to be passed.
+ *
+ * Tests commonly build their own path:
+ *
+ *     const dir = path.join(projectRoot, "js", "engineering-drawing");
+ *     require(path.join(dir, name));
+ *
+ * The files are no longer in one directory, so a `dir` cannot satisfy
+ * that call - but a LOOKUP can. `locate(name)` is that lookup, and it is
+ * deliberately callable with the same shape: `locate("drawing.js")` is
+ * the path, so a test's existing `path.join(dir, name)` becomes
+ * `locate(name)` with no other change.
+ *
+ * An absolute path passed through is returned unchanged, so
+ * `locate(path.join(dir, name))` where dir was already a real directory
+ * still works. That keeps the helper safe to apply everywhere rather
+ * than only where the pattern matched perfectly.
+ */
+function locate(name) {
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error(`locate() needs a module file name, got ${name}`);
+  }
+
+  /* An absolute path is already an answer. */
+  if (path.isAbsolute(name)) {
+    return name;
+  }
+
+  return modulePath(path.basename(name));
+}
+
+module.exports = {
+  SOURCE_ROOT,
+  duplicates,
+  locate,
+  modulePath,
+  sourceDir,
+  // The complete map, for a test that wants to assert on the layout.
+  modules: found,
+};

@@ -26,7 +26,11 @@ const F = S.geometryFactories;
 function freshState() {
   return {
     objects: [],
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -124,7 +128,9 @@ console.log("\n== A cancelled support leaves no attachment behind ==\n");
   state.interaction.parentId = "beam-1";
   state.interaction.staticsTarget = "beam-1";
   state.interaction.attachmentPoints = [{ x: 300, y: 0 }];
-  state.interaction.snapGeometry = [{ start: { x: 0, y: 0 }, end: { x: 600, y: 0 } }];
+  state.interaction.snapGeometry = [
+    { start: { x: 0, y: 0 }, end: { x: 600, y: 0 } },
+  ];
 
   S.clearInteraction(state);
 
@@ -156,9 +162,7 @@ console.log("\n== Reference Point is a true point ==\n");
     JSON.stringify(point.geometry.position),
   );
 
-  const anchors = h.state.enggMeasurement
-    ? null
-    : null;
+  const anchors = h.state.enggMeasurement ? null : null;
 }
 
 console.log("\n== Reference Line carries authoritative endpoints ==\n");
@@ -196,7 +200,10 @@ console.log("\n== Reference Arc uses real circular geometry ==\n");
     "with a centre and a radius",
     Math.abs(arc.geometry.center.x) < 1e-6 &&
       Math.abs(arc.geometry.radius - 50) < 1e-6,
-    JSON.stringify({ center: arc.geometry.center, radius: arc.geometry.radius }),
+    JSON.stringify({
+      center: arc.geometry.center,
+      radius: arc.geometry.radius,
+    }),
   );
   check(
     "and a start and end angle",

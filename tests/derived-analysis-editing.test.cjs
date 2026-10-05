@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A DRAGGED FEATURE STAY UNDER THE CURSOR?
@@ -30,10 +34,11 @@
  * `translateObject` is exercised through the real module, because the faults
  * were in what it does with a delta rather than in the shape of any model.
  */
+
 global.window = { crypto: { randomUUID: () => "drag-uuid" } };
 
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/feature-geometry.js");
+require(modulePath("body-frames.js"));
+require(modulePath("feature-geometry.js"));
 
 const geometry = global.window.enggFeatureGeometry;
 

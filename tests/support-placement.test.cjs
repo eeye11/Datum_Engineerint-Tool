@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A SUPPORT LAND WHERE IT WAS PLACED?
@@ -35,8 +41,7 @@
  * passed in. This checks that the two no longer disagree, and that the
  * support's drawn place follows the click.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -68,11 +73,7 @@ for (const name of [
 ]) {
   try {
     require(
-      path.join(
-        projectRoot,
-        "js",
-        "engineering-drawing",
-        name,
+      locate(name,
       ),
     );
   } catch (error) {

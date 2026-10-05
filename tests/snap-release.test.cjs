@@ -1,3 +1,8 @@
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE SNAP LET GO WHEN THE CURSOR DOES?
@@ -30,8 +35,7 @@
  *   - no per-tool tolerance exists, so the same aim behaves the same way
  *     whichever tool is armed.
  */
-const fs = require("fs");
-const path = require("path");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -51,31 +55,19 @@ const check = (name, ok, detail) => {
 };
 
 const source = fs.readFileSync(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "object-snap.js",
+  locate("object-snap.js",
   ),
   "utf8",
 );
 
 const stateSource = fs.readFileSync(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "drawing-state.js",
+  locate("drawing-state.js",
   ),
   "utf8",
 );
 
 const drawingSource = fs.readFileSync(
-  path.join(
-    projectRoot,
-    "js",
-    "engineering-drawing",
-    "drawing.js",
+  locate("drawing.js",
   ),
   "utf8",
 );

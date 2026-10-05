@@ -37,6 +37,7 @@
 const fs = require("fs");
 const path = require("path");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 let pass = 0;
 let fail = 0;
 
@@ -50,10 +51,19 @@ const check = (name, ok, detail) => {
   }
 };
 
-const directory = path.join(__dirname, "..", "js", "engineering-drawing");
+/*
+ * The source tree, WHICH IS NO LONGER ONE DIRECTORY.
+ *
+ * This used to read `js/engineering-drawing` and take every .js in it.
+ * The sources are grouped by ownership now, so the walk goes through
+ * `modules` - the same map `locate` resolves against - which keeps this
+ * check covering the whole application rather than quietly covering
+ * only whatever happens to sit at one level.
+ */
+const { modules } = require("./helpers/source-path.cjs");
 
 const read = (name) =>
-  fs.readFileSync(path.join(directory, name), "utf8");
+  fs.readFileSync(locate(name), "utf8");
 
 /*
  * The outputs that must share the renderer.
@@ -158,9 +168,7 @@ const SANCTIONED = new Set([
   "written-references.js"
 ]);
 
-const offenders = fs
-  .readdirSync(directory)
-  .filter((name) => name.endsWith(".js"))
+const offenders = [...modules.keys()]
   .filter((name) => !SANCTIONED.has(name))
   .filter((name) => DRAWS_OWN_SVG.some((pattern) => pattern.test(read(name))));
 

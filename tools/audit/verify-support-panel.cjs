@@ -5,7 +5,7 @@
  * as ONE entry. The finalise pass must flatten, or the whole group is dropped.
  */
 global.window = {};
-require("../../js/engineering-drawing/property-panel.js");
+require(require("../../tests/helpers/source-path.cjs")).modulePath("property-panel.js");
 
 const panels = global.window.enggPropertyPanel;
 

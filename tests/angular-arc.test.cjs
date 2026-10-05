@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The ANGULAR dimension's drawn arc, tested directly.
  *
@@ -21,12 +25,13 @@
  *
  * Pure module, so it runs in Node.
  */
+
 global.window = { crypto: { randomUUID: () => "angular-uuid" } };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
-require("../js/engineering-drawing/smart-dimension.js");
-require("../js/engineering-drawing/dimension-model.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
+require(modulePath("smart-dimension.js"));
+require(modulePath("dimension-model.js"));
 
 const model = global.window.enggDimensionModel;
 

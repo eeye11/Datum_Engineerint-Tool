@@ -20,6 +20,7 @@
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
 });
@@ -28,13 +29,7 @@ global.window = dom.window;
 global.document = dom.window.document;
 
 require(
-  path.join(
-    __dirname,
-    "..",
-    "js",
-    "engineering-drawing",
-    "property-panel.js",
-  ),
+  locate("property-panel.js"),
 );
 
 const panel = global.window.enggPropertyPanel;

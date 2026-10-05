@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A REVERSED FORCE ACTUALLY DRAW POINTING BACKWARDS?
@@ -24,9 +30,7 @@
  * SO THIS FILE RENDERS. It builds the SVG and asks where the ink went, which
  * is the only question a student is actually asking.
  */
-const fs = require("fs");
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -54,7 +58,7 @@ for (const name of [
   "drawing-state.js",
   "renderer.js",
 ]) {
-  require(path.join(projectRoot, "js", "engineering-drawing", name));
+  require(locate(name));
 }
 
 /*

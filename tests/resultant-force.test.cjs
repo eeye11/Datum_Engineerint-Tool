@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * IS THE RESULTANT THE ACTUAL RESULTANT?
  *
@@ -17,13 +21,14 @@
  * does not. A resultant drawn at the wrong angle with the right length
  * would pass a magnitude check.
  */
+
 global.window = { crypto: { randomUUID: () => "resultant-uuid" } };
 
-require("../js/engineering-drawing/load-profile.js");
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("load-profile.js"));
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
+require(modulePath("drawing-state.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

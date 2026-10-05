@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * POINT-ON-ENTITY ANCHORS
@@ -16,6 +20,7 @@
  * that it moves with the geometry - which is the whole reason it is a
  * fraction rather than a stored coordinate.
  */
+
 global.window = {
   enggDrawingState: {
     polygonVertices(geometry) {
@@ -51,8 +56,8 @@ global.window = {
   },
 };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
 
 const m = global.window.enggMeasurement;
 

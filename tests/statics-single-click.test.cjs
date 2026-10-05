@@ -1,3 +1,8 @@
+
+const path = require("path");
+const fs = require("fs");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * SINGLE-CLICK STATICS CREATION - regression guard.
  *
@@ -48,17 +53,10 @@
  * Pure source analysis plus the real factory table, so it runs in Node.
  */
 
-const fs = require("fs");
-const path = require("path");
+
 
 const source = fs.readFileSync(
-    path.join(
-        __dirname,
-        "..",
-        "js",
-        "engineering-drawing",
-        "drawing.js"
-    ),
+    locate("drawing.js"),
     "utf8"
 );
 
@@ -273,7 +271,7 @@ global.window = {
     }
 };
 
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("drawing-state.js"));
 
 const factories = global.window.enggDrawingState.geometryFactories;
 

@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ROTATIONAL ARROW PATH - regression guard.
  *
@@ -24,13 +28,14 @@
  * would, rather than matching it against a golden string.
  */
 
+
 global.window = {
     crypto: {
         randomUUID: () => "rotational-arrow-uuid"
     }
 };
 
-require("../js/engineering-drawing/rotational-arrow.js");
+require(modulePath("rotational-arrow.js"));
 
 const arrow = global.window.enggDrawingRotationalArrow;
 

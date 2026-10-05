@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A LENGTH MEAN ANYTHING, AND DOES IT KEEP MEANING IT?
@@ -21,11 +25,12 @@
  * are read from the MODEL and never from the viewport, because every way this
  * can go wrong looks like a number that is merely slightly off.
  */
+
 global.window = { crypto: { randomUUID: () => "scale-uuid" } };
 
-require("../js/engineering-drawing/dimension-model.js");
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("dimension-model.js"));
+require(modulePath("dimensions.js"));
+require(modulePath("drawing-state.js"));
 
 const state = global.window.enggDrawingState;
 const scale = global.window.enggDimensions;
@@ -58,6 +63,20 @@ const beam = {
     start: { x: 0, y: 0 },
     end: { x: BEAM_UNITS, y: 0 },
     depth: 12,
+  },
+};
+
+/*
+ * A SECOND length, so a removal can leave the sheet still occupied - which
+ * is what distinguishes "the sheet is empty" from "something was deleted".
+ */
+const otherBeam = {
+  id: "beam-2",
+  type: "beam",
+  geometry: {
+    start: { x: 0, y: 100 },
+    end: { x: 200, y: 100 },
+    depth: 8,
   },
 };
 
@@ -241,33 +260,159 @@ console.log("\n  vector scale changes arrows, and nothing else\n");
   drawing.statics.vectorScale = 1;
 }
 
-console.log("\n  the calibration is a fact about the document\n");
+console.log("\n  the calibration is a fact about the SHEET that holds it\n");
 
 /*
- * IT IS NOT A PROPERTY OF THE GEOMETRY. Every feature shares one scale, so
- * there is no second answer for a beam to disagree with, and deleting the
- * measured feature does not take the answer with it.
+ * IT IS NOT A PROPERTY OF THE GEOMETRY.
+ *
+ * Every feature on a sheet shares one scale, so there is no second
+ * answer for a beam to disagree with. But the scale is a fact about
+ * the SHEET's geometry - the relationship between this sheet's drawing
+ * units and real lengths - and so it belongs to the sheet rather than
+ * to the document as a whole. Two sheets may deliberately carry two
+ * different scales, and one sheet's calibration must never leak into
+ * the other's.
  */
 check(
-  "the scale lives on the document, not on a feature",
+  "the scale lives on the sheet, not on a feature",
   Boolean(drawing.scale && drawing.scale.mmPerUnit),
-  `document scale = ${JSON.stringify(drawing.scale)}`,
+  `sheet scale = ${JSON.stringify(drawing.scale)}`,
 );
 
+/*
+ * ========================================================
+ * AN EMPTY SHEET HAS NO SCALE
+ * ========================================================
+ *
+ * When the last actual geometry on a sheet is removed the sheet is
+ * empty, and a relationship between geometry and real lengths has
+ * nothing left to relate. Keeping the old scale would mean the next
+ * shape drawn on the emptied sheet was measured with a calibration
+ * taken from geometry that is gone - a length nobody could account
+ * for. So the scale is dropped, and the sheet's next first physical
+ * length establishes a new one.
+ *
+ * THE REMOVAL IS DONE THROUGH THE REAL PATH.
+ *
+ * It used to be asserted by assigning `drawing.objects = []` directly,
+ * which emptied the list without running the removal machinery and so
+ * never exercised the reset at all. A test that empties the list by
+ * hand proves the scale survives a list assignment, not that it
+ * survives a deletion - and deletion is the act the rule is about.
+ */
 {
-  const before = drawing.scale.mmPerUnit;
+  const held = drawing.scale.mmPerUnit;
 
-  drawing.objects = [];
+  /*
+   * A sheet holding geometry keeps its scale: this is the control. The
+   * reset must fire on EMPTINESS, not on any removal.
+   */
+  drawing.objects = [beam, otherBeam];
+
+  state.removeObjectsAndDescendants(drawing, new Set([otherBeam.id]));
 
   check(
-    "removing the measured geometry does not uncalibrate the document",
+    "a sheet that still holds geometry keeps its scale",
     scale.isCalibrated(drawing) &&
-      drawing.scale.mmPerUnit === before,
+      drawing.scale.mmPerUnit === held,
     `scale became ${JSON.stringify(drawing.scale)}`,
+  );
+
+  /*
+   * And now the last of it goes.
+   */
+  state.removeObjectsAndDescendants(drawing, new Set([beam.id]));
+
+  check(
+    "removing the LAST geometry uncalibrates the sheet",
+    drawing.objects.length === 0 &&
+      scale.isCalibrated(drawing) === false,
+    `objects=${drawing.objects.length} scale=${JSON.stringify(
+      drawing.scale,
+    )}`,
+  );
+
+  /*
+   * AND THE RESET IS NOT ITSELF A CALIBRATION. An emptied sheet is
+   * UNCALIBRATED, which is a different state from "calibrated at
+   * 1:1" - the next length drawn on it establishes a scale rather
+   * than inheriting one.
+   */
+  check(
+    "and the emptied sheet is genuinely uncalibrated, not defaulted",
+    drawing.scale === null,
+    `scale = ${JSON.stringify(drawing.scale)}`,
+  );
+
+  /*
+   * A RELATIONSHIP WITH NOTHING TO RELATE. Whatever was drawn next on
+   * this sheet would be measured with a calibration taken from geometry
+   * that no longer exists, so the reset cannot be omitted.
+   */
+  check(
+    "so its lengths no longer claim a scale they cannot support",
+    scale.readScale(drawing) === null,
+    `read scale = ${JSON.stringify(scale.readScale(drawing))}`,
   );
 }
 
+/*
+ * A LONE FORCE IS NOT A LENGTH.
+ *
+ * The rule is about LENGTH scale, so only geometry that has a length
+ * can hold one. A force - or a load, a moment, a support - describes a
+ * force or a reaction, not a distance, and a sheet left holding one is
+ * empty of geometry in this sense: there is no length on it for a
+ * length scale to describe.
+ */
+{
+  const withForce = state.createDrawingState();
+
+  withForce.scale = { mmPerUnit: 4, unit: "mm" };
+  withForce.objects = [
+    {
+      id: "force-left-behind",
+      type: "force",
+      geometry: { start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, magnitude: 100 },
+      style: {},
+    },
+  ];
+
+  state.resetScaleIfSheetIsEmpty(withForce);
+
+  check(
+    "a sheet holding only a force has no length scale",
+    scale.isCalibrated(withForce) === false,
+    `scale = ${JSON.stringify(withForce.scale)}`,
+  );
+
+  /*
+   * And a Drawing with real geometry keeps it, so the rule does not
+   * simply drop every scale it is asked about.
+   */
+  const withBeam = state.createDrawingState();
+
+  withBeam.scale = { mmPerUnit: 4, unit: "mm" };
+  withBeam.objects = [beam];
+
+  state.resetScaleIfSheetIsEmpty(withBeam);
+
+  check(
+    "but one holding a length keeps its scale",
+    scale.isCalibrated(withBeam),
+    `scale = ${JSON.stringify(withBeam.scale)}`,
+  );
+}
+
+/*
+ * Restore the calibrated sheet for the persistence checks below.
+ */
 drawing.objects = [beam];
+drawing.scale = {
+  mmPerUnit: BEAM_MM / BEAM_UNITS,
+  unit: "mm",
+  reference: { drawingUnits: BEAM_UNITS, realValue: BEAM_MM, unit: "mm" },
+};
 
 console.log("\n  and it survives being saved and undone\n");
 

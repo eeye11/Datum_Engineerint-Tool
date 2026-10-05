@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The native document format, tested directly.
  *
@@ -10,6 +14,7 @@
  * the format is a compatibility contract - these assertions are what
  * "a file from an older build still opens" is supposed to mean.
  */
+
 global.window = {};
 
 /*
@@ -17,8 +22,8 @@ global.window = {};
  * single drawing into a document of sheets is what version 1 -> 2 is.
  * Loading it here is the same order the page loads them in.
  */
-require("../js/engineering-drawing/sheets.js");
-require("../js/engineering-drawing/document-file.js");
+require(modulePath("sheets.js"));
+require(modulePath("document-file.js"));
 const f = global.window.enggDocumentFile;
 
 let pass = 0;

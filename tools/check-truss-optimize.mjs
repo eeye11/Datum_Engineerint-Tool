@@ -8,16 +8,10 @@ export default async function run(page, ui) {
   const result = {};
 
   const snap = await ui.snapshot();
-  await ui.click(
-    snap.match(/@(e\d+) button "Engineering Drawing"/i)[1],
-  );
+  await ui.click(snap.match(/@(e\d+) button "Engineering Drawing"/i)[1]);
   await page.waitForTimeout(2200);
 
-  const box =
-    await page
-      .locator('.drawing-canvas')
-      .first()
-      .boundingBox();
+  const box = await page.locator(".drawing-canvas").first().boundingBox();
 
   const X = (fx) => box.x + box.width * fx;
   const Y = (fy) => box.y + box.height * fy;
@@ -36,23 +30,14 @@ export default async function run(page, ui) {
   };
 
   const pick = async (group, id) => {
-    await page
-      .locator(
-        '.drawing-category[data-category="STATICS"]',
-      )
-      .click();
+    await page.locator('.drawing-category[data-category="STATICS"]').click();
     await page.waitForTimeout(450);
     await page
-      .locator(
-        `.drawing-tool-list button[data-tool-id="${group}"]`,
-      )
+      .locator(`.drawing-tool-list button[data-tool-id="${group}"]`)
       .click();
     await page.waitForTimeout(500);
     await page
-      .locator(
-        '.drawing-coordinate-submenu ' +
-          `[data-submenu-id="${id}"]`,
-      )
+      .locator(".drawing-coordinate-submenu " + `[data-submenu-id="${id}"]`)
       .click();
     await page.waitForTimeout(450);
   };
@@ -64,21 +49,17 @@ export default async function run(page, ui) {
    */
   const structure = () =>
     page.evaluate(() => {
-      const svg = document.querySelector(
-        '.drawing-canvas svg',
-      );
+      const svg = document.querySelector(".drawing-canvas svg");
 
       let axis = 0;
       let diagonal = 0;
 
-      svg.querySelectorAll('line').forEach((n) => {
+      svg.querySelectorAll("line").forEach((n) => {
         const dx = Math.abs(
-          Number(n.getAttribute('x2')) -
-            Number(n.getAttribute('x1')),
+          Number(n.getAttribute("x2")) - Number(n.getAttribute("x1")),
         );
         const dy = Math.abs(
-          Number(n.getAttribute('y2')) -
-            Number(n.getAttribute('y1')),
+          Number(n.getAttribute("y2")) - Number(n.getAttribute("y1")),
         );
 
         const length = Math.hypot(dx, dy);
@@ -96,7 +77,7 @@ export default async function run(page, ui) {
     });
 
   /* A panel with a diagonal: four sides plus one brace. */
-  await pick('body', 'truss');
+  await pick("body", "truss");
 
   await click(0.2, 0.25);
   await click(0.8, 0.25);
@@ -104,14 +85,12 @@ export default async function run(page, ui) {
   await click(0.2, 0.6);
   await click(0.2, 0.25);
   await click(0.5, 0.425);
-  await press('Enter');
+  await press("Enter");
 
   result.afterBuild = await structure();
 
   /* Run Optimize. */
-  const optimize = page.locator(
-    '#drawingProperties [data-truss-optimize]',
-  );
+  const optimize = page.locator("#drawingProperties [data-truss-optimize]");
 
   result.optimizeVisible = await optimize.count();
 
@@ -122,21 +101,16 @@ export default async function run(page, ui) {
 
   result.afterOptimize = await structure();
 
-  result.message =
-    await page.evaluate(
-      () =>
-        document.getElementById('drawingToolMessage')
-          ?.textContent,
-    );
+  result.message = await page.evaluate(
+    () => document.getElementById("drawingToolMessage")?.textContent,
+  );
 
-  result.panel =
-    await page.evaluate(
-      () =>
-        (
-          document.getElementById('drawingProperties')
-            ?.innerText || ''
-        ).replace(/\n+/g, ' | '),
-    );
+  result.panel = await page.evaluate(() =>
+    (document.getElementById("drawingProperties")?.innerText || "").replace(
+      /\n+/g,
+      " | ",
+    ),
+  );
 
   return result;
 }

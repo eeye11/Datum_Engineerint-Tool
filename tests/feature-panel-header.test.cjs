@@ -24,19 +24,20 @@
  * panels need a live canvas to render; what is asserted is the wiring and the
  * label table, which is where the defect was.
  */
+
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
   "js",
-  "engineering-drawing",
 );
 
 const code = fs.readFileSync(
-  path.join(dir, "drawing.js"),
+  locate("drawing.js"),
   "utf8",
 );
 
@@ -52,7 +53,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(path.join(dir, "property-panel.js"));
+require(locate("property-panel.js"));
 
 const panels = global.window.enggPropertyPanel;
 
@@ -210,7 +211,7 @@ console.log("\n  the module is actually loaded\n");
 
 check(
   "property-panel.js is on the page",
-  /engineering-drawing\/property-panel\.js/.test(index),
+  /property-panel\.js/.test(index),
   "the shared module is never loaded, so the panel has no shared header to use",
 );
 
@@ -220,11 +221,11 @@ check(
  * mean the shared path is never taken.
  */
 const panelAt = index.indexOf(
-  "engineering-drawing/property-panel.js",
+  "property-panel.js",
 );
 
 const drawingAt = index.indexOf(
-  "engineering-drawing/drawing.js",
+  "drawing.js",
 );
 
 check(

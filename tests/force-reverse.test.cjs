@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * REVERSING A POINT FORCE - model guard.
  *
@@ -20,13 +24,14 @@
  * reversal is triggered from.
  */
 
+
 global.window = {
     crypto: {
         randomUUID: () => "force-reverse-uuid"
     }
 };
 
-require("../js/engineering-drawing/load-profile.js");
+require(modulePath("load-profile.js"));
 
 const profile = global.window.enggLoadProfile;
 

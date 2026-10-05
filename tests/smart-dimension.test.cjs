@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Smart Dimension, tested directly.
  *
@@ -10,10 +14,11 @@
  *
  * Pure module, so it runs in Node.
  */
+
 global.window = { crypto: { randomUUID: () => "smart-uuid" } };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
 
 global.window.enggDrawingState = {
   polygonVertices: (geometry) => {
@@ -46,8 +51,8 @@ global.window.enggFeatureGeometry = {
   }
 };
 
-require("../js/engineering-drawing/dimension-model.js");
-require("../js/engineering-drawing/smart-dimension.js");
+require(modulePath("dimension-model.js"));
+require(modulePath("smart-dimension.js"));
 
 const smart = global.window.enggSmartDimension;
 

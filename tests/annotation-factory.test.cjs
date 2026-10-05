@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The feature factories for dimensions and annotations, tested directly.
  *
@@ -26,12 +30,13 @@
  *
  * Pure module, so it runs in Node.
  */
+
 global.window = {
   crypto: { randomUUID: () => "factory-uuid" }
 };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
 
 global.window.enggDrawingState = {
   polygonVertices: () => []
@@ -40,9 +45,9 @@ global.window.enggFeatureGeometry = {
   rectangleCorners: () => []
 };
 
-require("../js/engineering-drawing/dimension-model.js");
-require("../js/engineering-drawing/annotation-model.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("dimension-model.js"));
+require(modulePath("annotation-model.js"));
+require(modulePath("drawing-state.js"));
 
 const state = global.window.enggDrawingState;
 const dimensionModel = global.window.enggDimensionModel;

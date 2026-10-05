@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ANALYSIS AXIS OF A SLOPING BODY.
  *
@@ -14,15 +18,16 @@
  * diagram where the student put it when the beam is later resized.
  */
 
+
 global.window = {
   crypto: {
     randomUUID: () => "analysis-axis-uuid"
   }
 };
 
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/body-frames.js");
-require("../js/engineering-drawing/analysis-dependencies.js");
+require(modulePath("feature-geometry.js"));
+require(modulePath("body-frames.js"));
+require(modulePath("analysis-dependencies.js"));
 
 const deps = global.window.enggAnalysisDependencies;
 

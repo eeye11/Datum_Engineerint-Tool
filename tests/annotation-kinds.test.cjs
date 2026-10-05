@@ -1,3 +1,7 @@
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * WHICH LABELS A FEATURE CAN CARRY.
  *
@@ -24,13 +28,14 @@
  *
  * Pure modules, so this runs in Node.
  */
+
 global.window = { crypto: { randomUUID: () => "kinds-uuid" } };
 
-require("../js/engineering-drawing/dimensions.js");
-require("../js/engineering-drawing/measurement-core.js");
-require("../js/engineering-drawing/feature-geometry.js");
-require("../js/engineering-drawing/annotation-model.js");
-require("../js/engineering-drawing/drawing-state.js");
+require(modulePath("dimensions.js"));
+require(modulePath("measurement-core.js"));
+require(modulePath("feature-geometry.js"));
+require(modulePath("annotation-model.js"));
+require(modulePath("drawing-state.js"));
 
 const factories = global.window.enggDrawingState.geometryFactories;
 const model = global.window.enggAnnotationModel;

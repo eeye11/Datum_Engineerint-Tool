@@ -1,3 +1,9 @@
+
+const { JSDOM } = require("jsdom");
+
+const path = require("path");
+
+const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A DISPLAY SETTING CHANGE WHAT IS ON THE SHEET?
@@ -23,8 +29,7 @@
  * These are checked against the real renderer, because reading the model
  * cannot tell whether a leader line was left behind.
  */
-const path = require("path");
-const { JSDOM } = require("jsdom");
+
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -67,11 +72,7 @@ for (const name of [
   "renderer.js",
 ]) {
   require(
-    path.join(
-      projectRoot,
-      "js",
-      "engineering-drawing",
-      name,
+    locate(name,
     ),
   );
 }
