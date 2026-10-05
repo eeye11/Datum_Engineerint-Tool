@@ -16,6 +16,9 @@
  *     simply never re-rendered after the sheets were restored.
  *   - Arming an SFD/BMD/AFD tool and clicking off a member: a TypeError in
  *     analysisSourceBody.
+ *   - The Varying Distributed Load could not be built: its build phase was
+ *     left out when the uniform load's steps were given their own set, so
+ *     each click fell through and the tool reset.
  */
 const path = require("path");
 const { bootApp, projectRoot } = require("./helpers/boot-app.cjs");
@@ -150,6 +153,23 @@ console.log("\n  an analysis diagram ignores a click on nothing\n");
     "a real member beside it is still found",
     !mixed.error && mixed.value === beam,
     mixed.error && mixed.error.message,
+  );
+}
+
+console.log("\n  a Varying Distributed Load can be built\n");
+
+{
+  const { isLoadBuildPhase } = src("editor/load-tool.js");
+
+  check(
+    "its build phase is a load-build phase (clicks add points, Enter finishes)",
+    isLoadBuildPhase({ phase: "distributed-load-build" }) === true,
+  );
+
+  check(
+    "and the uniform load's steps still are",
+    ["distributed-load-start", "distributed-load-end", "distributed-load-magnitude", "distributed-load-direction"]
+      .every((phase) => isLoadBuildPhase({ phase })),
   );
 }
 

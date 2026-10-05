@@ -268,6 +268,16 @@ export function isLoadSpanPhase(interaction) {
 }
 
 export function isLoadBuildPhase(interaction) {
+    /*
+     * The varying load's own phase, in which each click adds a
+     * magnitude-defining point and Enter finishes. It is not one of the
+     * uniform load's steps (LOAD_BUILD_PHASES), but it is a load being
+     * built: pointer snapping, the preview and Enter-to-finish all apply.
+     */
+    if (interaction?.phase === "distributed-load-build") {
+        return true;
+    }
+
     return (
         LOAD_BUILD_PHASES.has(
             interaction?.phase

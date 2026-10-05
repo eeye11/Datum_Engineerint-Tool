@@ -1033,10 +1033,18 @@ export function beginOrCompleteGeometry(
 
             return;
         }
+
+        return;
+    } else if (
+        drawingState.interaction.phase ===
+            "distributed-load-build"
+    ) {
         /*
-         * A distributed load takes one magnitude-defining point
-         * per click and is finished with Enter, so the click
-         * never commits anything on its own.
+         * A varying distributed load takes one magnitude-defining point
+         * per click and is finished with Enter, so the click never
+         * commits anything on its own. Its phase is not one of the
+         * uniform load's steps (LOAD_BUILD_PHASES), so it has its own
+         * branch: folded into theirs, this call could never be reached.
          */
         continueDistributedLoadBuild(
             resolution
