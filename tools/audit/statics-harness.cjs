@@ -11,7 +11,7 @@ const path = require("path");
 const { JSDOM } = require("jsdom");
 
 const projectRoot = path.join(__dirname, "..", "..");
-const { locate } = require("../../tests/helpers/source-path.cjs");
+const { loadModule, locate } = require("../../tests/helpers/source-path.cjs");
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -38,7 +38,7 @@ const LOAD = [
 ];
 
 for (const name of LOAD) {
-  require(locate(name));
+  loadModule(name);
 }
 
 for (const name of [

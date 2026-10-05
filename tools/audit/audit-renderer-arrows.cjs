@@ -14,7 +14,7 @@ const path = require("path");
 const { JSDOM } = require("jsdom");
 
 const projectRoot = path.join(__dirname, "..", "..");
-const { locate } = require("../../tests/helpers/source-path.cjs");
+const { loadModule, locate } = require("../../tests/helpers/source-path.cjs");
 
 let pass = 0;
 let fail = 0;
@@ -50,7 +50,7 @@ for (const name of [
   "diagram-equations.js",
   "renderer.js",
 ]) {
-  require(path.join(dir, name));
+  loadModule(name);
 }
 
 for (const name of [
