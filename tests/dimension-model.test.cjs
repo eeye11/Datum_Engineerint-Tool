@@ -201,7 +201,7 @@ const diameter = model.createDimension({
 check(
   "a circle's diameter is its real diameter",
   model.formatMeasurement(diameter, state(circle)),
-  "Ø 50.00 mm"
+  "Ø50.00 mm"
 );
 check(
   "and follows the circle when the circle changes",
@@ -209,7 +209,7 @@ check(
     circle.geometry.radius = 40;
     return model.formatMeasurement(diameter, state(circle));
   })(),
-  "Ø 80.00 mm"
+  "Ø80.00 mm"
 );
 
 const radius = model.createDimension({
@@ -220,7 +220,7 @@ const radius = model.createDimension({
 check(
   "and its radius is half of that",
   model.formatMeasurement(radius, state(circle)),
-  "R 40.00 mm"
+  "R40.00 mm"
 );
 
 const arc = {
@@ -266,7 +266,7 @@ const shaftDiameter = model.createDimension({
 check(
   "a 40 diameter shaft measures 40, not its 200 span",
   model.formatMeasurement(shaftDiameter, state(shaft)),
-  "Ø 40.00 mm"
+  "Ø40.00 mm"
 );
 check(
   "and its radius is half, not the span",
@@ -395,15 +395,46 @@ check(
   model.measurementFor(provisionalDimension, provisional).value,
   100
 );
+/*
+ * NO TILDE.
+ *
+ * This used to read "~100.00 mm". The tilde marked an uncalibrated
+ * measurement as approximate, which reads as careful engineering caution and
+ * is in fact the opposite of what happens: the document has NOT been told
+ * what a unit is worth and is currently assuming one drawing unit is one
+ * millimetre, and no quantity printed on the sheet can fix that.
+ *
+ * A dimension that ESTABLISHED the scale is the least approximate thing on
+ * the drawing, and marking it uncertain argued against the very feature that
+ * produced it. So the mark is gone from both states, and the uncalibrated
+ * case is surfaced once - in the prompt where the student is asked what the
+ * geometry really measures, and where they can act on the answer - rather
+ * than repeated on every dimension where they cannot.
+ */
 check(
-  "but marks the number as provisional",
+  "and states the value plainly, with no approximation mark",
   model.formatMeasurement(provisionalDimension, provisional),
-  "~100.00 mm"
+  "100.00 mm"
 );
+
+check(
+  "and never carries a tilde",
+  String(
+    model.formatMeasurement(provisionalDimension, provisional)
+  ).includes("~"),
+  false,
+);
+
 const calibratedState = {
   ...provisional,
   scale: { mmPerUnit: 1.25, unit: "mm" }
 };
+
+check(
+  "and a calibrated dimension carries no tilde either",
+  model.formatMeasurement(provisionalDimension, calibratedState),
+  "125.00 mm"
+);
 check(
   "and calibrating changes it for good",
   model.formatMeasurement(provisionalDimension, calibratedState),
@@ -535,6 +566,120 @@ check(
   "a diameter is drawn through its circle",
   Math.sign(diameterGraphics.line[0].x),
   -Math.sign(diameterGraphics.line[1].x)
+);
+
+console.log("\nA point to a line is the PERPENDICULAR distance");
+/*
+ * The foot of the perpendicular, which is the number an engineering drawing
+ * means by "distance from a point to a line". The point sits directly above the
+ * line's middle, so the perpendicular distance is its height - 40 - while the
+ * straight distance to the line's START is the hypotenuse, sqrt(50^2 + 40^2),
+ * which is a different and larger number.
+ *
+ * Measuring the start anchor is exactly the fault this guards against: the
+ * dimension would have looked right and stated the distance to the end of the
+ * line rather than the distance to the line.
+ */
+const pointFeature = {
+  id: "p-line",
+  type: "point",
+  geometry: { position: { x: 50, y: 40 } },
+  style: {},
+  metadata: {}
+};
+const baseLine = {
+  id: "l-base",
+  type: "line",
+  geometry: { start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+  style: {},
+  metadata: {}
+};
+const pointLine = model.createDimension({
+  dimensionType: "point-line",
+  refs: [
+    { featureId: "p-line", anchor: "position" },
+    { featureId: "l-base", anchor: "start" },
+    { featureId: "l-base", anchor: "end" }
+  ],
+  placement: { x: 50, y: 60 }
+});
+check(
+  "a point 40 above a line is 40 from it, not the hypotenuse to its end",
+  Math.round(model.measurementFor(pointLine, state(pointFeature, baseLine)).value),
+  40
+);
+check(
+  "and it reads as a plain length in the document's units",
+  model.formatMeasurement(pointLine, state(pointFeature, baseLine)),
+  "40.00 mm"
+);
+/*
+ * The perpendicular is recomputed from the line's CURRENT geometry, so a line
+ * that rotates changes the distance - which is what makes the reference
+ * associative rather than a frozen number.
+ */
+const rotatedLine = {
+  ...baseLine,
+  geometry: { start: { x: 0, y: 0 }, end: { x: 0, y: 100 } }
+};
+check(
+  "and follows the line when it rotates",
+  Math.round(model.measurementFor(pointLine, state(pointFeature, rotatedLine)).value),
+  50
+);
+check(
+  "the drawn line runs along the perpendicular",
+  (() => {
+    const g = model.graphicsFor(pointLine, state(pointFeature, baseLine));
+    const [from, to] = g.line;
+    /* The point is above the line, so the dimension runs vertically. */
+    return Math.abs(to.x - from.x) < 1e-9 && Math.abs(to.y - from.y) > 1;
+  })(),
+  true
+);
+check(
+  "and no approximation mark appears anywhere on it",
+  String(model.formatMeasurement(pointLine, state(pointFeature, baseLine))).includes("~"),
+  false
+);
+
+console.log("\nA diameter and a radius are set against their symbol");
+/*
+ * "Ø50 mm" and "R25 mm", not "Ø 50 mm". The symbol qualifies the number and is
+ * set hard against it, which is the engineering convention and the thing that
+ * makes the two read as a diameter and a radius rather than as a stray letter.
+ */
+const symbolCircle = {
+  id: "c-symbol",
+  type: "circle",
+  geometry: { center: { x: 0, y: 0 }, radius: 25 },
+  style: {},
+  metadata: {}
+};
+const symbolDiameter = model.createDimension({
+  dimensionType: "diameter",
+  refs: [{ featureId: "c-symbol", anchor: "east" }],
+  placement: { x: 25, y: 25 }
+});
+const symbolRadius = model.createDimension({
+  dimensionType: "radius",
+  refs: [{ featureId: "c-symbol", anchor: "east" }],
+  placement: { x: 25, y: 25 }
+});
+check(
+  "a diameter reads Ø50.00 mm",
+  model.formatMeasurement(symbolDiameter, state(symbolCircle)),
+  "Ø50.00 mm"
+);
+check(
+  "a radius reads R25.00 mm",
+  model.formatMeasurement(symbolRadius, state(symbolCircle)),
+  "R25.00 mm"
+);
+check(
+  "with no space between symbol and number",
+  model.formatMeasurement(symbolDiameter, state(symbolCircle)).startsWith("Ø5"),
+  true
 );
 
 console.log("\nA dimension cannot state a number");

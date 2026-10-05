@@ -313,12 +313,44 @@ check(
 );
 
 /*
- * And the axes must not invent values: a tick scale would be the tool
- * answering the exercise rather than supporting it.
+ * And the axes must not invent VALUES.
+ *
+ * THIS USED TO FORBID A TICK SCALE ENTIRELY, on the grounds that a tick or
+ * a number on the axis would be "the tool answering the exercise rather than
+ * supporting it" - a considered position, deliberately REVERSED. A student
+ * reading a magnitude off a gridded axis is doing the exercise, not having
+ * it done for them.
+ *
+ * What is still forbidden is the stronger thing: the axes must not state a
+ * RANGE. A scale is the student's ruler; a range would be the application
+ * claiming to know what the answer is. `axes.min`, `axes.max`,
+ * `axes.range` and `axes.step` remain disallowed, and the ticks are opt-in
+ * and carry the student's own spacing.
  */
 check(
-    !/axes\.(min|max|range|step)/.test(rendererSource),
-    "no scale, range or step is implied by the axis labels"
+  !/axes\.(min|max|range|step)/.test(rendererSource),
+  "no range or step is implied by the axis labels themselves"
+);
+
+/*
+ * The ticks that replaced it: opt-in, with the student's own spacing on
+ * each axis, and drawn against the same scale as the curve so a value they
+ * draw at 10 kN sits on the 10 mark.
+ */
+check(
+  /showTicks === true/.test(rendererSource),
+  "ticks are opt-in rather than always drawn"
+);
+
+check(
+  /xTickSpacing/.test(rendererSource) &&
+    /yTickSpacing/.test(rendererSource),
+  "and both axes have a spacing the student sets"
+);
+
+check(
+  /MAX_TICKS_PER_AXIS/.test(rendererSource),
+  "a spacing that would bury the diagram draws none"
 );
 
 console.log(

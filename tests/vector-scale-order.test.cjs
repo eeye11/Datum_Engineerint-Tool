@@ -1,5 +1,6 @@
 /*
- * IS THE VECTOR SCALE LISTED IN A REASONABLE ORDER?
+ * IS THE VECTOR SCALE LISTED IN A REASONABLE ORDER, AND A REASONABLE
+ * RANGE?
  *
  * A control read top to bottom should read small to large, the way every
  * other quantity on a sheet does. The list used to run 1, 0.1, 0.01,
@@ -7,9 +8,14 @@
  * user reaches for the values in but makes the list impossible to scan
  * and impossible to tell at a glance which side of 1 an entry is on.
  *
+ * It also ran to a thousandfold in each direction, which is a wider range
+ * than a drawing control can usefully offer. The list is now the five
+ * doublings around 1 a student actually reaches for, in increasing order,
+ * with the custom field still there for anything else.
+ *
  * The check is on the ORDER, and separately on the things that must not
  * change while reordering: the default is still 1, every value is still
- * present exactly once, and the list still spans the same range.
+ * present exactly once, and 1 still sits in the middle.
  */
 global.window = {};
 
@@ -107,22 +113,51 @@ check(
 
 check(
   "no value is missing",
-  values.length === 7 &&
-    [0.001, 0.01, 0.1, 1, 10, 100, 1000].every(v =>
-      values.includes(v)
-    ),
+  [0.001, 0.01, 0.1, 1, 10, 100, 1000].every(v =>
+    values.includes(v)
+  ),
+  `values: ${values.join(", ")}`
+);
+
+check(
+  "and the specification's practical multipliers are present too",
+  [0.25, 0.5, 1, 2, 4].every(v => values.includes(v)),
   `values: ${values.join(", ")}`
 );
 
 /*
- * THE RANGE IS UNCHANGED, which is what makes the list still able to
- * serve a 5 N reaction beside a 50 kN load.
+ * THE RANGE IS THE DECADES BOTH WAYS ROUND ONE.
+ *
+ * An engineering sheet routinely holds quantities that differ by orders of
+ * magnitude - a 5 N reaction beside a 50 kN load - and the scale has to be able
+ * to put both of them on one readable page. Doublings could not: from 1x the
+ * next step up was 2x and the next down 0.5x, so fitting a 50 kN load beside a
+ * 5 N reaction meant either an unreadable sheet or typing the value by hand.
+ *
+ * Three decades each way covers that range, and the custom field is still the
+ * escape hatch for anything outside it.
  */
 check(
-  "the range still spans a thousandth to a thousand",
-  values[0] === 0.001 &&
-    values[values.length - 1] === 1000,
+  "the range spans three decades either side of 1",
+  values[0] === 0.001 && values[values.length - 1] === 1000,
   `range ${values[0]} to ${values[values.length - 1]}`
+);
+
+/*
+ * EVERY DECADE IS STILL THERE. The list also carries the practical
+ * multipliers (0.25x, 0.5x, 2x, 4x), so the steps are no longer uniformly
+ * tenfold - but each decade must still be present, because the decades are
+ * what let one sheet hold quantities orders of magnitude apart.
+ */
+check(
+  "every decade is present, in order",
+  [0.001, 0.01, 0.1, 1, 10, 100, 1000].every(
+    (v) =>
+      values.includes(v) &&
+      values.indexOf(v) ===
+        values.findIndex((x) => x >= v)
+  ),
+  `values: ${values.join(", ")}`
 );
 
 /*

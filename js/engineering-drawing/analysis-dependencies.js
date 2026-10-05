@@ -1098,58 +1098,83 @@
      * of 500 N draws as a 500-unit arrow and a 5 N one draws short. That
      * is what makes a resultant comparable with the forces it is made of.
      *
-     * A THOUSANDTH is the factor, not 1, because the sheet's own units are
-     * millimetres and statics forces are hundreds of newtons: at 1:1 a
-     * 300 N resultant would be a metre of arrow across a drawing a few
-     * hundred millimetres wide. The thousandth keeps a typical force in
-     * the same part of the sheet as the body it acts on, while leaving
-     * the RELATIONSHIP between forces exact - which is the property that
-     * matters, and the reason this is a shared constant rather than a
-     * per-diagram fudge.
+     * ========================================================
+     * THE SAME UNIT CONVERSION A POINT FORCE USES
+     * ========================================================
      *
-     * Drawing the stored number itself is wrong, and was the bug: a fixed
-     * 30 units gave the right DIRECTION and no size information at all,
-     * so a 250 N resultant and a 5 N one looked identical.
+     * The factor is the one a Point Force uses, so a resultant is
+     * comparable with the forces it is made of by looking at them.
+     *
+     * IT WAS A THOUSANDTH OF ITS OWN, and that is why every resultant was
+     * a stub. A 300 N resultant drew as 0.3 units - about a twentieth of a
+     * pixel - so what appeared on the sheet was a dot with an arrowhead on
+     * it, and the direction was the only thing it could possibly convey.
+     * The separate factor had a reason written beside it (statics forces
+     * are hundreds of newtons and the sheet is in millimetres), but the
+     * Point Force solves the same problem by a different route and does not
+     * need it: its stored magnitude IS its drawn length, scaled by the
+     * shared Vector Scale.
+     *
+     * So the resultant uses that same rule rather than a second opinion
+     * about what a newton is worth in millimetres. Two conversions for one
+     * quantity is how a feature ends up drawn at a different scale from the
+     * thing it describes - which is a diagram claiming a magnitude it does
+     * not have, and doing it silently.
      */
-    const RESULTANT_UNITS_PER_UNIT = 0.001;
+    const RESULTANT_UNITS_PER_UNIT = 1;
 
     function drawnLength(
         sumX,
         sumY,
         vectorScale = 1
     ) {
-        const magnitude = Math.hypot(sumX, sumY);
-
-        if (!magnitude) {
-            return { x: 0, y: 0 };
-        }
-
         /*
-         * THE FACTOR MULTIPLIES THE WHOLE VECTOR, NOT EACH AXIS.
+         * THE VECTOR SCALE, AND NOTHING ELSE.
          *
-         * Scaling x and y separately would change the direction - a
-         * resultant of (300, 400) drawn with the two axes scaled
-         * differently is not 300, 400 any more, and a resultant pointing
-         * the wrong way at the right length would pass any magnitude
-         * check.
+         * The drawn length is the ENGINEERING magnitude times the shared
+         * Vector Scale, which is the rule a Point Force is drawn by. That is
+         * what makes 250 N draw about two and a half times the length of
+         * 100 N, and it is what lets a student compare a resultant against
+         * the arrows it was built from.
+         *
+         * A ZERO OR NEGATIVE SCALE MUST NOT COLLAPSE THE ARROW - one you
+         * cannot see is worse than a small one - so it falls back to the
+         * un-scaled length rather than to nothing.
          */
         const factor =
             RESULTANT_UNITS_PER_UNIT *
             Math.max(Number(vectorScale) || 0, 0);
 
-        /*
-         * A ZERO OR NEGATIVE SCALE MUST NOT COLLAPSE THE ARROW. A
-         * resultant you cannot see is worse than a small one, and zero is
-         * far more likely a mis-typed value than an intention - so the
-         * arrow is floored at a tenth of a unit rather than vanishing.
-         */
         const safeFactor =
             factor > 0 ? factor : RESULTANT_UNITS_PER_UNIT;
 
-        return {
-            x: sumX * safeFactor,
-            y: sumY * safeFactor
-        };
+        const x = sumX * safeFactor;
+        const y = sumY * safeFactor;
+
+        /*
+         * A LEGIBILITY FLOOR, NOT A SCALE.
+         *
+         * A resultant of 0.5 N is a real quantity and must be drawn short
+         * rather than not drawn - a student who summed their forces to
+         * almost nothing needs to see that, not a full-length arrow. So the
+         * floor only rescues an arrow that would otherwise be invisible.
+         */
+        const MIN_RESULTANT_UNITS = 2;
+
+        if (
+            Math.hypot(x, y) < MIN_RESULTANT_UNITS
+        ) {
+            const magnitude = Math.hypot(x, y);
+
+            return magnitude > 0
+                ? {
+                      x: (x / magnitude) * MIN_RESULTANT_UNITS,
+                      y: (y / magnitude) * MIN_RESULTANT_UNITS
+                  }
+                : { x: 0, y: 0 };
+        }
+
+        return { x, y };
     }
 
     function refreshDiagram(
@@ -1387,6 +1412,45 @@
                 start: { ...axis.start },
                 end: { ...axis.end }
             };
+        }
+
+        /*
+         * THE RANGE IS THE MEMBER'S, AND IS RESTATED WHENEVER THE MEMBER
+         * CHANGES.
+         *
+         * The graph's x domain is the body the diagram describes: it is where a
+         * support sits, where a load ends, and where the student reads a
+         * station off. That makes it DERIVED from the body rather than a number
+         * the student typed, and a derived value has to be re-derived whenever
+         * its source changes.
+         *
+         * It was seeded once, at creation, and never touched again - so a beam
+         * whose Length was edited afterwards left the diagram spanning the OLD
+         * length. The axis was rewritten to the new one, the graph was drawn on
+         * the new one, and every station came out in the wrong place against
+         * it: a diagram that looks right and reads wrong.
+         *
+         * So it is written from the same span that produced the axis, and this
+         * runs for a sourced diagram on every dependency update. Measured ALONG
+         * the body from its start, so a sloping member gets the same 0 to L as a
+         * level one.
+         *
+         * THE EXPRESSIONS ARE NOT RESTATED, and that is deliberate. An
+         * expression's own range says where that relation EXISTS - it is part of
+         * what the student wrote - so widening it along with the body would
+         * silently redraw their work. A plot whose body was lengthened keeps the
+         * regions it has and simply stops covering the new ground, which is
+         * visible and correctable. Stretching the student's equations is not.
+         */
+        if (source) {
+            const length = spanOf(source)?.length;
+
+            if (Number.isFinite(length)) {
+                geometry.localRange = {
+                    from: 0,
+                    to: length
+                };
+            }
         }
 
         const stations = source

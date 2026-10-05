@@ -163,6 +163,30 @@
         visible: true,
         spacing: 5
       },
+
+      /*
+       * THE SHEET'S UNIVERSAL LENGTH SCALE.
+       *
+       * This is deliberately HERE, on the sheet, rather than once on
+       * the document. A drawing is a collection of sheets and each
+       * sheet is its own physical world: the same model geometry can
+       * mean 100 mm per unit on one sheet and 250 mm per unit on
+       * another, and a student comparing two sheets is comparing two
+       * different scales on purpose.
+       *
+       * Keeping one document-wide scale made that impossible. Either
+       * every sheet silently shared Sheet 1's calibration - so a
+       * length drawn on Sheet 2 would be measured with a scale that
+       * had nothing to do with it - or the first length on any sheet
+       * would overwrite the meaning of every length on every other.
+       *
+       * `null` is the honest value for a sheet that has never been
+       * calibrated, and it is deliberately distinct from a missing
+       * field: "this sheet has no scale yet" and "this sheet's scale
+       * was lost" must not look alike.
+       */
+      scale: null,
+
       ...overrides
     };
   }
@@ -624,7 +648,21 @@
         panX: state.camera.panX,
         panY: state.camera.panY
       },
-      grid: { ...state.grid }
+      grid: { ...state.grid },
+
+      /*
+       * The sheet's scale travels with the sheet.
+       *
+       * Captured for the same reason it is stored there: the scale is
+       * what makes this sheet's lengths mean anything, so a snapshot
+       * that saved the geometry and left the scale behind would restore
+       * a sheet whose every length was wrong by a factor nobody could
+       * see. Copying it here also means switching sheets and saving
+       * them are the same operation - there is nowhere else to forget.
+       */
+      scale: state.scale
+        ? JSON.parse(JSON.stringify(state.scale))
+        : null
     };
   }
 
@@ -663,6 +701,20 @@
     sheet.viewport = { ...next.viewport };
     sheet.grid = { ...next.grid };
 
+    /*
+     * ...AND THE SHEET'S OWN SCALE.
+     *
+     * Taken from what was captured, exactly like the grid beside it.
+     * Left as it was, a sheet switched back onto would keep the scale
+     * of whichever sheet the editor happened to have been showing -
+     * which is precisely the leak this storage is here to prevent,
+     * and the one that would make a length drawn on this sheet mean
+     * something different depending on how the student got here.
+     */
+    sheet.scale = next.scale
+      ? JSON.parse(JSON.stringify(next.scale))
+      : null;
+
     return sheet;
   }
 
@@ -700,6 +752,29 @@
       ...content.styleDefaults
     };
     state.grid = { ...content.grid };
+
+    /*
+     * THE SHEET'S OWN SCALE, LOADED WITH THE SHEET.
+     *
+     * The scale belongs to the sheet because it is the relationship
+     * between THIS sheet's geometry and real lengths - a sheet loaded
+     * without it would measure every length using whatever the sheet
+     * the student came from was calibrated to, which is a number with
+     * no connection to anything on screen.
+     *
+     * It is read here rather than left to the editor's adopt step,
+     * because that step belongs to Undo. A switch is not an undo, and
+     * relying on it would mean the scale arrived late and after
+     * something else had already drawn with it.
+     *
+     * `content.scale` is null for a sheet that has never been
+     * calibrated, and a sheet that has never been calibrated must
+     * arrive uncalibrated rather than quietly keeping the previous
+     * sheet's answer.
+     */
+    state.scale = content.scale
+      ? JSON.parse(JSON.stringify(content.scale))
+      : null;
 
     state.camera.zoom =
       Number(content.viewport.zoom) || 1;

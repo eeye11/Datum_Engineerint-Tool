@@ -144,8 +144,36 @@
         return DEFAULT_LOAD_DIRECTION;
     }
 
+    /*
+     * THE SIDE A LOAD IS DRAWN ON, PINNED THE FIRST TIME IT IS KNOWN.
+     *
+     * Typing a direction is not a reversal - it is the student saying which
+     * way the load acts from the outset - so the side is settled the first
+     * time it can be, and never revisited. After that the field is read
+     * back and ignored, because by then the load exists and its side is
+     * part of it.
+     *
+     * WITHOUT THIS, TYPING A DIRECTION MOVED THE LOAD TO THE OTHER SIDE.
+     * The drawn force lines are placed along the span's outward normal, and
+     * the sense of that normal was being taken from the direction itself.
+     * So setting a direction to the opposite sign moved the outline as
+     * well as the arrows - which is a different load, not the same load
+     * pointing the other way.
+     *
+     * A load that has been reversed by the Reverse control keeps the side
+     * it was made with, because a reversal explicitly does not move it:
+     * `reverseLoadDirection` touches one boolean and nothing here.
+     */
     function setLoadDirection(geometry, degrees) {
       geometry.direction = finite(degrees, DEFAULT_LOAD_DIRECTION);
+
+      const side = Number(geometry?.normalSide);
+
+      if (side !== 1 && side !== -1) {
+        geometry.normalSide =
+          loadNormalSide(geometry);
+      }
+
       return geometry.direction;
     }
 
@@ -201,6 +229,13 @@
        * angle swings the far endpoint to the other side of the body.
        * The line would then genuinely move, which is exactly the
        * transformation a reversal must never perform.
+       *
+       * IT TOUCHES NOTHING ELSE. `normalSide` in particular: the side the
+       * force lines are drawn on is pinned when the load's direction is
+       * first set, and a reversal is not that. Reading the side back from
+       * the direction here is what made the force lines jump to the other
+       * side of the member while the span stayed put - the outline
+       * appearing to swap ends with the arrows.
        */
       geometry.reversed = !geometry.reversed;
 
@@ -223,12 +258,50 @@
         return geometry.interval;
     }
 
-    function unitVector(degrees) {
+    /*
+ * ZERO A COMPONENT THAT IS ONLY ARITHMETICALLY NON-ZERO.
+ *
+ * `Math.sin(180 * PI / 180)` is 1.2e-14, not 0, and a force pointing exactly
+ * west is therefore stored with a sliver of north in it. The sliver is far
+ * too small to see, but it is not zero, and anything that asks which WAY a
+ * vector points - a screen direction's sign, a component written as "0 N" -
+ * answers "up and to the left" for a force that is straight left.
+ *
+ * A value within a thousandth of zero IS the axis, for the drawing's
+ * purposes: a force that is a thousandth of a degree off horizontal is
+ * horizontal as far as a reader is concerned, and rounding it away costs
+ * nothing. Rounding EVERY component to a fixed number of places, which is the
+ * obvious alternative, does cost: a force at 37 degrees is stored accurately
+ * and drawn accurately, and rounding its direction cost four digits - enough
+ * that a student grabbing the head and letting go found the angle had
+ * drifted.
+ */
+function zeroIfAxis(value) {
+    return Math.abs(value) < 1e-3 ? 0 : value;
+}
+
+function unitVector(degrees) {
         const radians = finite(degrees) * Math.PI / 180;
 
+        /*
+         * THE COMPONENTS ARE CLEANED; THE ANGLE IS RETURNED AS GIVEN.
+         *
+         * The components are what a direction is read from - a screen
+         * direction's sign, a "Fx = 0 N" label - so they go through
+         * `zeroIfAxis`. The angle is what the panel shows and what a drag
+         * writes back, so it is returned exactly as it came in: rounding it
+         * cost four digits on a 37-degree force and bought nothing, since the
+         * direction no longer comes from it.
+         *
+         * It is carried alongside rather than recomputed, because
+         * `atan2` of the cleaned components would answer 0 for a force at 270
+         * degrees - correct for the drawing, and wrong for the number the
+         * student typed.
+         */
         return {
-            x: Math.cos(radians),
-            y: Math.sin(radians)
+            x: zeroIfAxis(Math.cos(radians)),
+            y: zeroIfAxis(Math.sin(radians)),
+            angle: finite(degrees),
         };
     }
 
@@ -304,55 +377,142 @@
      * The world position of a fraction t along the loaded
      * span.
      */
-    /*
-   * The body's OUTWARD normal, in world units.
-   *
-   * A distributed load is applied across a span, and the span's own
-   * outward normal is what tells the renderer which side of the body
-   * the force lines are drawn on. It is derived from the SPAN and
-   * never from the force direction, which is what allows the force
-   * direction to change without the drawn line moving.
-   *
-   * The sense is chosen once, from the load's own direction, and is
-   * then fixed: a downward load draws its lines below the body, and
-   * reversing that load keeps them below the body, because "below"
-   * is a property of the drawing and "down" is a property of the
-   * force. They are separate questions and are answered separately.
-   */
-  function loadBodyNormal(geometry) {
-    const start = geometry?.start;
-    const end = geometry?.end;
+      /*
+       * The body's OUTWARD normal, in world units.
+       *
+       * A distributed load is applied across a span, and the span's own
+       * outward normal is what tells the renderer which side of the body
+       * the force lines are drawn on. It is derived from the SPAN and
+       * never from the force direction, which is what allows the force
+       * direction to change without the drawn line moving.
+       *
+       * The sense is chosen ONCE, from the direction the load was BUILT
+       * with, and then fixed. A downward load draws its lines below the
+       * body, and reversing that load keeps them below the body, because
+       * "below" is a property of the drawing and "down" is a property of
+       * the force. They are separate questions and are answered
+       * separately.
+       *
+       * ========================================================
+       * WHY THE SENSE IS TAKEN FROM THE DIRECTION IT WAS BUILT
+       * WITH, AND NOT THE CURRENT ONE
+       * ========================================================
+       *
+       * This used to orient the normal against `loadDirection(geometry)`
+       * - the CURRENT direction. That is the same function the reverse
+       * control writes, so reversing a load re-derived this normal against
+       * the reversed direction, flipped it, and moved the whole field of
+       * force lines to the other side of the member.
+       *
+       * The comment above claimed the opposite: that "a reversal changes
+       * only the arrowhead and so leaves this agreement - and therefore the
+       * drawn line - alone". It did not leave it alone. `reversed` is a
+       * flag, not a rotation of the stored angle, so the two disagreeed
+       * and the comment described the intended behaviour while the code did
+       * the opposite.
+       *
+       * WHICH SENSE A LOAD IS DRAWN ON IS A FACT ABOUT THE REGION, not a
+       * consequence of which way it currently pushes. The region is where
+       * the load acts; reversing the force does not move the region. So the
+       * side is recorded when the load is created - as the sign of the
+       * normal along the span, which is one bit - and read back unchanged
+       * afterwards.
+       *
+       * A file saved before this field existed has no side recorded, so the
+       * current direction is the best available answer: it produces the
+       * drawing that file was making, rather than an arbitrary choice of
+       * side. That is a fallback for reading old drawings, not the rule.
+       */
+    function loadBodyNormal(geometry) {
+      const start = geometry?.start;
+      const end = geometry?.end;
 
-    if (!start || !end) {
-      return null;
+      if (!start || !end) {
+        return null;
+      }
+
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy);
+
+      if (length < 1e-9) {
+        return null;
+      }
+
+      // A normal to the span, one of the two handednesses.
+      const normal = { x: -dy / length, y: dx / length };
+
+      /*
+       * The side the load is drawn on, recorded once at creation. ±1 is the
+       * sign to flip the computed normal by; anything else is not a side.
+       */
+      const side = Number(geometry?.normalSide);
+
+      if (side === 1 || side === -1) {
+        return side === 1
+          ? normal
+          : { x: -normal.x, y: -normal.y };
+      }
+
+      // An older drawing: fall back to the direction it was last using.
+      const direction = unitVector(loadDirection(geometry));
+
+      const agrees =
+        normal.x * direction.x + normal.y * direction.y >= 0;
+
+      return agrees
+        ? normal
+        : { x: -normal.x, y: -normal.y };
     }
 
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.hypot(dx, dy);
-
-    if (length < 1e-9) {
-      return null;
-    }
-
-    // A normal to the span, one of the two handednesses.
-    const normal = { x: -dy / length, y: dx / length };
-
-    const direction = unitVector(loadDirection(geometry));
-
     /*
-     * Orient the normal so it agrees with the force direction. This
-     * is a one-time sense, taken from the direction the load was
-     * built with: a reversal changes only the arrowhead and so
-     * leaves this agreement - and therefore the drawn line - alone.
+     * THE SIDE A LOAD IS DRAWN ON.
+     *
+     * The sign that takes the span's own normal to the side the load acts
+     * from. It is recorded once, when the load is created, and read back
+     * unchanged for the rest of the load's life - so reversing a load
+     * reverses its arrows and nothing else.
+     *
+     * IT IS COMPUTED FROM THE DIRECTION, NEVER ASKED FOR. There is no field
+     * on a load saying which side it is on, because a side the student can
+     * set is a side the student can set to the wrong value; and it is
+     * derived rather than stored as an offset, because the height of a load
+     * is a consequence of where it acts, not a free choice.
+     *
+     * Returns 1 when the span's normal already agrees with the load's
+     * direction and -1 when it has to be flipped.
      */
-    const agrees =
-      normal.x * direction.x + normal.y * direction.y >= 0;
+    function loadNormalSide(geometry) {
+      const side = Number(geometry?.normalSide);
 
-    return agrees
-      ? normal
-      : { x: -normal.x, y: -normal.y };
-  }
+      if (side === 1 || side === -1) {
+        return side;
+      }
+
+      const start = geometry?.start;
+      const end = geometry?.end;
+
+      if (!start || !end) {
+        return 1;
+      }
+
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy);
+
+      if (length < 1e-9) {
+        return 1;
+      }
+
+      const normal = { x: -dy / length, y: dx / length };
+      const direction = unitVector(loadDirection(geometry));
+
+      return (
+        normal.x * direction.x + normal.y * direction.y >= 0
+      )
+        ? 1
+        : -1;
+    }
 
   function pointAlong(geometry, t) {
         const start = geometry?.start;
@@ -609,6 +769,34 @@
             y: geometry.start.y + vector.y * magnitudeValue
         };
 
+        /*
+         * THE COMPONENTS ARE REWRITTEN TOO, OR THEY BECOME A SECOND TRUTH.
+         *
+         * A force may be described either as a magnitude and an angle or as
+         * its X and Y components, and `forceVector` gives the COMPONENTS the
+         * precedence - deliberately, because a student who has just typed Fx
+         * and Fy means those whatever the angle field still says.
+         *
+         * That precedence is what made a reversal come out wrong. This
+         * function rewrote `angle` and `end` and left `forceX`/`forceY`
+         * pointing the old way, so the object was left holding two
+         * contradictory descriptions of one force: the angle said the
+         * opposite of the components, and which one a reader believed
+         * decided whether the arrow appeared to turn around at all.
+         *
+         * Pressing "reverse direction" on a force whose components had ever
+         * been typed therefore flipped the geometry and not the force - the
+         * arrow head moved to the other end of an unchanged vector, which is
+         * exactly the "it flips how it is drawn" report.
+         *
+         * So every representation is written from the one vector here, which
+         * is the whole reason this function exists. A component edit goes
+         * through `setForceVector` too (see the Features panel), so the two
+         * views stay interchangeable in both directions.
+         */
+        geometry.forceX = vector.x * magnitudeValue;
+        geometry.forceY = vector.y * magnitudeValue;
+
         return geometry;
     }
 
@@ -645,25 +833,36 @@
         const vector =
             unitVector(finite(geometry?.angle));
 
-        const end =
-            geometry?.end ||
-            {
-                x: start.x + vector.x * magnitude,
-                y: start.y + vector.y * magnitude
-            };
-
-        const fx = finite(end.x) - finite(start.x);
-        const fy = finite(end.y) - finite(start.y);
+        /*
+         * THE DIRECTION IS THE STORED ANGLE, NOT THE SPAN.
+         *
+         * The SPAN - `start` to `end` - is where the force is DRAWN. The direction is
+         * which way it PUSHES. They are separate questions, and they have to be read
+         * separately: reversing a force turns the second without moving the first, so
+         * a force between x=100 and x=150 pushes left rather than right.
+         *
+         * Deriving the direction from the span - as this did - made the two the same
+         * fact, and then a reversal could only move the drawing to express itself,
+         * which is how pressing "reverse direction" threw the arrow across to the
+         * other side of the application point.
+         *
+         * The magnitude is still read from the span, because that is the length the
+         * arrow is drawn at, and the drawn length is what a student sees and grabs.
+         * It is not the magnitude: a force drawn at the shared display scale is a
+         * different length from the force it describes.
+         */
+        const fx = vector.x * magnitude;
+        const fy = vector.y * magnitude;
 
         return {
             x: finite(start.x),
             y: finite(start.y),
             fx,
             fy,
-            magnitude: Math.hypot(fx, fy),
-            angle: Math.atan2(fy, fx) * 180 / Math.PI
+            magnitude,
+            angle: finite(geometry?.angle)
         };
-    }
+        }
 
     /*
      * The same force, pointing the other way.
@@ -701,11 +900,55 @@
 
         const vector = forceVector(geometry);
 
-        return setForceVector(
-            geometry,
-            vector.magnitude,
-            vector.angle + 180
-        );
+        /*
+         * THE SPAN STAYS AND THE SENSE OF IT CHANGES.
+         *
+         * The application point and the tip are where the student put them
+         * and they are not the thing being reversed. Rotating the stored angle
+         * AND rewriting `end` from it - which this did, because it called
+         * `setForceVector` - moved the tip across the application point to
+         * the opposite side: a force drawn between x=100 and x=150 became one
+         * drawn between x=50 and x=100. The same length, and a different
+         * piece of the drawing.
+         *
+         * The length was even right, which is why it was hard to see. What
+         * moved was WHERE the arrow lay, and for a force attached to a member
+         * that is the whole difference between pressing on the beam from
+         * outside and pressing on the empty space beside it.
+         *
+         * A Distributed Load already works this way - reversing it keeps the
+         * span and moves only the arrowheads - and the two tools should not
+         * disagree about what reversing means.
+         *
+         * So the ENGINEERING VECTOR is reversed and the stored span is left
+         * exactly where it was. The renderer draws the arrow along the span in
+         * the direction the vector now points, which is the only part that
+         * needs to know which way the force acts.
+         *
+         * THE MAGNITUDE is carried through unchanged and stays positive. It
+         * is a physical magnitude, not a signed quantity - the sense of the
+         * force lives in the direction, which is why this is a rotation by
+         * 180 degrees rather than a negation.
+         */
+        const radians = ((vector.angle + 180) * Math.PI) / 180;
+
+        geometry.angle = vector.angle + 180;
+        geometry.forceX = Math.cos(radians) * vector.magnitude;
+        geometry.forceY = Math.sin(radians) * vector.magnitude;
+
+        /*
+         * `position` MIRRORS `start` and is read by some of the panel and by
+         * the components' origin, so it follows the same value. Neither is
+         * moved - only brought back into step with the point it mirrors.
+         */
+        if (geometry.start) {
+            geometry.position = {
+                x: geometry.start.x,
+                y: geometry.start.y
+            };
+        }
+
+        return geometry;
     }
 
     /*
@@ -734,20 +977,29 @@
      * the user hunt for the one they want and cannot tell at a glance
      * which side of 1 it is on.
      *
-     * THE ORDER IS DERIVED, NOT TYPED, so that adding a value later cannot
-     * put it back out of sequence. An earlier version listed the entries
-     * literally and relied on them being written in the right order, which
-     * is a thing that stops being true the moment someone adds a decade.
+     * THE LIST IS THE DECADES, BOTH WAYS, AROUND ONE, PLUS THE
+     * SPECIFICATION'S PRACTICAL MULTIPLIERS.
+     *
+     * The decades cover the wide range an engineering sheet needs - a 5 N
+     * reaction beside a 50 kN load - and the half/double steps
+     * (0.25x, 0.5x, 2x, 4x) are the ones a student reaches for when an
+     * arrow is merely a little too big or a little too small. Offering
+     * only the decades forces a jump of ten when a factor of two was
+     * wanted; offering only the halves cannot span the range. Both are
+     * offered, deduplicated and in increasing order, so the control reads
+     * small to large and every named value is present.
      */
+    const SPEC_VECTOR_SCALE_VALUES = [0.25, 0.5, 1, 2, 4];
+
     const VECTOR_SCALE_VALUES = [
-        0.001,
-        0.01,
-        0.1,
-        1,
-        10,
-        100,
-        1000
-    ];
+        ...new Set([
+            ...Array.from(
+                { length: 7 },
+                (_, index) => 10 ** (index - 3)
+            ),
+            ...SPEC_VECTOR_SCALE_VALUES
+        ])
+    ].sort((a, b) => a - b);
 
     const VECTOR_SCALE_OPTIONS = [
         ...VECTOR_SCALE_VALUES
@@ -770,18 +1022,12 @@
     const CUSTOM_VECTOR_SCALE = "custom";
 
     /*
-     * The widest range a custom scale may take.
-     *
-     * A scale is a length multiplier, so it has to be positive - a
-     * negative one would draw every arrow backwards. The ceiling is not
-     * about taste: it stops a mistyped entry such as 1e9 from producing an
-     * arrow that swallows the whole sheet, and a floor stops 0 collapsing
-     * every vector to a dot. Beyond them the value is refused and the
-     * default is used, because an arrow that cannot be seen or read is
-     * worse than one drawn at true length.
+     * The outermost decades are as far as the list goes; a custom scale may
+     * still sit outside them, since 0.001× and 1000× are where the list stops
+     * being useful rather than where a scale stops being legal.
      */
     const MIN_VECTOR_SCALE = 0.0001;
-    const MAX_VECTOR_SCALE = 10000;
+    const MAX_VECTOR_SCALE = 100000;
 
     /*
      * Read the shared scale off the drawing state.
@@ -851,18 +1097,112 @@
      * asks here, rather than reading `geometry.end` and drawing at a
      * different place from the renderer.
      */
-    function drawnForceEnd(state, geometry) {
+    /*
+     * ============================================================
+     * THE LINE A FORCE IS DRAWN ALONG, AT THE DISPLAY SCALE.
+     * ============================================================
+     *
+     * The span is the line; the vector says which of its two ends carries the
+     * head. So the drawn arrow is the span, and the two questions a caller has
+     * are answered together here rather than independently by two functions
+     * that could disagree about which end is which.
+     *
+     * THE SCALE STRETCHES THE LINE FROM THE POINT THE FORCE ACTS AT.
+     *
+     * It has to be multiplied in somewhere, or the Vector Scale is a control
+     * that does nothing - and it was, for exactly this reason: with the tip
+     * taken straight from the span's end there was no length left for it to
+     * scale. Growing the line outward from `start` rather than from its middle
+     * keeps the force attached to the member it acts on, and - the part that
+     * matters - it is the SAME growth either way round, so reversing the force
+     * still cannot move the line:
+     *
+     *     forward:   start ---> grown end
+     *     reversed:  start <--- grown end
+     *
+     * `headAtGrownEnd` is which of those two is being drawn. It is decided by
+     * the vector projected onto the line's own direction, whose SIGN is
+     * meaningful whichever way round the span happens to be stored.
+     *
+     * A VECTOR THAT DISAGREES WITH ITS SPAN still goes by the vector: the
+     * projection's sign says which end it points at, and the vector is the
+     * engineering value. A force pushing square across the line it is drawn on
+     * has no end to point at, so the line's own direction decides instead -
+     * any other choice would claim something about the force that nothing
+     * supports.
+     *
+     * NO USABLE SPAN - and a zero-length one, which is the same thing - leaves
+     * no line to stretch, so the arrow runs from the point the force acts at
+     * along the vector at `magnitude x scale`, which is what it has always
+     * done.
+     */
+    function drawnForceAxis(state, geometry) {
         const vector = forceVector(geometry);
 
-        const scale = vectorScaleFor(state);
+        const start = {
+            x: finite(geometry?.start?.x),
+            y: finite(geometry?.start?.y),
+        };
+
+        const stored =
+            geometry?.end &&
+            Number.isFinite(geometry.end.x) &&
+            Number.isFinite(geometry.end.y)
+                ? {
+                      x: Number(geometry.end.x),
+                      y: Number(geometry.end.y),
+                  }
+                : null;
+
+        const magnitude = Math.abs(vector.magnitude);
+
+        const scaled = (reach) => {
+            const radians = (vector.angle * Math.PI) / 180;
+
+            return {
+                x:
+                    start.x +
+                    zeroIfAxis(Math.cos(radians)) * reach,
+                y:
+                    start.y +
+                    zeroIfAxis(Math.sin(radians)) * reach,
+            };
+        };
+
+        const spanLength = stored
+            ? Math.hypot(stored.x - start.x, stored.y - start.y)
+            : 0;
+
+        if (!(spanLength > 1e-9) || !(magnitude > 1e-9)) {
+            return {
+                tail: start,
+                head: stored && !(magnitude > 1e-9) ? stored : scaled(
+                    vectorScale(state, vector.magnitude)
+                ),
+            };
+        }
+
+        const reach = spanLength * vectorScaleFor(state);
+
+        const grown = {
+            x: start.x + ((stored.x - start.x) / spanLength) * reach,
+            y: start.y + ((stored.y - start.y) / spanLength) * reach,
+        };
+
+        const along =
+            ((stored.x - start.x) / spanLength) * (vector.fx / magnitude) +
+            ((stored.y - start.y) / spanLength) * (vector.fy / magnitude);
+
+        const headAtGrownEnd = along > -1e-9;
 
         return {
-            x: vector.x + vector.fx * scale,
-            y: vector.y + vector.fy * scale
+            tail: headAtGrownEnd ? start : grown,
+            head: headAtGrownEnd ? grown : start,
         };
     }
 
     /*
+     * ============================================================
      * The ENGINEERING force a drawn point describes.
      *
      * The inverse of `drawnForceEnd`, and what a drag of the arrowhead
@@ -874,9 +1214,20 @@
     function forceVectorFromDrawnPoint(state, geometry, point) {
         const vector = forceVector(geometry);
 
+        /*
+         * THE DRAG IS TAKEN BACK OFF THE DISPLAY SCALE.
+         *
+         * The drawn line is the span at `vectorScale`, so a drag of it is a
+         * drag of something longer than the stored geometry by that factor.
+         * Storing the drawn distance unconverted is what makes a force grow
+         * every time it is grabbed, and the scale is a DRAWING setting, so the
+         * conversion has to happen here rather than being left to the user.
+         */
+        const tail = drawnForceTail(state, geometry);
+
         const length = Math.hypot(
-            point.x - vector.x,
-            point.y - vector.y
+            point.x - tail.x,
+            point.y - tail.y
         );
 
         const scale = vectorScaleFor(state);
@@ -889,8 +1240,8 @@
         }
 
         const radians = Math.atan2(
-            point.y - vector.y,
-            point.x - vector.x
+            point.y - tail.y,
+            point.x - tail.x
         );
 
         return {
@@ -899,7 +1250,354 @@
         };
     }
 
-    root.enggLoadProfile = {
+    /*
+     * ============================================================
+     * THE OTHER END OF THE SAME LINE. WHERE THE SHAFT COMES FROM.
+     * ============================================================
+     *
+     * `drawnForceEnd` answers where the ARROWHEAD is; this answers where the
+     * tail of the shaft is, which is the other end of the same span. Together
+     * they draw the line the student put there, with the head on one end or
+     * the other - the way a Distributed Load's arrowheads move when it is
+     * reversed while its outline stays put.
+     *
+     * Asking for the two separately is what stops a reversal from appearing to
+     * move the arrow: the shaft is the whole span either way, so only the head
+     * changes side. With the tail pinned to the application point the shaft
+     * would instead reach from the application point to whichever end carries
+     * the head, and a reversal would visibly relocate the drawing.
+     */
+    function drawnForceTail(state, geometry) {
+        return drawnForceAxis(state, geometry).tail;
+    }
+
+    /*
+     * ============================================================
+     * WHERE THE ARROWHEAD IS.
+     * ============================================================
+     *
+     * One of the two ends of the drawn line; `drawnForceTail` is the other.
+     * Both are read out of the one `drawnForceAxis` result rather than each
+     * deciding independently, because a pair that disagreed about which end was
+     * which is precisely the fault this was rewritten to remove - and a shaft
+     * whose tail was on the wrong side of its own head is a line drawn
+     * backwards.
+     */
+    function drawnForceEnd(state, geometry) {
+        return drawnForceAxis(state, geometry).head;
+    }
+
+    /*
+     * THE UNIT A STATION IS MEASURED IN
+     * ========================================================
+     *
+     * A station on a beam can be read as millimetres or as metres, and the
+     * two are the same number in different clothes. Which one to show is
+     * the student's decision - a 500 mm beam is written either way, and
+     * nobody should be told - but the panel has to commit to one and say
+     * which, because a bare number beside a beam is a number whose scale
+     * the student has to guess from the drawing.
+     *
+     * IT FOLLOWS THE SHEET, which is drawn in millimetres.
+     *
+     * That is the one answer that is never wrong: a millimetre is a
+     * millimetre whatever the member is. The alternative - inferring
+     * metres from the size of a body - would print "5 m" beside a
+     * 5000-unit member and be right only by coincidence, which is the same
+     * class of bug as the four coordinates this replaced.
+     */
+    function loadStationUnit() {
+        return "mm";
+    }
+
+    /*
+   * ========================================================
+   * IS A POINT ON A LOAD?
+   * ========================================================
+   *
+   * A Distributed Load is one feature and it is drawn as a FIELD: a row of
+   * arrows standing off the body, closed by an envelope. Almost all of that
+   * ink is nowhere near the two points the model stores, so the ordinary
+   * "near the start or near the end" test misses it - and a load whose
+   * arrows cannot be clicked is a load the Select tool cannot reach.
+   *
+   * THREE PLACES ARE HIT, because three things are drawn:
+   *
+   *   1. THE ARROWS. Each is a shaft from a base on the body out to its tip,
+   *      so a click anywhere on a shaft is a click on that arrow.
+   *   2. THE ENVELOPE. The polygon joining the tips and closing along the
+   *      body - the outline the load is read by. Clicking inside it means
+   *      aiming at the load.
+   *   3. THE BODY LINE ITSELF, between the two ends.
+   *
+   * (2) is the one that was missing, and it is the one a student aims at:
+   * the outline is the biggest and most obvious part of a uniform load, and
+   * clicking the middle of it selected whatever was behind.
+   *
+   * THE ARROW LENGTH IS TAKEN FROM THE SAME NUMBERS THE RENDERER USES, so
+   * what is clickable is exactly what is visible - at any zoom, and at any
+   * Vector Scale. A hit test that guesses its own arrow length is a hit test
+   * that does not match the drawing, and the mismatch is invisible until
+   * somebody zooms in.
+   */
+  function loadContainsPoint(
+    geometry,
+    point,
+    tolerance,
+    pixelsPerUnit,
+    vectorScale
+  ) {
+    const start = geometry?.start;
+    const end = geometry?.end;
+
+    if (
+      !start ||
+      !end ||
+      !Number.isFinite(start.x) ||
+      !Number.isFinite(end.x) ||
+      !point ||
+      !Number.isFinite(point.x)
+    ) {
+      return false;
+    }
+
+    const samples = arrowSamples(geometry);
+
+    if (!samples.length) {
+      return false;
+    }
+
+    const peak = peakMagnitude(geometry);
+
+    if (peak <= 0) {
+      return false;
+    }
+
+    /*
+     * The same normal the renderer places the arrows along, and so the same
+     * side of the body they are drawn on. Falling back to the force
+     * direction is what the renderer does for a degenerate span, and a hit
+     * test has to agree with it even there.
+     */
+    const away =
+      loadBodyNormal(geometry) ||
+      unitVector(loadDirection(geometry));
+
+    const reach =
+      Math.max(
+        peak * Math.max(pixelsPerUnit, 1e-6) * vectorScale,
+        2
+      );
+
+    /* 1. The arrows. */
+    for (const sample of samples) {
+      const tip = {
+        x: sample.base.x + away.x * reach,
+        y: sample.base.y + away.y * reach
+      };
+
+      if (
+        distanceToSegment(point, sample.base, tip) <=
+          tolerance
+      ) {
+        return true;
+      }
+    }
+
+    /*
+     * THE ENVELOPE, BUILT ONCE.
+     *
+     * Out along the tips, then back along the body.
+     *
+     * THE TWO HALVES MUST BE THE TWO ENDS OF THE SAME ARROWS, in reverse
+     * order - the tip of the last arrow joins the base of the last arrow.
+     * Building the closing half from a second, separately reversed list
+     * produces a bow-tie rather than a region, and a bow-tie fills in the
+     * wrong places: which is how a hit test ends up accepting points in the
+     * corners of the drawing and rejecting the middle of the load.
+     */
+    const tips = samples.map(sample => ({
+      x: sample.base.x + away.x * reach,
+      y: sample.base.y + away.y * reach
+    }));
+
+    const bases = samples
+      .slice()
+      .reverse()
+      .map(sample => ({
+        x: sample.base.x,
+        y: sample.base.y
+      }));
+
+    const envelope = [...tips, ...bases];
+
+    /* 2. Inside the envelope. */
+    if (pointInPolygon(point, envelope)) {
+      return true;
+    }
+
+    /*
+     * 2b. ON THE OUTLINE ITSELF.
+     *
+     * The envelope is drawn as a stroked polygon, so it has a visible edge -
+     * and a student aiming at the boundary of a load aims at that edge, not
+     * at the interior. A point just outside the region but within the
+     * tolerance of it is therefore on the load.
+     *
+     * This is not a fudge factor. Without it the hit region has a hard edge
+     * exactly where the ink is, so clicking a fraction of a pixel off the
+     * outline selects the beam behind it: the tolerance would apply to
+     * everything else on screen and to nothing here.
+     *
+     * It also covers the gap between two arrows. The arrows stand at the
+     * sample interval, so the envelope between them is visible but no
+     * individual shaft reaches it, and a click there belongs to the load.
+     */
+    if (
+      envelope.some(
+        (vertex, index) =>
+          distanceToSegment(
+            point,
+            vertex,
+            envelope[(index + 1) % envelope.length]
+          ) <= tolerance
+      )
+    ) {
+      return true;
+    }
+
+    /*
+     * 3. The body line itself, which is the edge of that region and is
+     * drawn whether or not there are any arrows.
+     */
+    return (
+      distanceToSegment(point, start, end) <=
+      tolerance
+    );
+  }
+
+  function distanceToSegment(point, from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (!(lengthSquared > 1e-12)) {
+      return Math.hypot(
+        point.x - from.x,
+        point.y - from.y
+      );
+    }
+
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        ((point.x - from.x) * dx +
+          (point.y - from.y) * dy) /
+          lengthSquared
+      )
+    );
+
+    return Math.hypot(
+      point.x - (from.x + t * dx),
+      point.y - (from.y + t * dy)
+    );
+  }
+
+  /*
+   * Standard crossing test. Boundary behaviour is left to the tolerance
+   * tests above and below - a point exactly on the edge is close enough to
+   * the outline either way, so the tie-break here would not change what the
+   * student gets.
+   */
+  function pointInPolygon(point, polygon) {
+    let inside = false;
+
+    for (
+      let i = 0, j = polygon.length - 1;
+      i < polygon.length;
+      j = i++
+    ) {
+      const a = polygon[i];
+      const b = polygon[j];
+
+      const straddles =
+        a.y > point.y !== b.y > point.y;
+
+      if (
+        straddles &&
+        point.x <
+          ((b.x - a.x) * (point.y - a.y)) /
+            (b.y - a.y) +
+            a.x
+      ) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
+  /*
+   * ========================================================
+   * A VARYING LOAD'S PROFILE, AS THE DRAWS IT
+   * ========================================================
+   *
+   * A varying load stores an intensity at each end; the renderer draws it by
+   * sampling a profile built from them. That conversion was written out
+   * again at every place that needed the profile - the fit bounds, and the
+   * hit test - and each copy was a chance for the two to disagree about how
+   * long a 0-to-20 taper is.
+   *
+   * So it is built here, once, and read by everything. A caller that wants
+   * the drawn shape of either kind of load asks for it here rather than
+   * knowing how either is stored.
+   *
+   * A UNIFORM LOAD IS ITSELF A PROFILE - two equal points - so both kinds
+   * come back in the same shape and a caller does not branch on the type.
+   */
+  function drawnProfile(geometry) {
+    if (!geometry) {
+      return null;
+    }
+
+    if (geometry.points) {
+      return geometry;
+    }
+
+    if (
+      geometry.startIntensity === undefined &&
+      geometry.endIntensity === undefined
+    ) {
+      return null;
+    }
+
+    return {
+      start: geometry.start,
+      end: geometry.end,
+      direction: geometry.direction,
+      interval: geometry.interval,
+      points: [
+        {
+          t: 0,
+          magnitude: Math.max(
+            0,
+            Math.abs(Number(geometry.startIntensity) || 0)
+          )
+        },
+        {
+          t: 1,
+          magnitude: Math.max(
+            0,
+            Math.abs(Number(geometry.endIntensity) || 0)
+          )
+        }
+      ]
+    };
+  }
+
+  root.enggLoadProfile = {
         DEFAULT_LOAD_DIRECTION,
         DEFAULT_LOAD_INTERVAL,
         CUSTOM_VECTOR_SCALE,
@@ -909,6 +1607,9 @@
         arrowSamples,
         clampInterval,
         drawnForceEnd,
+        drawnForceTail,
+        drawnForceAxis,
+        drawnProfile,
         forceVector,
         forceVectorFromDrawnPoint,
         fractionAlong,
@@ -916,6 +1617,9 @@
         loadBodyNormal,
         loadDirection,
         loadInterval,
+        loadContainsPoint,
+        loadNormalSide,
+        loadStationUnit,
         magnitudeAt,
         peakMagnitude,
         pointAlong,

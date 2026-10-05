@@ -545,8 +545,7 @@
                         <button type="button" data-file-action="new" title="New drawing (Ctrl+N)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5"/></svg>New</button>
                         <button type="button" data-file-action="open" title="Open an .enggdraw file"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3z"/></svg>Open</button>
                         <button type="button" data-file-action="save" title="Save (Ctrl+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5"/></svg>Save</button>
-                        <button type="button" data-file-action="save-as" title="Save as (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
-                        <button type="button" data-file-action="export" title="Export as PNG, JPG or SVG (Ctrl+Shift+E)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M10 12l-3-3M10 12l3-3M4 15v2h12v-2"/></svg>Export</button>
+                        <button type="button" data-file-action="save-as" title="Save as a Datum drawing, PNG or JPG (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
                         <button type="button" data-file-action="print" title="Print the drawing (Ctrl+Shift+P)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 7V3h8v4M6 14H4V9h12v5h-2M6 12h8v5H6z"/></svg>Print</button>
                     </div>
                     <div class="drawing-app-toolbar-group" aria-label="History">
@@ -605,6 +604,24 @@
                     <label>Line Type <select id="drawingLineType"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="center">Center</option><option value="construction">Construction</option></select></label>
                     <button class="drawing-status-toggle active" id="drawingGridToggle" type="button" aria-pressed="true">Grid ON</button>
                     <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" aria-pressed="true">Snap ON</button>
+
+                    <!--
+                        The three display settings.
+
+                        Grid and Snap change HOW the drawing is made; these
+                        change how it is READ. That is why they are separate
+                        toggles rather than one "Display" switch: a student
+                        hiding dimensions while still showing force
+                        magnitudes is doing something a single switch could
+                        not express.
+
+                        Each starts ON, because that is the behaviour a
+                        drawing has always had - see displaySettingsOf in
+                        the annotation model for why an absent setting must
+                        read as on rather than off.
+                    -->
+                    <button class="drawing-status-toggle active" id="drawingDimensionsToggle" type="button" aria-pressed="true">Dimensions ON</button>
+                    <button class="drawing-status-toggle active" id="drawingMagnitudesToggle" type="button" aria-pressed="true">Magnitudes ON</button>
                 </div>
 
                 <!--
@@ -712,6 +729,8 @@
         be measured as, and the models that need that judgement next.
     -->
     <script src="js/engineering-drawing/measurement-core.js"></script>
+    <script src="js/engineering-drawing/quantities.js"></script>
+    <script src="js/engineering-drawing/property-panel.js"></script>
     <script src="js/engineering-drawing/dimension-model.js"></script>
     <script src="js/engineering-drawing/annotation-model.js"></script>
     <script src="js/engineering-drawing/smart-dimension.js"></script>
@@ -723,6 +742,8 @@
     <script src="js/engineering-drawing/dimensions.js"></script>
     <script src="js/engineering-drawing/scale-calibration.js"></script>
     <script src="js/engineering-drawing/feature-geometry.js"></script>
+    <script src="js/engineering-drawing/creation-dimension.js"></script>
+    <script src="js/engineering-drawing/creation-dimensioning.js"></script>
     <script src="js/engineering-drawing/dimension-editor.js"></script>
     <script src="js/engineering-drawing/load-profile.js"></script>
     <script src="js/engineering-drawing/clipboard.js"></script>
@@ -730,6 +751,8 @@
     <script src="js/engineering-drawing/body-frames.js"></script>
     <script src="js/engineering-drawing/analysis-dependencies.js"></script>
     <script src="js/engineering-drawing/diagram-equations.js"></script>
+    <script src="js/engineering-drawing/plot-editor.js"></script>
+    <script src="js/engineering-drawing/sketch-editor.js"></script>
     <script src="js/engineering-drawing/renderer.js"></script>
     <script src="js/engineering-drawing/object-snap.js"></script>
     <script src="js/engineering-drawing/drawing-reference.js"></script>

@@ -44,6 +44,7 @@ global.window = { crypto: { randomUUID: () => "matrix-uuid" } };
 
 require("../js/engineering-drawing/dimensions.js");
 require("../js/engineering-drawing/measurement-core.js");
+require("../js/engineering-drawing/quantities.js");
 require("../js/engineering-drawing/feature-geometry.js");
 require("../js/engineering-drawing/smart-dimension.js");
 require("../js/engineering-drawing/dimension-model.js");

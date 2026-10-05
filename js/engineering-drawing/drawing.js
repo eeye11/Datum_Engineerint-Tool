@@ -9,6 +9,39 @@ const drawingZoomOut = document.getElementById("drawingZoomOut");
 const drawingZoomIn = document.getElementById("drawingZoomIn");
 const drawingGridToggle = document.getElementById("drawingGridToggle");
 const drawingSnapToggle = document.getElementById("drawingSnapToggle");
+
+/*
+ * THE DISPLAY SETTINGS, beside Grid and Snap.
+ *
+ * UNITS IS NOT ONE OF THEM.
+ *
+ * There used to be a `Show Units` control here, and the dimension editor had a
+ * per-dimension flag behind it as well - two switches that could both produce a
+ * bare `500` where the answer is `500 mm`. A unit is part of what a number
+ * MEANS rather than decoration laid over it: `100` is not a force without an N
+ * and `500` is not a length without an mm, so hiding one leaves the value on
+ * the sheet wrong rather than plainer.
+ *
+ * The remaining two are visibility controls and stay: Show Dimensions hides
+ * annotations the student placed without touching any measurement, and Show
+ * Magnitudes does the same for force, load and moment values.
+ *
+ * They are read from the page rather than created here, so that the
+ * toolbar owns what the toolbar shows and this module only reacts to it.
+ */
+const drawingDisplayToggles = [
+    {
+        id: "drawingDimensionsToggle",
+        key: "showDimensions"
+    },
+    {
+        id: "drawingMagnitudesToggle",
+        key: "showMagnitudes"
+    }
+].map(entry => ({
+    ...entry,
+    button: document.getElementById(entry.id)
+}));
 const drawingProperties = document.getElementById("drawingProperties");
 const drawingToolMessage = document.getElementById("drawingToolMessage");
 const drawingComponentsBack = document.getElementById("drawingFeaturesBack");
@@ -68,12 +101,134 @@ function activeSheet() {
 }
 
 /*
+ * ========================================================
+ * THE SHEET COLLECTION, IN THE DOCUMENT HISTORY
+ * ========================================================
+ *
+ * The editor is the LIVE COPY of the active sheet and the collection sits
+ * beside it, so the history cannot reach the collection on its own. These
+ * three functions are how it does.
+ *
+ * Without them, Undo restored the objects on screen and nothing else:
+ * adding a sheet, renaming one, reordering them and deleting one were all
+ * invisible to Undo, and deleting a sheet took its features with it
+ * permanently - which is the worst version of that bug, because the
+ * features were not recoverable from anywhere.
+ *
+ * `capture` is taken BEFORE a sheet operation and `restore` is reached
+ * through the same commit every drawing edit uses, so a sheet change is
+ * ONE history entry like any other - not a special case, and not a second
+ * stack.
+ *
+ * THE SHEET MODULE'S OWN SERIALISER IS USED FOR BOTH DIRECTIONS.
+ *
+ * `serializeCollection` already deep-copies every sheet and keeps the
+ * active id, and `createCollection` already accepts that shape and
+ * normalises whatever it is given. Re-implementing either here would be a
+ * second opinion about what a sheet is - and the first attempt at this
+ * called three functions that do not exist, which threw inside
+ * `snapshotDrawing` and therefore broke EVERY edit in the application,
+ * because a snapshot is taken on the click that places every feature.
+ */
+function captureSheetsForHistory() {
+    return enggSheets.serializeCollection(
+        sheetCollection
+    );
+}
+
+function restoreSheetsFromHistory(captured) {
+    if (!captured) {
+        return;
+    }
+
+    sheetCollection =
+        enggSheets.createCollection(
+            captured
+        );
+
+    renderSheetTabs();
+    renderCurrentDrawing();
+    renderProperties();
+}
+
+function adoptSheetViewportIntoEditor() {
+    const sheet = activeSheet();
+
+    if (!sheet) {
+        return;
+    }
+
+    /*
+     * A SHEET IS ITS OWN CONTENT - it is stored flat, which is what a
+     * saved file looks like - so its viewport and settings are read off it
+     * directly rather than through a separate accessor that does not exist.
+     */
+    Object.assign(drawingState.camera, sheet.viewport);
+    drawingState.snap = { ...sheet.snap };
+    drawingState.objectSnap = { ...sheet.objectSnap };
+    drawingState.styleDefaults = {
+        ...sheet.styleDefaults,
+    };
+    drawingState.grid = { ...sheet.grid };
+    drawingState.units = sheet.units;
+
+    /*
+     * AND THE SHEET'S UNIVERSAL LENGTH SCALE.
+     *
+     * The editor is the live copy of whichever sheet is active, and
+     * the scale is what makes that sheet's lengths mean anything - so
+     * it is adopted here, in the same breath as the geometry it
+     * describes.
+     *
+     * Without this, a sheet opened after another would keep the
+     * previous sheet's calibration: every length on it would be
+     * measured with a scale that belonged to different geometry, and
+     * the two sheets would silently disagree about what the drawing
+     * looks like even where they are drawn identically.
+     *
+     * A sheet with no scale of its own hands over `null`, which is
+     * what makes it uncalibrated rather than silently inheriting the
+     * one it was left from.
+     */
+    drawingState.scale = sheet.scale
+        ? JSON.parse(JSON.stringify(sheet.scale))
+        : null;
+
+    /*
+     * AND THE EDITOR TAKES THE SHEET'S FEATURES, because the editor is
+     * the live copy of whichever sheet is active and the objects restored
+     * immediately before this are the active sheet's.
+     */
+    enggSheets.applySheetContent(
+        sheet,
+        enggSheets.captureSheetContent(
+            drawingState
+        )
+    );
+}
+
+enggDrawingState.setHistorySinks(
+    drawingState,
+    {
+        capture: captureSheetsForHistory,
+        restore: restoreSheetsFromHistory,
+        adopt: adoptSheetViewportIntoEditor
+    }
+);
+
+/*
  * Write the editor's current drawing back onto the active sheet.
  *
  * Called before anything that leaves the sheet - switching, saving,
  * recovering - so that what the student sees is always what the sheet
  * holds. It is the only place the two are kept in step, which is what
  * makes it safe for the editor to be the live copy.
+ *
+ * The sheet's SCALE goes back the same way it arrived. That symmetry
+ * matters: `adoptSheetViewportIntoEditor` takes the scale from the
+ * sheet, so if it were not written back the editor would be carrying a
+ * scale the sheet does not have, and the next calibration on this
+ * sheet would be discarded when the student switched away.
  */
 function syncActiveSheet() {
     const sheet = activeSheet();
@@ -288,6 +443,48 @@ function syncWorkspaceSettingToggles() {
             String(on)
         );
     }
+
+    /*
+     * THE THREE DISPLAY SETTINGS STATE THEMSELVES, from the state.
+     *
+     * Read back rather than assumed, for the same reason as Grid and Snap:
+     * a sheet arriving with them off has to show that immediately, or the
+     * toolbar claims a setting the drawing is not using.
+     *
+     * AN ABSENT `display` READS AS ALL ON. That is the same rule the
+     * annotation model applies, and it has to be the same rule - a toolbar
+     * reading a state object one way while a label reads it another way is
+     * how a drawing ends up with units showing that the toolbar says are
+     * off.
+     */
+    /*
+ * Both of the remaining settings are plain booleans read the same way.
+ *
+ * `showUnits` used to be special-cased here, defaulting to ON while its stored
+ * value said otherwise, so that a drawing saved with units hidden still showed
+ * them. There is no longer a button that can turn them off - a unit is part of
+ * what the number means - so the state object has nothing left to disagree
+ * about and every toggle is read the one way.
+ */
+    drawingDisplayToggles.forEach(({ button, key }) => {
+        if (!button) {
+            return;
+        }
+
+        const on = drawingState.display?.[key] !== false;
+
+        button.textContent =
+            button.textContent
+                .replace(/\s+(ON|OFF)$/, "") +
+            (on ? " ON" : " OFF");
+
+        button.classList.toggle("active", on);
+
+        button.setAttribute(
+            "aria-pressed",
+            String(on)
+        );
+    });
 }
 
 /*
@@ -1354,9 +1551,23 @@ function openArcMenu(button) {
 
                     closeCoordinateSystemMenu();
 
+                    /*
+                     * The tool the MENU BELONGS TO, not a hard-coded
+                     * "arc". This handler is shared by both Arc tools,
+                     * so hard-coding the id here silently turned a
+                     * Reference Arc into an ordinary Arc the moment
+                     * the student picked a creation method - the
+                     * submenu was the one thing telling them the two
+                     * were different, and it would have thrown that
+                     * difference away.
+                     */
+                    const tool = button?.getAttribute?.("data-tool-id");
+
                     enggDrawingState.setActiveTool(
                         drawingState,
-                        "arc"
+                        tool === "reference-arc"
+                            ? "reference-arc"
+                            : "arc"
                     );
 
                     drawingState.interaction.arcMode =
@@ -2587,18 +2798,14 @@ const ANALYSIS_DIAGRAM_MODE_LABELS = {
 };
 
 /*
- * The quantity each diagram plots, as it is written in the equation.
+ * The quantity each diagram plots used to be listed here, keyed by feature
+ * type, and the equation field in the Features panel was labelled from it.
  *
- * Shown in the equation field and on the frame, because N(x) and M(x)
- * mean different things and a student who typed the wrong one should be
- * able to see it. One per diagram, not one global, because the equation
- * is the only place the three ever differ.
+ * That table is gone. The symbol is now read from the diagram's own type by
+ * the equations module, which is where the diagrams are described - and a
+ * second table beside it was a second answer to "what is this diagram
+ * plotting?", free to disagree with the first.
  */
-const ANALYSIS_DIAGRAM_VARIABLES = {
-    "shear-force-diagram": "V(x)",
-    "bending-moment-diagram": "M(x)",
-    "axial-force-diagram": "N(x)"
-};
 
 /*
  * Selected statics features, or every statics feature when
@@ -2976,17 +3183,65 @@ function commitAnalysisAxis() {
         ](
             axis.start,
             axis.end,
+
+            /*
+             * THE DIAGRAM IS A STATICS FEATURE, and it says so here.
+             *
+             * This is the only place the object is built, so an omitted
+             * field is permanent - and it was omitted. Without it
+             * `engineering.discipline` was undefined, the Feature Tree
+             * fell through to its Geometry default, and AFD/SFD/BMD were
+             * filed among the plain geometry. That was a categorisation
+             * bug in the data model, not a mislabelled heading: the tree,
+             * the panel and any query about "which discipline is this"
+             * were all reading the same missing fact.
+             *
+             * `analysisKind` is recorded too, so a consumer can tell an
+             * axial diagram from a bending one without reaching into the
+             * feature's name.
+             */
             {
                 style:
                     drawingState
                         .styleDefaults,
 
-                        name:
-                            nextAnalysisDiagramName(
-                                interaction.analysisKind
-                            )
-                    }
-                );
+                engineering: {
+                    plane: "XY",
+                    discipline: "statics",
+
+                    /*
+                     * The diagram this object is, as one of the three.
+                     * The factory key is already the drawing type, so
+                     * this is the same fact stated where the statics
+                     * readers look for it.
+                     */
+                    analysisKind:
+                        interaction.analysisKind,
+
+                    /*
+                     * THE SOURCE IS RECORDED HERE AS WELL AS BY
+                     * registerDependency below.
+                     *
+                     * The diagram's whole coordinate system is the
+                     * body's, and `parentId` - the field the Feature Tree
+                     * nests children by - is not set until further down
+                     * for the whole group of statics features to share
+                     * one answer. Recording the source on the feature
+                     * means "what body is this a diagram of" has a
+                     * single authoritative answer rather than being
+                     * reconstructed from proximity.
+                     */
+                    sourceFeatureIds: [
+                        interaction.sourceId
+                    ].filter(Boolean)
+                },
+
+                name:
+                    nextAnalysisDiagramName(
+                        interaction.analysisKind
+                    )
+            }
+        );
 
     /*
      * The student's chosen height, stored as an offset along the
@@ -3038,14 +3293,19 @@ function commitAnalysisAxis() {
     object.geometry.mode = mode;
 
     /*
-     * A PLOT STARTS WITH ONE SEGMENT ALREADY SPANNING THE BODY.
+     * A PLOT STARTS WITH ONE EXPRESSION ALREADY SPANNING THE BODY.
      *
-     * Seeded rather than empty because the range is not the
-     * student's to work out: it is the body's own, and asking for
-     * it invites the one error that matters here - a plot that does
-     * not line up with the member above it. What the student still
-     * has to supply is the equation, which is the part that is
-     * genuinely theirs.
+     * Seeded rather than empty because the range is not the student's to
+     * work out: it is the body's own, and asking for it invites the one
+     * error that matters here - a plot that does not line up with the
+     * member above it. What the student still has to supply is the
+     * equation, which is the part that is genuinely theirs.
+     *
+     * It is seeded as an EXPRESSION, through the same factory the Plot
+     * Editor adds one with, so a fresh diagram and a diagram the student
+     * has just edited are the same kind of thing. A stable id comes with
+     * it, so "expression 1" is a thing the editor, the delete button and
+     * a saved file can all name.
      */
     if (mode === "plot") {
         const source =
@@ -3075,13 +3335,16 @@ function commitAnalysisAxis() {
                 to: length
             };
 
-            object.geometry.segments = [
-                {
-                    id: "seg-0",
-                    from: 0,
-                    to: length,
-                    equation: ""
-                }
+            object.geometry.expressions = [
+                window.enggDiagramEquations.createExpression(
+                    "functionX",
+                    {
+                        defaultRange: {
+                            start: 0,
+                            end: length
+                        }
+                    }
+                )
             ];
         }
     }
@@ -3117,14 +3380,42 @@ function commitAnalysisAxis() {
     );
 
     renderProperties();
-    renderCurrentDrawing();
+        renderCurrentDrawing();
 
-    setToolMessage(
-        "Reference axis placed - draw your diagram against it with the Line and Arc tools"
-    );
+        /*
+         * ========================================================
+         * AND THE EDITOR OPENS NOW, NOT AFTER ANOTHER CLICK
+         * ========================================================
+         *
+         * Placing the axes is the last step of CREATION, not the first step
+         * of a separate editing session. At this point everything the editor
+         * needs is already known - the source body, the position, the bounds,
+         * the diagram type, the x domain - so making the student find the
+         * feature in the tree and press "Open" is a step that exists only
+         * because the two halves were written separately.
+         *
+         * IT RUNS AFTER THE COMMIT, so the feature is already in the document
+         * and the snapshot the editor takes on Apply is against a state that
+         * includes it. Opening it before would mean Apply could not also undo
+         * the creation.
+         *
+         * A Sketch has no dialog to open yet - it is drawn with the ordinary
+         * tools on the sheet - so it falls through to the message that says so,
+         * rather than opening something empty.
+         */
+        if (
+            openAnalysisEditorFor(
+                object
+            )
+        ) {
+            return true;
+        }
 
-    return true;
-}
+        setToolMessage(
+            "Reference axis placed - draw your diagram against it with the Line and Arc tools"
+        );
+        return true;
+    }
 
 /*
  * The metadata every ANALYSIS object is stamped with.
@@ -3292,6 +3583,29 @@ function runStaticsAnalysis(
                 )
             );
 
+        /*
+         * THE RESULTANT IS PARENTED BY WHOSE FORCE IT IS.
+         *
+         * It was created with its source ids and no `parentId`, so the
+         * Feature Tree had nothing to nest it under and it sat at the top
+         * of the sheet - which is why a resultant never appeared beside the
+         * forces it was made from.
+         *
+         * `parentId` is the field the tree actually reads; the dependency
+         * list below is what makes it re-derive. Both are needed and they
+         * answer different questions: the parent says where the feature
+         * LIVES, the sources say what it READS. A resultant of several
+         * forces has no single parent body, so it is parented to the first
+         * of them - the one whose application point it is drawn from, and
+         * therefore the one whose motion it follows.
+         */
+        if (
+            forces[0]?.parentId
+        ) {
+            resultant.parentId =
+                forces[0].parentId;
+        }
+
         enggDrawingState.addObject(
             drawingState,
             resultant
@@ -3394,6 +3708,23 @@ function runStaticsAnalysis(
                     }
                 )
             );
+
+        /*
+         * THE COMPONENTS ARE PARENTED TO THEIR FORCE.
+         *
+         * The same omission as the resultant: the source ids were recorded
+         * but `parentId` was not, so the Feature Tree had nothing to nest
+         * it under and it appeared as a loose row at the top of the sheet
+         * instead of beside the force it describes.
+         *
+         * The Force Components tool is invoked on a selection of forces,
+         * and `forces[0]` is the one being decomposed - so its parent is
+         * unambiguous, and that is what goes on the object.
+         */
+        if (force.parentId) {
+            resolved.parentId =
+                force.parentId;
+        }
 
         enggDrawingState.addObject(
             drawingState,
@@ -3800,9 +4131,27 @@ function renderEngineeringTools(
                             return;
                         }
 
+                        /*
+                         * THE ARC TOOLS SHARE ONE SUBMENU.
+                         *
+                         * Reference Arc is an Arc child: same
+                         * geometry engine, same interaction, same
+                         * panel. What differs is only that the result
+                         * is construction geometry, so the CHOICE of
+                         * creation method offered here must be the
+                         * choice Arc offers - not Arc's menu with a
+                         * reduced copy, and not Arc's menu only.
+                         *
+                         * Routing both through one function is what
+                         * keeps them from drifting apart: a mode added
+                         * to the Arc menu appears on the Reference Arc
+                         * menu because there is only one list.
+                         */
                         if (
                             toolId ===
-                            "arc"
+                                "arc" ||
+                            toolId ===
+                                "reference-arc"
                         ) {
                             event.preventDefault();
                             event.stopPropagation();
@@ -3828,6 +4177,419 @@ function setToolMessage(
 ) {
     drawingToolMessage.textContent =
         message;
+}
+
+
+/*
+ * ========================================================
+ * CREATION-TIME DIMENSIONING
+ * ========================================================
+ *
+ * Every tool that makes something with a physical size ends the
+ * same way: the geometry is built, its size is established, and
+ * the feature is committed as ONE undoable action. This pair of
+ * helpers is that ending, so a Beam and a Rectangle run the same
+ * code and cannot drift into committing differently.
+ *
+ * `beginCreationDimensioning` asks the questions the feature's
+ * shape needs, through the shared framework and the shared
+ * popup, and calls back only with answers that were confirmed.
+ * `commitCreatedFeature` is the commit itself - the snapshot,
+ * the add, the history entry and the selection - which is what
+ * the creation paths already did inline, now in one place.
+ *
+ * WHY THE FEATURE IS NOT ADDED FIRST
+ * ----------------------------------
+ * The document is untouched while the popup is open. If the
+ * student cancels, there is nothing to remove, nothing to undo
+ * and - crucially - no scale change: the FIRST dimension is what
+ * calibrates the document, and a cancelled first dimension must
+ * leave the document exactly as uncalibrated as it was. Adding
+ * the feature first and removing it on cancel would make that
+ * guarantee depend on the removal being perfect.
+ */
+/*
+ * Draw the feature being sized, at the size currently typed.
+ *
+ * The object is NOT in the document yet - adding it would mean a
+ * cancelled popup had committed something, and the first dimension is
+ * what calibrates the sheet, so a cancelled first dimension has to
+ * leave the sheet exactly as it found it. The preview is therefore
+ * drawn from a COPY, through the very same setter the answer is
+ * applied with, so the drawing the student is looking at is the
+ * geometry that will be committed rather than an approximation of it.
+ *
+ * The copy is what makes it safe to resize repeatedly: every keystroke
+ * writes a fresh copy from the geometry as it was drawn, so the
+ * preview cannot drift away from the member the student actually drew
+ * by accumulating its own edits.
+ */
+function showSizingPreview(
+    object,
+    field,
+    value,
+    unit
+) {
+    const preview =
+        JSON.parse(JSON.stringify(object));
+
+    /*
+     * THE PREVIEW MUST BE WHAT THE COMMIT WILL PRODUCE.
+     *
+     * On a CALIBRATED sheet the typed length is converted through the
+     * document's scale, which is the ordinary case.
+     *
+     * On an UNCALIBRATED sheet there is no scale to convert through -
+     * and that is not a gap to work around, it is what calibration
+     * MEANS. The first length defines the scale by declaring that
+     * the geometry already drawn is that long, so the member's model
+     * geometry is deliberately left exactly as drawn and it is the
+     * interpretation that changes. Converting the number here would
+     * have shown the member shrinking to half a world unit, and then
+     * committed it at its original length: a preview that disagreed
+     * with the answer.
+     *
+     * The conversion is therefore taken through the document scale
+     * only when there is one, and the drawn geometry is shown as it
+     * stands when there is not.
+     */
+    const calibrated =
+        window.enggDimensions?.isCalibrated?.(
+            drawingState
+        ) === true;
+
+    const world = calibrated
+        ? window.enggDimensions.fromEngineering(
+              drawingState,
+              Number(value),
+              unit || "mm"
+          )
+        : Number(field.worldValue);
+
+    if (Number.isFinite(world)) {
+        updateFeatureProperty(
+            preview,
+            field.key,
+            world
+        );
+    }
+
+    /*
+     * KEYED AS `previewObjects`, which is the key the RENDERER already
+     * reads for "not yet committed" geometry - so the member appears
+     * through the existing preview path, with the existing dashed and
+     * translucent preview styling. Introducing a second key would have
+     * meant a second branch in the renderer, and a second chance for the
+     * preview and the committed feature to look different.
+     *
+     * Cleared as soon as the popup closes, by either path: confirming
+     * commits the real object, and cancelling leaves nothing behind.
+     */
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            previewObjects: [preview],
+            sizingPreview: preview
+        }
+    );
+
+    renderCurrentDrawing();
+}
+
+function beginCreationDimensioning(
+    object,
+    previousObjects,
+    onReady
+) {
+    const framework =
+        window.enggCreationDimensioning;
+
+    /*
+     * THE SNAPSHOT ARRIVES FROM THE CALLER, TAKEN BEFORE THIS POINT.
+     *
+     * It is captured at the moment the span was completed - before
+     * `applyValue` below can run - and passed in, rather than being
+     * taken here. That placement is the whole point.
+     *
+     * Applying a creation dimension can CALIBRATE the document - the
+     * first one in a new drawing must, because that is how a scale is
+     * ever established. A snapshot taken after that would already
+     * contain the calibration, so Undo would remove the beam while
+     * leaving its scale behind: a drawing with no features and a
+     * length scale derived from one of them.
+     *
+     * Passing it in also keeps creation and its dimension ONE
+     * undoable action - the beam and the calibration it established
+     * disappear together, and come back together.
+     */
+
+    const plan =
+        framework?.planFor(
+            object,
+            drawingState
+        );
+
+    /*
+     * A feature with no meaningful creation size is committed
+     * straight away, exactly as it was before this system
+     * existed. A Support, a Point, a Particle and a Point Force
+     * all arrive here and pass through untouched.
+     */
+    if (
+        !plan ||
+        !plan.fields.length
+    ) {
+        onReady();
+        return;
+    }
+
+    setToolMessage(
+        `${plan.title}: enter its size, then press Enter`
+    );
+
+    renderCurrentDrawing();
+
+    window.enggCreationDimension.open({
+        title: plan.title,
+
+        /*
+         * THE GEOMETRY STAYS ON SCREEN AND FOLLOWS THE NUMBER.
+         *
+         * The popup asks "how big is it?" about something the student
+         * can see. Hiding the drawing while that question is open
+         * answers it against nothing - they would be typing a length
+         * with no way to check what the length looks like, and on the
+         * very first dimension the sheet is also uncalibrated, so the
+         * drawing is the only thing that could have told them whether
+         * the number they are typing is the number they meant.
+         *
+         * So the pending object is kept as a preview and redrawn as
+         * the value changes: 500 becomes 750 becomes 0.75 m, and the
+         * drawing follows. The preview is drawn with the SAME setter
+         * the answer is applied through, so what is shown is what will
+         * be committed - a preview computed by different arithmetic
+         * would be a second answer to the same question.
+         */
+        onPreview: (index, value, unit) => {
+            showSizingPreview(
+                object,
+                plan.fields[index],
+                value,
+                unit
+            );
+        },
+
+        /*
+         * The unit each field OPENS on, not the only unit it may be
+         * answered in. The popup offers every length unit the
+         * document understands and reports whichever one the
+         * student actually chose.
+         */
+        unit: window.enggCreationDimensioning.displayUnit(
+            drawingState
+        ),
+
+        fields: plan.fields.map(field => ({
+            label: field.label,
+            unit: field.unit,
+            value: field.value
+        })),
+
+        onConfirm: values => {
+            /*
+             * The values are applied in order. For a two-value
+             * shape the first establishes the scale and the
+             * second is read against it, which is what makes the
+             * second field land on the number the student typed
+             * rather than on a value derived from a second,
+             * competing scale.
+             */
+            plan.fields.forEach(
+                (field, index) => {
+                    const answer =
+                        values[index];
+
+                    if (!answer) {
+                        return;
+                    }
+
+                    /*
+                     * The answer carries the unit the STUDENT
+                     * CHOSE, which is not necessarily the unit the
+                     * field's suggestion was made in - they may
+                     * have typed 0.5 where the suggestion said
+                     * 500 mm. The answer's unit is therefore
+                     * written onto the field before it is applied,
+                     * so the conversion below reads the unit that
+                     * was actually entered rather than the one the
+                     * drawing happened to offer.
+                     */
+                    framework.applyValue(
+                        object,
+                        drawingState,
+                        {
+                            ...field,
+                            unit: answer.unit
+                        },
+                        answer.value,
+
+                        /*
+                         * THE ONE PROPERTY SETTER, receiving
+                         * MILLIMETRES.
+                         *
+                         * The Features panel writes through this
+                         * same function and captions its length
+                         * fields with a unit, so the setter's
+                         * contract is millimetres. The framework
+                         * has already normalised the typed value to
+                         * millimetres - including a value the
+                         * student typed in metres - so this is a
+                         * straight pass-through and the ONE
+                         * conversion into world units happens
+                         * inside the setter.
+                         *
+                         * Exactly one conversion, in exactly one
+                         * place, is what makes a size set here and
+                         * a size typed in the panel identical.
+                         */
+                        (target, key, millimetres) =>
+                            updateFeatureProperty(
+                                target,
+                                key,
+                                millimetres
+                            )
+                    );
+                }
+            );
+
+            /*
+             * THE PREVIEW HAS DONE ITS JOB.
+             *
+             * The real object is committed below, so the dashed copy
+             * that stood in for it while the value was typed must go -
+             * otherwise the sheet carries two overlapping members, and
+             * the second is one keystroke out of date the moment the
+             * geometry settles.
+             */
+            enggDrawingState.setInteraction(
+                drawingState,
+                {
+                    previewObjects: null,
+                    sizingPreview: null
+                }
+            );
+
+            onReady();
+        },
+
+        onCancel: () => {
+            /*
+             * The preview goes with it. A cancelled size must leave
+             * the sheet looking exactly as it did before the student
+             * started drawing - no orphaned dashed member hanging in
+             * the space where they were about to place something, and
+             * nothing committed for them to undo.
+             */
+            enggDrawingState.setInteraction(
+                drawingState,
+                {
+                    previewObjects: null,
+                    sizingPreview: null
+                }
+            );
+
+            /*
+             * Nothing was created, so nothing is committed. The
+             * tool is left armed and the message says so, which
+             * is the same outcome as pressing Escape during any
+             * other construction step.
+             */
+            setToolMessage(
+                `${plan.title} cancelled`
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
+        }
+    });
+}
+
+/*
+ * Commit a finished feature as one undoable action.
+ *
+ * The snapshot is taken BEFORE the object is added, so Undo
+ * removes the feature and the creation dimension with it - the
+ * two are one action, not a geometry change followed by a size
+ * change the student would have to undo twice.
+ *
+ * THE PANEL IS PUT INTO EDIT VIEW HERE, AND THAT IS THE EXCEPTION.
+ * ------------------------------------------------------------
+ * Everywhere else, selecting a feature does not open it: picking a
+ * row is how you find out what is there, and editing is a separate
+ * deliberate step, so the panel stays on the tree until the user
+ * asks otherwise.
+ *
+ * A feature that has just been SIZED is the exception, because the
+ * student has just typed a number for it and needs to see that the
+ * number landed. The creation popup is the last thing that happened,
+ * and the value it set is only really confirmed once it is visible
+ * in the feature's own properties. Leaving the panel on the tree
+ * would mean the size they just entered showed up nowhere, and the
+ * feature looked as though it had ignored them.
+ *
+ * So a feature committed through the creation-dimension workflow
+ * arrives here already sized, and the panel opens on it. This is
+ * scoped to that path by the `sized` argument; a feature created
+ * without a size - a Particle, a Support - keeps the tree, exactly
+ * as before.
+ */
+function commitCreatedFeature(
+    object,
+    sized = false,
+    previousObjects = null
+) {
+    /*
+     * The caller passes the snapshot taken BEFORE the creation
+     * dimension was applied, because that is the only moment from
+     * which "before" means what it says. A feature that was never
+     * sized has nothing that can change the scale, so for it - and
+     * only for it - the state can be captured here instead.
+     */
+    const previous =
+        previousObjects ||
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
+
+    enggDrawingState.addObject(
+        drawingState,
+        object
+    );
+
+    enggDrawingState.commitDrawingChange(
+        drawingState,
+        previous
+    );
+
+    enggDrawingState.selectObject(
+        drawingState,
+        object.id
+    );
+
+    /*
+     * The feature is open for editing, and the tree is not the view
+     * being left behind - so the "picked in this view" flag is
+     * cleared too. Otherwise the next click on the row would be read
+     * as the deliberate second click that opens the editor, and the
+     * editor is already open.
+     */
+    if (sized) {
+        featurePanelView = "edit";
+        featureTreePickedId = null;
+        drawingComponentsBack.style.display = "block";
+    }
+
+    return object;
 }
 
 function activate2DCoordinateSystemTool() {
@@ -3991,9 +4753,16 @@ function initialToolMessage(
     if (
         isDimensionTool(toolId)
     ) {
+        /*
+         * The dimension tools open by asking for a REFERENCE, not a
+         * whole feature: a reference may be a point, a line, a circle or
+         * an arc, and the tool works out the measurement from what it is
+         * given. Saying "reference" rather than "feature" is what tells
+         * the student they may click a midpoint as readily as a body.
+         */
         return toolId === "smart-dimension"
-            ? "Select a feature - the measurement is chosen for you"
-            : "Select a feature - then D to change what is measured";
+            ? "Specify dimension reference"
+            : "Specify dimension reference - D changes what is measured";
     }
 
     /*
@@ -5123,23 +5892,907 @@ function pointInsideOutline(
  * go through the pointer's resolved point, so the placement snaps to
  * the same targets as every other tool rather than to a private set.
  */
+/*
+ * A DIMENSION REFERENCE FROM A SNAP, OR NOTHING.
+ *
+ * The snap says which feature and what KIND of point; a dimension reference
+ * needs which feature and which ANCHOR of it. This is the join, and it returns
+ * null whenever it cannot be made honestly - a point that names no anchor is
+ * not something a dimension can be built from, and inventing one would measure
+ * the wrong thing silently.
+ *
+ * An intersection has no owning feature, so it is not a reference: there is
+ * nothing to re-resolve it against when the geometry moves.
+ */
+function dimensionRefFromSnap(
+    resolution,
+    point
+) {
+    const candidate =
+        resolution?.snapCandidate;
+
+    if (!candidate?.objectId) {
+        return null;
+    }
+
+    const object =
+        objectWithId(candidate.objectId);
+
+    if (!object || object.type === "dimension" || object.type === "annotation") {
+        return null;
+    }
+
+    /*
+     * A POINT ON A STRAIGHT ENTITY IS A GENUINE POINT REFERENCE.
+     *
+     * The snap publishes pointOnEntity at the cursor's own position
+     * along the feature, and the nearest NAMED anchor is usually not
+     * that position - so resolving it to one would silently move the
+     * reference to an endpoint or midpoint the student did not click.
+     * Instead the position is encoded as a fraction of the span, which
+     * the measurement layer resolves from the feature's current ends.
+     */
+    if (
+        candidate.type === "pointOnEntity" &&
+        twoPointSpanOf(object)
+    ) {
+        const fraction = fractionAlongFeature(
+            object,
+            candidate.point || point
+        );
+
+        if (fraction !== null) {
+            return {
+                featureId: object.id,
+                anchor:
+                    "pointOnEntity@" +
+                    fraction
+            };
+        }
+    }
+
+    const anchor =
+        enggMeasurement.anchorNameAtPoint(
+            object,
+            candidate.point || point,
+            candidate.type
+        );
+
+    if (!anchor) {
+        return null;
+    }
+
+    return {
+        featureId: object.id,
+        anchor
+    };
+}
+
+/*
+ * How far along a straight feature a model point lies, as a fraction.
+ *
+ * Null when the feature has no span or the point is degenerate with
+ * one of its ends, in which case a named endpoint anchor is the honest
+ * reference and the caller falls back to it.
+ */
+function fractionAlongFeature(
+    object,
+    point
+) {
+    const span = twoPointSpanOf(object);
+
+    if (!span) {
+        return null;
+    }
+
+    const deltaX = span.end.x - span.start.x;
+    const deltaY = span.end.y - span.start.y;
+
+    const lengthSquared =
+        deltaX * deltaX + deltaY * deltaY;
+
+    if (lengthSquared < 1e-12) {
+        return null;
+    }
+
+    const t =
+        ((point.x - span.start.x) * deltaX +
+            (point.y - span.start.y) * deltaY) /
+        lengthSquared;
+
+    /*
+     * Clamped to the feature, because a point on an entity is ON it. A
+     * fraction outside [0, 1] would resolve to a position past the end,
+     * which is not a point on the entity at all.
+     */
+    return Math.min(1, Math.max(0, t));
+}
+
+/*
+ * ========================================================
+ * SMART DIMENSION: WHAT THE STUDENT JUST CLICKED
+ * ========================================================
+ *
+ * A dimension reference is not merely "a feature". The tool has to tell
+ * apart four kinds of click, because each leads to a different
+ * measurement:
+ *
+ *   a SNAP POINT      an endpoint, midpoint, centre, quadrant,
+ *                     intersection or point-on-entity - one exact model
+ *                     point, named by the snap system
+ *   a LINE            a straight body or segment, dimensioned by its
+ *                     full length, or measured against another line
+ *                     for an angle
+ *   a CIRCLE / ARC    dimensioned by its own diameter or radius
+ *   a BODY            anything else that exposes measurements
+ *
+ * The reference returned here is deliberately PERSISTENT: it names the
+ * feature and the sub-element (an anchor name, or the feature's own
+ * span), never a frozen coordinate. That is what lets the dimension
+ * follow the geometry when it moves.
+ *
+ * A snap resolved to a real anchor wins over the feature under the
+ * cursor: `endpoint to midpoint` is a different dimension from
+ * `endpoint to endpoint`, and only the snap knows which was hit.
+ *
+ * WHAT A POINT-ON-ENTITY SNAP MEANS DEPENDS ON THE STAGE
+ * -----------------------------------------------------
+ * pointOnEntity is the snap system's "anywhere along this feature"
+ * target, so it is always available when the cursor is over a line.
+ * If it were taken as a chosen reference on the FIRST click, a student
+ * clicking a beam to dimension its span would instead get a point
+ * reference to an arbitrary position on it - which is exactly the
+ * behaviour §7 of the specification forbids.
+ *
+ * So on the FIRST click a pointOnEntity snap is ignored in favour of
+ * the feature itself (a line dimensions its whole length, a circle its
+ * diameter). On the SECOND click it IS a valid point reference,
+ * because the student is deliberately choosing a position rather than
+ * a whole body.
+ */
+function dimensionReferenceAtClick(
+    resolution,
+    point,
+    awaitingSecond
+) {
+    const snapType =
+        resolution?.snapCandidate?.type;
+
+    /*
+     * A SNAP IS A POINT, BUT IT IS NOT ALWAYS WHAT WAS MEANT.
+     *
+     * Clicking the middle of a Beam should measure the BEAM. The snap
+     * layer publishes a midpoint there, and taking it would silently
+     * turn every click on a member into "half of it" - which is why
+     * a feature that measures as a whole is preferred here and the
+     * snap is only consulted when there is no such feature.
+     *
+     * What is under the cursor decides which that is. A LINE is
+     * measured whole even when an endpoint or midpoint snapped to it;
+     * a feature with no intrinsic measurement of its own - a Particle,
+     * a Support, a Point Force - falls through to the snap, which is
+     * exactly the reference the student aimed at.
+     */
+    const object = findDimensionTarget(point);
+
+    if (object) {
+        const whole =
+            dimensionReferenceForFeature(object, point);
+
+        if (whole && whole.kind !== "point") {
+            return whole;
+        }
+    }
+
+    const snappedRef =
+        dimensionRefFromSnap(
+            resolution,
+            point
+        );
+
+    if (snappedRef) {
+        return {
+            kind: "point",
+            ref: snappedRef,
+            featureId: snappedRef.featureId,
+            anchor: snappedRef.anchor
+        };
+    }
+
+    /*
+     * Nothing under the cursor that measures as a whole, and no snap
+     * either - a click on empty space. The caller decides what to do
+     * about it.
+     */
+    return null;
+}
+
+/*
+ * The reference a whole feature offers, by its shape.
+ *
+ * A straight body is referenced as a LINE - so selecting it once
+ * dimensions its full length, and selecting a second line measures the
+ * angle between them. A circle is referenced as a CIRCLE, measured by
+ * its diameter; an arc by its radius. Anything else falls back to its
+ * own best measurement.
+ *
+ * A COMPOSITE FEATURE IS REFERENCED BY THE SEGMENT THAT WAS CLICKED.
+ *
+ * A polyline and a rectangle are chains of straight segments, and the only
+ * honest linear reference for either is the segment the student aimed at. The
+ * whole chain's first-to-last span is deliberately not offered: a click on one
+ * segment of a polyline means that segment, and dimensioning the whole chain
+ * would state a distance between two points the student never picked.
+ *
+ * `point` is the resolved model point of the click, used only to decide WHICH
+ * segment - never as the measurement itself.
+ */
+function dimensionReferenceForFeature(
+    object,
+    point
+) {
+    if (!object) {
+        return null;
+    }
+
+    const segment = compositeSegmentReference(
+        object,
+        point
+    );
+
+    if (segment) {
+        return segment;
+    }
+
+    const span = twoPointSpanOf(object);
+
+    if (span) {
+        return {
+            kind: "line",
+            featureId: object.id,
+            anchor: "start",
+            endAnchor: "end",
+            object
+        };
+    }
+
+    const geometry = object.geometry || {};
+
+    if (
+        object.type === "circle" &&
+        Number.isFinite(Number(geometry.radius))
+    ) {
+        return {
+            kind: "circle",
+            featureId: object.id,
+            dimensionType: "diameter",
+            anchor: "east",
+            object
+        };
+    }
+
+    if (
+        object.type === "arc" &&
+        Number.isFinite(Number(geometry.radius))
+    ) {
+        return {
+            kind: "arc",
+            featureId: object.id,
+            dimensionType: "radius",
+            anchor: "center",
+            object
+        };
+    }
+
+    /*
+     * Anything else - a shaft with a stored diameter, a polygon, a
+     * rectangle - is offered through the measurement layer, which is
+     * the one place that knows what each feature can be measured as.
+     */
+    const descriptors =
+        dimensionDescriptorsFor([object]);
+
+    if (!descriptors.length) {
+        return null;
+    }
+
+    const choice = descriptors[0];
+
+    if (!choice?.refs?.length) {
+        return null;
+    }
+
+    return {
+        kind: "feature",
+        featureId: object.id,
+        dimensionType: choice.dimensionType,
+        refs: choice.refs,
+        object
+    };
+}
+
+/*
+ * A composite feature referenced by the SEGMENT nearest the click.
+ *
+ * Returns a LINE reference whose two anchors name the segment's own ends, so
+ * selecting one segment of a polyline dimensions that segment and nothing
+ * else. Null for anything that is not a composite chain of segments, and null
+ * when no point was supplied - a caller that only has the feature cannot say
+ * which segment was meant, and guessing the first would be worse than falling
+ * back to the feature's own measurement.
+ *
+ * The segment's endpoints are found by NAME through the measurement layer
+ * (`segment{i}Start` / `segment{i}End`), which is what keeps the reference
+ * persistent: the anchors are re-resolved from the polyline's current points
+ * every time, so the dimension follows the feature when it moves.
+ */
+function compositeSegmentReference(object, point) {
+    if (!point || !Number.isFinite(point.x)) {
+        return null;
+    }
+
+    if (
+        object.type !== "polyline" &&
+        object.type !== "rectangle"
+    ) {
+        return null;
+    }
+
+    const points = compositeSegmentPoints(object);
+
+    if (points.length < 2) {
+        return null;
+    }
+
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+        const distance = distanceToSegment(
+            point,
+            points[index],
+            points[index + 1]
+        );
+
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+        }
+    }
+
+    if (bestIndex < 0) {
+        return null;
+    }
+
+    return {
+        kind: "line",
+        featureId: object.id,
+        anchor: `segment${bestIndex}Start`,
+        endAnchor: `segment${bestIndex}End`,
+        object
+    };
+}
+
+/*
+ * The points a composite feature's segments run between.
+ *
+ * A polyline's points are its geometry; a rectangle's are its four corners,
+ * taken through the same helper the measurement layer uses so the two cannot
+ * disagree about where the body is.
+ */
+function compositeSegmentPoints(object) {
+    if (object.type === "polyline") {
+        return (object.geometry?.points || [])
+            .filter(
+                (entry) =>
+                    entry &&
+                    Number.isFinite(entry.x) &&
+                    Number.isFinite(entry.y)
+            );
+    }
+
+    try {
+        return (
+            window.enggFeatureGeometry?.rectangleCorners?.(
+                object.geometry || {}
+            ) || []
+        ).filter(
+            (entry) =>
+                entry &&
+                Number.isFinite(entry.x) &&
+                Number.isFinite(entry.y)
+        );
+    } catch (error) {
+        return [];
+    }
+}
+
+/*
+ * The two-point span of a straight feature, or null.
+ *
+ * Read through the measurement layer rather than off `geometry`
+ * directly, so every straight body - a line, a beam, a cable, a shaft,
+ * a truss member - is recognised by the same test the measurement
+ * itself uses.
+ */
+function twoPointSpanOf(object) {
+    try {
+        return enggMeasurement.twoPointSpan(object);
+    } catch (error) {
+        return null;
+    }
+}
+
+/*
+ * The model direction of a straight feature, or null.
+ */
+function directionOfFeature(object) {
+    const span = twoPointSpanOf(object);
+
+    if (!span) {
+        return null;
+    }
+
+    const deltaX = span.end.x - span.start.x;
+    const deltaY = span.end.y - span.start.y;
+
+    const length = Math.hypot(deltaX, deltaY);
+
+    if (length < 1e-9) {
+        return null;
+    }
+
+    return { x: deltaX / length, y: deltaY / length };
+}
+
+/*
+ * ========================================================
+ * SMART DIMENSION: INFERRING THE MEASUREMENT
+ * ========================================================
+ *
+ * From one or two references, decide what should be measured. This is
+ * the heart of Smart Dimension and the reason the tool needs no mode
+ * switch:
+ *
+ *   one line            its full length
+ *   one circle          its diameter
+ *   one arc             its radius
+ *   two lines           the angle between them
+ *   point + line        the perpendicular distance to the line
+ *   two points          a distance, oriented by the model geometry
+ *
+ * The orientation of a two-point distance comes from MODEL geometry,
+ * never from the screen: two points on the same straight body are
+ * measured along that body's axis, however it is rotated on screen.
+ */
+function inferDimensionDescriptor(
+    first,
+    second
+) {
+    if (!first) {
+        return null;
+    }
+
+    /*
+     * ONE REFERENCE.
+     */
+    if (!second) {
+        if (first.kind === "point") {
+            /*
+             * A single point is not yet a dimension: the tool waits for
+             * the second reference rather than measuring a point to
+             * itself.
+             */
+            return null;
+        }
+
+        if (first.kind === "line") {
+            return lineLengthDescriptor(first);
+        }
+
+        if (first.kind === "circle" || first.kind === "arc") {
+            return {
+                dimensionType: first.dimensionType,
+                refs: [
+                    {
+                        kind: "between",
+                        featureId: first.featureId,
+                        anchor: first.anchor
+                    }
+                ]
+            };
+        }
+
+        if (first.kind === "feature") {
+            return {
+                dimensionType: first.dimensionType,
+                refs: first.refs
+            };
+        }
+
+        return null;
+    }
+
+    /*
+     * TWO REFERENCES.
+     */
+    if (first.kind === "line" && second.kind === "line") {
+        /*
+         * Two lines: the angle between them, unless they are the SAME
+         * line - which has no angle to itself and is handled as a
+         * duplicate below.
+         */
+        if (first.featureId === second.featureId) {
+            return null;
+        }
+
+        const a = directionOfFeature(first.object);
+        const b = directionOfFeature(second.object);
+
+        if (!a || !b) {
+            return null;
+        }
+
+        return {
+            dimensionType: "angular",
+            refs: [
+                {
+                    kind: "between",
+                    featureId: first.featureId,
+                    anchor: "end"
+                },
+                {
+                    kind: "between",
+                    featureId: second.featureId,
+                    anchor: "end"
+                }
+            ]
+        };
+    }
+
+    if (first.kind === "point" && second.kind === "point") {
+        return pointPairDescriptor(
+            first.ref,
+            second.ref
+        );
+    }
+
+    /*
+     * Point + line, in either order: the perpendicular distance from the
+     * point to the line. Measured through the line's own ends so the
+     * value comes from the model geometry.
+     */
+    const pointRef =
+        first.kind === "point"
+            ? first
+            : second.kind === "point"
+              ? second
+              : null;
+
+    const lineRef =
+        first.kind === "line"
+            ? first
+            : second.kind === "line"
+              ? second
+              : null;
+
+    if (pointRef && lineRef) {
+        return pointToLineDescriptor(
+            pointRef.ref,
+            lineRef
+        );
+    }
+
+    return null;
+}
+
+/*
+ * A line reference's two ends, as model points.
+ *
+ * For a plain straight body this is the feature's own span. For a SEGMENT of a
+ * composite feature - a polyline segment, a rectangle edge - the object has no
+ * overall span, so the ends are resolved from the anchors the reference names.
+ * That is what lets one segment of a polyline be dimensioned by its own length
+ * rather than by the whole chain's first-to-last distance.
+ *
+ * Null when either end cannot be resolved, so a dimension over a segment that
+ * no longer exists is refused rather than measured from a stray point.
+ */
+function referenceSpan(lineRef) {
+    const direct = twoPointSpanOf(lineRef?.object);
+
+    if (direct) {
+        return direct;
+    }
+
+    if (!lineRef?.object || !lineRef.anchor || !lineRef.endAnchor) {
+        return null;
+    }
+
+    const start = enggMeasurement.resolveAnchor(
+        lineRef.object,
+        lineRef.anchor
+    );
+
+    const end = enggMeasurement.resolveAnchor(
+        lineRef.object,
+        lineRef.endAnchor
+    );
+
+    if (!start || !end) {
+        return null;
+    }
+
+    return { start, end };
+}
+
+/*
+ * A single line, dimensioned by its full length.
+ *
+ * The orientation follows the line: an exactly horizontal line is
+ * dimensioned horizontally, an exactly vertical one vertically, and
+ * anything else by its true aligned length. That is what makes a
+ * rotated member read its own span rather than the horizontal distance
+ * between its ends.
+ */
+function lineLengthDescriptor(lineRef) {
+    const span = referenceSpan(lineRef);
+
+    if (!span) {
+        return null;
+    }
+
+    return {
+        dimensionType: spanDimensionType(
+            span.start,
+            span.end
+        ),
+        refs: [
+            {
+                kind: "between",
+                featureId: lineRef.featureId,
+                anchor: lineRef.anchor || "start"
+            },
+            {
+                kind: "between",
+                featureId: lineRef.featureId,
+                anchor: lineRef.endAnchor || "end"
+            }
+        ]
+    };
+}
+
+/*
+ * Two points, measured as a distance.
+ *
+ * The orientation is chosen from the MODEL points, and it is chosen in
+ * this order:
+ *
+ *   1. both points on the same straight body -> along that body's axis
+ *   2. strongly horizontally aligned         -> horizontal
+ *   3. strongly vertically aligned           -> vertical
+ *   4. otherwise                             -> the direct aligned distance
+ *
+ * The tolerance for "strongly aligned" is a slope, so it is independent
+ * of zoom and of how long the span happens to be.
+ */
+function pointPairDescriptor(firstRef, secondRef) {
+    const firstPoint = resolveRefPoint(firstRef);
+    const secondPoint = resolveRefPoint(secondRef);
+
+    if (!firstPoint || !secondPoint) {
+        return null;
+    }
+
+    /*
+     * The same reference twice has no distance to state. Refused rather
+     * than measured as a zero dimension, which would be a malformed
+     * feature on the sheet.
+     */
+    if (
+        firstRef.featureId === secondRef.featureId &&
+        firstRef.anchor === secondRef.anchor
+    ) {
+        return null;
+    }
+
+    const dimensionType = pairOrientation(
+        firstRef,
+        secondRef,
+        firstPoint,
+        secondPoint
+    );
+
+    return {
+        dimensionType,
+        refs: [
+            {
+                kind: "between",
+                featureId: firstRef.featureId,
+                anchor: firstRef.anchor
+            },
+            {
+                kind: "between",
+                featureId: secondRef.featureId,
+                anchor: secondRef.anchor
+            }
+        ]
+    };
+}
+
+/*
+ * Which of horizontal / vertical / aligned a point pair should use.
+ *
+ * Two points on one straight body are measured ALONG it - a dimension
+ * between two positions on a rotated beam must follow the beam, not
+ * become horizontal because the screen says so.
+ */
+function pairOrientation(
+    firstRef,
+    secondRef,
+    firstPoint,
+    secondPoint
+) {
+    /*
+     * Both references on the SAME straight feature: follow its axis. A
+     * beam measured end-to-end along its own length is the measurement a
+     * reader checks.
+     */
+    if (firstRef.featureId === secondRef.featureId) {
+        const object = objectWithId(firstRef.featureId);
+
+        if (object && twoPointSpanOf(object)) {
+            return "aligned";
+        }
+    }
+
+    const deltaX = Math.abs(secondPoint.x - firstPoint.x);
+    const deltaY = Math.abs(secondPoint.y - firstPoint.y);
+
+    const span = Math.hypot(deltaX, deltaY);
+
+    if (span < 1e-9) {
+        return "aligned";
+    }
+
+    /*
+     * "Strongly aligned" means the off-axis component is a small
+     * fraction of the span - a ratio, so zoom cannot change the answer.
+     */
+    if (deltaY / span < 0.05) {
+        return "horizontal";
+    }
+
+    if (deltaX / span < 0.05) {
+        return "vertical";
+    }
+
+    return "aligned";
+}
+
+/*
+ * A point measured against a line: the perpendicular distance.
+ *
+ * The measurement is a POINT-LINE dimension, not an aligned one, because the
+ * two state different numbers. An aligned dimension is the straight distance
+ * between its two points; this is the perpendicular distance from the point to
+ * the line's direction, which is shorter whenever the foot of the perpendicular
+ * falls outside the drawn extent - and is the number a reader checking a
+ * clearance expects.
+ *
+ * The references stay persistent and are THREE: the point, then the line's two
+ * ends. Both ends are kept so the perpendicular is recomputed from the line's
+ * current geometry, which is what makes the measurement follow the line when it
+ * moves or rotates rather than freezing the distance at the moment of clicking.
+ */
+function pointToLineDescriptor(pointRef, lineRef) {
+    const span = twoPointSpanOf(lineRef.object);
+
+    if (!span) {
+        return null;
+    }
+
+    return {
+        dimensionType: "point-line",
+        refs: [
+            {
+                kind: "between",
+                featureId: pointRef.featureId,
+                anchor: pointRef.anchor
+            },
+            {
+                kind: "between",
+                featureId: lineRef.featureId,
+                anchor: lineRef.anchor || "start"
+            },
+            {
+                kind: "between",
+                featureId: lineRef.featureId,
+                anchor: lineRef.endAnchor || "end"
+            }
+        ]
+    };
+}
+
+/*
+ * The dimension type a straight span should use.
+ */
+function spanDimensionType(start, end) {
+    const deltaX = Math.abs(end.x - start.x);
+    const deltaY = Math.abs(end.y - start.y);
+
+    if (deltaY <= 1e-9) {
+        return "horizontal";
+    }
+
+    if (deltaX <= 1e-9) {
+        return "vertical";
+    }
+
+    return "aligned";
+}
+
+/*
+ * A stored reference resolved to its current model point.
+ */
+function resolveRefPoint(reference) {
+    if (!reference?.featureId) {
+        return null;
+    }
+
+    const object = objectWithId(reference.featureId);
+
+    if (!object) {
+        return null;
+    }
+
+    return enggMeasurement.resolveAnchor(
+        object,
+        reference.anchor
+    );
+}
+
+/*
+ * A click while the dimension tool is active.
+ *
+ * THE STATE MACHINE
+ * -----------------
+ * The tool moves through four stages, and a click means a different
+ * thing in each:
+ *
+ *   idle / first   choose a reference. NEVER creates a dimension, even
+ *                  when the reference is a whole line - a line is a
+ *                  complete reference and moves straight to placement,
+ *                  but a single POINT only waits for its partner.
+ *   second         the second reference has arrived; infer the type and
+ *                  enter placement.
+ *   placement      the click places the annotation. It is not another
+ *                  reference.
+ *
+ * The first click is never both a reference and a placement command,
+ * which is the whole point of the separation.
+ */
 function handleDimensionClick(
     resolution,
     event
 ) {
     /*
-     * The point is taken from the SNAPSHOT when there is one and from
-     * the pointer directly when there is not.
+     * THE RESOLVED REFERENCE, NOT THE POINTER.
      *
-     * A dimension is not a construction tool, so the shared pointer
-     * resolver never builds a construction point for it and
-     * `effectiveConstructionPoint` is undefined. Reading only that
-     * meant every click returned early and silently: the tool looked
-     * armed, the status line never changed, and nothing was ever
-     * dimensioned. The same click coordinates every other tool uses,
-     * converted here, fix it without special-casing the resolver.
+     * A dimension's references are exact points on the model - an endpoint, a
+     * midpoint, a centre - and the only thing that can name one is the shared
+     * snap resolver. Reading the raw pointer instead measured whatever happened
+     * to be under the cursor to within a pixel, which is why the tool could not
+     * tell `endpoint to midpoint` from `endpoint to endpoint`: it never knew
+     * which of the two the student had actually hit.
+     *
+     * Snapped first, then the construction point, then the bare pointer. The
+     * last is only reached for a click on genuinely empty space, which has no
+     * reference and is refused by the caller rather than measured from a stray
+     * coordinate.
      */
     const point =
+        resolution.snappedPoint ||
         resolution.effectiveConstructionPoint ||
         canvasPointFromEvent(
             event,
@@ -5154,14 +6807,12 @@ function handleDimensionClick(
         drawingState.interaction;
 
     /*
-     * ARMED: the student is choosing where the dimension sits, and
-     * this click commits it.
-     *
-     * The measurement is re-read at this moment rather than reused
-     * from when it was armed, so the value stored is always the value
-     * of the geometry as it is NOW.
+     * PLACEMENT. The references are settled and this click says where the
+     * annotation stands. The measurement is re-read at commit time from
+     * the live geometry, so the value stored is always the value NOW.
      */
     if (
+        interaction.dimensionStage === "placement" &&
         interaction.dimensionRefs?.length
     ) {
         commitDimension(
@@ -5176,51 +6827,168 @@ function handleDimensionClick(
         return;
     }
 
+    const reference = dimensionReferenceAtClick(
+        resolution,
+        point,
+        Boolean(interaction.dimensionFirstRef)
+    );
+
     /*
-     * NOT ARMED: this click chooses WHAT to measure.
-     *
-     * Two things are resolved, in order:
-     *
-     *   1. whatever is already selected, when two things are selected
-     *      - the selection IS the pair, and re-deriving it from the
-     *      cursor would throw away the deliberate act of selecting
-     *      two features to compare;
-     *   2. otherwise, the feature under the cursor.
-     *
-     * The cursor answer is checked FIRST for a single selection, so
-     * clicking a second feature while one is already selected measures
-     * the two together rather than jumping to whatever happens to be
-     * nearby. A second click on empty canvas is how the student
-     * commits to that pair.
+     * Nothing under the cursor, and no reference already chosen: the
+     * click has no meaning. Refused rather than measuring from a stray
+     * coordinate.
      */
-    const selected =
-        (drawingState.selection
-            ?.selectedObjectIds || [])
-            .map((id) =>
-                objectWithId(id)
-            )
-            .filter(Boolean);
+    if (!reference) {
+        if (!interaction.dimensionFirstRef) {
+            setToolMessage(
+                "Specify dimension reference"
+            );
 
-    const underCursor =
-        findDimensionTarget(point);
+            renderCurrentDrawing();
+        }
 
-    const chosen =
-        selected.length === 2
-            ? selected
-            : underCursor
-                ? [underCursor]
-                : selected;
+        return;
+    }
 
-    const descriptors =
-        dimensionDescriptorsFor(chosen);
+    /*
+     * EVERY CLICK ADDS A REFERENCE. There is no "first" or "second"
+     * click any more - the set grows until the student presses Enter,
+     * and the measurement is inferred from the whole set then.
+     */
+    if (!interaction.dimensionFirstRef) {
+        acceptFirstDimensionReference(
+            reference,
+            point
+        );
 
-    if (descriptors.length === 0) {
+        return;
+    }
+
+    acceptSecondDimensionReference(
+        interaction.dimensionFirstRef,
+        reference,
+        point
+    );
+}
+
+/*
+ * The first reference has been chosen.
+ *
+ * EVERY reference now behaves the same way: it is RECORDED and the
+ * tool waits. Nothing is measured on a click any more, because the
+ * student decides when they have finished choosing by pressing Enter.
+ *
+ * That is the whole point of the workflow. A single click on a Beam
+ * used to measure it and move straight to placement, which meant the
+ * student could not pick a Beam and then say "actually, angle it
+ * against that Truss" - the tool had already committed. Recording
+ * every reference and waiting for Enter means the SET is what the
+ * student chose, and the measurement is derived from it afterwards.
+ *
+ * It also means a single point is no longer special: a point is a
+ * valid reference that simply needs a partner, and the tool says so
+ * by counting rather than by switching behaviour.
+ */
+function acceptFirstDimensionReference(
+    reference,
+    point
+) {
+    beginDimensionReferenceSelection(
+        reference,
+        point
+    );
+}
+
+/*
+ * Add a reference to the current selection and keep selecting.
+ *
+ * The reference is stored whole - its feature, its anchor, its kind -
+ * rather than as a resolved coordinate, so the measurement can be
+ * taken from LIVE geometry at the moment the student presses Enter,
+ * and so the resulting dimension keeps referring to the geometry it
+ * was measured from.
+ */
+function beginDimensionReferenceSelection(
+    reference,
+    point
+) {
+    const interaction = drawingState.interaction;
+
+    const refs = [
+        ...(interaction.dimensionPickedRefs || []),
+        reference
+    ];
+
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            dimensionStage: "selecting",
+            dimensionPickedRefs: refs,
+            dimensionFirstRef: refs[0] ?? null,
+            dimensionFirstPoint: {
+                x: point.x,
+                y: point.y
+            },
+            dimensionSecondRef: refs[1] ?? null,
+            dimensionRefs: null,
+            dimensionChoice: null,
+            dimensionPlacement: null,
+            dimensionTargets: refs
+                .map(r => r.featureId)
+                .filter(Boolean)
+        }
+    );
+
+    setToolMessage(
+        dimensionSelectionInstruction(refs)
+    );
+
+    renderCurrentDrawing();
+}
+
+/*
+ * What the tool says while references are being chosen.
+ *
+ * The wording is what tells the student the decision is still theirs,
+ * so it always ends by saying what Enter will do. For two lines it
+ * names the result outright, because "angle" is the one outcome that
+ * is not obvious from the pair and is the most commonly expected.
+ */
+function dimensionSelectionInstruction(refs) {
+    const count = refs.length;
+
+    if (count < 2) {
+        return "1 selected - keep picking, or press Enter to dimension";
+    }
+
+    const lines = refs.filter(r => r.kind === "line");
+
+    if (lines.length === count) {
+        return `${count} lines selected - press Enter to create angle`;
+    }
+
+    return `${count} references selected - press Enter to dimension`;
+}
+
+/*
+ * The second reference has been chosen.
+ */
+function acceptSecondDimensionReference(
+    first,
+    second,
+    point
+) {
+    /*
+     * A click that resolved to no reference - empty canvas - is not a
+     * failed pair, it is a click that chose nothing. The references
+     * already picked are kept and the tool goes on asking, without
+     * accusing the student of picking two things that do not measure.
+     */
+    if (!second) {
         setToolMessage(
-            chosen.length === 2
-                ? "Nothing to measure between those two features"
-                : chosen.length === 1
-                  ? "That feature has nothing to dimension - try selecting two features"
-                  : "Select a feature to dimension"
+            dimensionSelectionInstruction(
+                drawingState.interaction.dimensionPickedRefs || []
+            )
         );
 
         renderCurrentDrawing();
@@ -5228,18 +6996,33 @@ function handleDimensionClick(
         return;
     }
 
-    /*
-     * Both tools start on the first candidate. Smart Dimension stops
-     * there, because choosing for the student is its whole purpose;
-     * Dimension also starts there but lets the student cycle away
-     * with D when that is not the measurement they meant.
-     */
-    const choice = descriptors[0];
+    const descriptor = inferDimensionDescriptor(
+        first,
+        second
+    );
 
-    if (!choice?.refs?.length) {
+    /*
+     * THE STUDENT HASN'T SAID "NOW" YET.
+     *
+     * The second reference is RECORDED, exactly like the first, and
+     * the tool keeps selecting. A dimension is inferred from the
+     * references at the moment Enter is pressed, not on the click
+     * that happened to complete the pair - so a student who has just
+     * clicked two lines can still click a third, or change their
+     * mind, without the tool having already measured something they
+     * did not ask for.
+     */
+    if (!descriptor?.refs?.length) {
+        /*
+         * Nothing measurable between these two. The second is dropped
+         * and the first kept, so the student is not left with a dead
+         * selection and can simply click something else.
+         */
         setToolMessage(
-            "That measurement cannot be built from this selection"
+            "Those references have nothing to measure between them - specify another"
         );
+
+        renderCurrentDrawing();
 
         return;
     }
@@ -5247,17 +7030,131 @@ function handleDimensionClick(
     enggDrawingState.setInteraction(
         drawingState,
         {
-            dimensionChoice:
-                choice.dimensionType,
+            dimensionPickedRefs: [
+                ...(drawingState.interaction.dimensionPickedRefs || []),
+                second
+            ]
+        }
+    );
+
+    setToolMessage(
+        dimensionSelectionInstruction(
+            drawingState.interaction.dimensionPickedRefs
+        )
+    );
+
+    renderCurrentDrawing();
+}
+
+/*
+ * ENTER: use the references chosen and decide the measurement now.
+ *
+ * This is the commit point for reference selection. The references are
+ * handed to the inference, which derives the dimension type from what
+ * was actually selected - a single line measures its length, two lines
+ * measure the angle between them, a circle its diameter - and the
+ * tool then moves into the placement stage, where the annotation is
+ * positioned by a further click.
+ */
+function commitDimensionSelection() {
+    const picked =
+        drawingState.interaction.dimensionPickedRefs || [];
+
+    if (!picked.length) {
+        setToolMessage(
+            "Select a reference first"
+        );
+
+        return false;
+    }
+
+    /*
+     * The inference takes a pair, so a longer selection is resolved by
+     * folding it left to right: each new reference is compared with
+     * the result so far. Two references - the overwhelmingly common
+     * case - take the direct path unchanged.
+     */
+    const descriptor =
+        picked.length === 2
+            ? inferDimensionDescriptor(picked[0], picked[1])
+            : inferDimensionSelection(picked);
+
+    if (!descriptor?.refs?.length) {
+        /*
+         * A set that measures nothing is refused outright rather than
+         * turned into a malformed dimension. The selection is kept so
+         * the student can adjust it - most often by dropping a
+         * reference - instead of losing everything they picked.
+         */
+        setToolMessage(
+            picked.length > 2
+                ? "Those references do not make one measurement - pick fewer"
+                : "Those references have nothing to measure between them"
+        );
+
+        renderCurrentDrawing();
+
+        return false;
+    }
+
+    beginDimensionPlacement(
+        picked[picked.length - 1],
+        descriptor,
+        drawingState.interaction.dimensionFirstPoint,
+        picked.map(r => r.featureId).filter(Boolean)
+    );
+
+    return true;
+}
+
+/*
+ * Infer a measurement from more than two references.
+ *
+ * Folding is only defined where it means something: a set reduces to
+ * whatever the LAST reference measures against the first. Three or
+ * more points have no single meaningful measurement, and three lines
+ * have no single meaningful angle, so those are refused rather than
+ * quietly collapsed into one of them.
+ */
+function inferDimensionSelection(picked) {
+    if (picked.length !== 2) {
+        return null;
+    }
+
+    return inferDimensionDescriptor(picked[0], picked[1]);
+}
+
+/*
+ * Move into the placement stage with a settled descriptor.
+ */
+function beginDimensionPlacement(
+    reference,
+    descriptor,
+    point,
+    targets
+) {
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            dimensionStage: "placement",
+            dimensionFirstRef: null,
+            dimensionFirstPoint: null,
+            dimensionSecondRef: null,
+
+            /*
+             * The selection has been SPENT. Leaving the accumulated
+             * references here would mean the placement stage still held
+             * them, and Escape - which clears the stage - would be the
+             * only thing that stopped the next Enter from measuring the
+             * same pair again.
+             */
+            dimensionPickedRefs: null,
+            dimensionChoice: descriptor.dimensionType,
             dimensionTarget:
-                chosen[0]?.id || null,
-            dimensionTargets:
-                chosen.map(
-                    (object) => object.id
-                ),
-            dimensionCandidates:
-                descriptors,
-            dimensionRefs: choice.refs,
+                reference?.featureId || null,
+            dimensionTargets: targets,
+            dimensionCandidates: [descriptor],
+            dimensionRefs: descriptor.refs,
             dimensionPlacement: {
                 x: point.x,
                 y: point.y
@@ -5266,9 +7163,8 @@ function handleDimensionClick(
     );
 
     setToolMessage(
-        dimensionChoiceMessage(
-            choice,
-            chosen
+        dimensionChoiceLabel(
+            descriptor.dimensionType
         ) +
             " - move to place, click to confirm, D to change, Esc to cancel"
     );
@@ -5371,17 +7267,39 @@ function isConstructionTool(
      * so they run through the same construction pipeline
      * as geometry and pick up snapping and inference.
      */
-    return (
-        [
-            "point",
-            "line",
-            "polyline",
-            "triangle",
-            "polygon",
-            "circle",
-            "arc",
-            "rectangle"
-        ].includes(toolId) ||
+    /*
+             * A DIMENSION TOOL IS NOT IN THAT LIST, AND THAT WAS THE WHOLE REASON
+             * IT COULD NOT BE POINT-REFERENCED.
+             *
+             * A dimension's references are POINTS: an endpoint, a midpoint, a
+             * centre, a point on an entity. Choosing between them is precisely what
+             * the shared snapping pipeline does, and it is what a student expects
+             * to use - `endpoint to midpoint` is a different dimension from
+             * `endpoint to endpoint`, and there is no way to ask for the first when
+             * the clicks resolve to the second.
+             *
+             * Without this the resolver returned the bare pointer, so every click
+             * arrived as a raw coordinate with nothing resolved, and `findDimensionTarget`
+             * fell back to measuring the whole FEATURE under the cursor. Selecting a
+             * midpoint measured the entire line.
+             *
+             * So the dimension tools go through the same snapping as everything
+             * else: same candidates, same tolerance, same indicators, same status
+             * wording. Nothing dimension-specific is involved - the measurement
+             * layer reads anchors off these features already.
+             */
+            return (
+                [
+                "point",
+                "line",
+                "polyline",
+                "triangle",
+                "polygon",
+                "circle",
+                "arc",
+                "rectangle"
+            ].includes(toolId) ||
+            isDimensionTool(toolId) ||
         Boolean(STATICS_PLACEMENT_TOOLS[toolId]) ||
         Boolean(STATICS_BODY_ATTACHED_TOOLS[toolId]) ||
         toolId === "truss" ||
@@ -6162,11 +8080,6 @@ function finishTrussConstruction() {
         return;
     }
 
-    const previous =
-        enggDrawingState.snapshotDrawing(
-            drawingState
-        );
-
     /*
      * The construction members become the truss's own topology.
      * A light cleanup even out the joints, but it never removes
@@ -6215,31 +8128,42 @@ function finishTrussConstruction() {
             regularized.length
         );
 
-    enggDrawingState.addObject(
-        drawingState,
-        object
-    );
-
-    enggDrawingState.commitDrawingChange(
-        drawingState,
-        previous
-    );
-
+    /*
+     * The truss is committed by `commitCreatedFeature` once its
+     * span is known, so drawing it and sizing it are one action.
+     *
+     * The snapshot is taken BEFORE the size is applied, so that
+     * answering the popup - which can calibrate the drawing - is
+     * undone together with the truss rather than leaving a scale
+     * behind with nothing to give it meaning.
+     */
     enggDrawingState.clearInteraction(
         drawingState
     );
 
-    enggDrawingState.selectObject(
-        drawingState,
-        object.id
-    );
+    const previousObjects =
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
 
-    setToolMessage(
-        "Truss created"
-    );
+    beginCreationDimensioning(
+        object,
+        previousObjects,
+        () => {
+            commitCreatedFeature(
+                object,
+                true,
+                previousObjects
+            );
 
-    renderProperties();
-    renderCurrentDrawing();
+            setToolMessage(
+                "Truss created"
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
+        }
+    );
 }
 
 /*
@@ -6630,10 +8554,9 @@ function isLoadSpanPhase(interaction) {
 
 function isLoadBuildPhase(interaction) {
     return (
-        interaction?.phase ===
-            "distributed-load-build" ||
-        interaction?.phase ===
-            "constant-load-build"
+        LOAD_BUILD_PHASES.has(
+            interaction?.phase
+        )
     );
 }
 
@@ -6687,9 +8610,21 @@ function beginDistributedLoadConstruction(
 
     if (span) {
         /*
-         * The two load tools share the body and the span, then
-         * diverge: the constant one finishes from a single force,
-         * the varying one builds a profile from several.
+         * ========================================================
+         * SELECTING A BODY IS ONE DECISION, NOT FOUR
+         * ========================================================
+         *
+         * This handed the body's own endpoints to the constant load as its
+         * START and END, so the moment a member was clicked it acquired a
+         * load across its entire length - before the student had been asked
+         * where the load acts, how strong it is, or which way it pushes.
+         *
+         * The body is all this click decides. The constant load takes only
+         * the body's id and asks for the region next.
+         *
+         * The VARYING load keeps its old behaviour here, because building a
+         * profile genuinely does start from the span the student traced -
+         * that is what tracing it means.
          */
         if (isVaryingLoadTool()) {
             startDistributedLoadBuild(
@@ -6698,7 +8633,6 @@ function beginDistributedLoadConstruction(
             );
         } else {
             startConstantLoadBuild(
-                span,
                 body?.id
             );
         }
@@ -6739,6 +8673,187 @@ function beginDistributedLoadConstruction(
 /*
  * Move from choosing the body into drawing the load on it.
  */
+/*
+ * ========================================================
+ * THE FOUR PHASES OF A DISTRIBUTED LOAD
+ * ========================================================
+ *
+ * One set, used by the click handler and by the status line, so the step the
+ * tool THINKS it is on and the step it is DISPLAYED as cannot come apart.
+ */
+const LOAD_BUILD_PHASES = new Set([
+    "distributed-load-start",
+    "distributed-load-end",
+    "distributed-load-magnitude",
+    "distributed-load-direction",
+]);
+
+/*
+ * WHAT EACH STEP SAYS IT IS WAITING FOR.
+ *
+ * One line per phase, in one place, so the instruction cannot describe a
+ * different step from the one the tool is actually in - which is how a tool
+ * ends up asking for a direction while it is waiting for a point.
+ */
+const LOAD_BUILD_INSTRUCTIONS = {
+    "distributed-load-start":
+        "Specify start point",
+    "distributed-load-end":
+        "Specify end point",
+    "distributed-load-magnitude":
+        "Specify load magnitude",
+    "distributed-load-direction":
+        "Specify load direction",
+};
+
+function loadBuildInstruction(
+    phase
+) {
+    return (
+        LOAD_BUILD_INSTRUCTIONS[phase] ||
+        "Specify start point"
+    );
+}
+
+/*
+ * The midpoint of the loaded region, in world space.
+ *
+ * Used as the origin for DIRECTION selection. It is a temporary origin and
+ * is never stored: pointing somewhere else changes which way the arrows
+ * face, and must not move the load along the body.
+ */
+function distributedLoadRegionMidpoint() {
+    const start =
+        drawingState.interaction
+            .loadStart;
+
+    const end =
+        drawingState.interaction
+            .loadEnd;
+
+    if (!start || !end) {
+        return null;
+    }
+
+    return {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+    };
+}
+
+/*
+ * IS THIS POINT ON THE BODY THE LOAD IS ALREADY ATTACHED TO?
+ *
+ * The second click has to be on the same member as the first. A click on a
+ * different one is a different load, and switching silently would leave a
+ * load on the body the student thought they had abandoned.
+ */
+function distributedLoadPointOnBody(
+    point
+) {
+    const sourceId =
+        drawingState.interaction
+            .loadSourceId;
+
+    if (!sourceId) {
+        /*
+         * With no body - the load was drawn in empty space rather than
+         * attached - anywhere on the sheet is acceptable, because there is
+         * no second member to land on.
+         */
+        return true;
+    }
+
+    const body =
+        drawingState.objects.find(
+            candidate =>
+                candidate.id === sourceId
+        );
+
+    if (!body) {
+        return true;
+    }
+
+    const tolerance =
+        8 / Math.max(
+            drawingState.camera.zoom,
+            0.25
+        );
+
+    const start =
+        body.geometry?.start;
+    const end =
+        body.geometry?.end;
+
+    if (
+        !start ||
+        !end
+    ) {
+        return false;
+    }
+
+    return (
+        enggLoadProfile.fractionAlong(
+            { start, end },
+            point
+        ) >= -0.001 &&
+        enggLoadProfile.fractionAlong(
+            { start, end },
+            point
+        ) <= 1.001
+    );
+}
+
+/*
+ * THE DIRECTION THE POINTER IS CURRENTLY AIMING, or null when it is not
+ * being chosen.
+ *
+ * World-space, from the pointer's direction about the midpoint of the
+ * selected region - the same origin the commit uses, so what is previewed
+ * and what is stored are the same reading of the same pointer. A click on
+ * the origin aims nowhere and reports nothing rather than a zero vector.
+ */
+function loadDirectionUnderPointer() {
+    if (
+        drawingState.interaction.phase !==
+            "distributed-load-direction"
+    ) {
+        return null;
+    }
+
+    const origin =
+        distributedLoadRegionMidpoint();
+
+    const cursor =
+        drawingState.interaction
+            .currentPoint ||
+        drawingState.interaction
+            .effectiveConstructionPoint;
+
+    if (!origin || !cursor) {
+        return null;
+    }
+
+    const dx = cursor.x - origin.x;
+    const dy = cursor.y - origin.y;
+
+    const length = Math.hypot(dx, dy);
+
+    if (length < 1e-6) {
+        return null;
+    }
+
+    /*
+     * THE SAME SHAPE AS COMMITTED, so the preview and the feature store one
+     * kind of direction. A preview in degrees and a feature in a unit vector
+     * would look the same until the first edit, and then disagree.
+     */
+    return {
+        dx: dx / length,
+        dy: dy / length,
+    };
+}
+
 function startDistributedLoadBuild(
     span,
     parentId
@@ -7123,33 +9238,46 @@ function continueDistributedLoadBuild(
  * makes the load heavier and the drawn arrows longer.
  */
 function startConstantLoadBuild(
-    span,
     parentId
 ) {
+    /*
+     * ========================================================
+     * STEP 1 OF 5: THE BODY, AND NOTHING ELSE
+     * ========================================================
+     *
+     * This used to be handed the body's own start and end and store them as
+     * the load's, which is why selecting a beam immediately produced a load
+     * across its entire length: the span had been decided before the student
+     * had been asked anything.
+     *
+     * Selecting a body is ONE decision - "this load acts on that member" -
+     * and it establishes one thing. The region comes next, from two more
+     * clicks, because where a load acts and how much of the member it acts
+     * on are different questions and a student will rarely want the answer
+     * to the second to be the whole member.
+     */
     enggDrawingState.setInteraction(
         drawingState,
         {
             phase:
-                "constant-load-build",
+                "distributed-load-start",
 
-            loadStart: {
-                ...span.start
-            },
+            loadSourceId:
+                parentId,
 
-            loadEnd: {
-                ...span.end
-            },
-
+            /*
+             * Null, not the body's endpoints. The loaded region does not
+             * exist until the student puts it on the sheet.
+             */
+            loadStart: null,
+            loadEnd: null,
             loadDirection: null,
-
-            loadMagnitude: 0,
-
-            parentId
+            loadMagnitude: 0
         }
     );
 
     setToolMessage(
-        "Move to set the load magnitude and direction, then click"
+        "Specify start point"
     );
 
     renderProperties();
@@ -7157,7 +9285,203 @@ function startConstantLoadBuild(
 }
 
 /*
+ * ========================================================
+ * THE REST OF THE CONSTRUCTION
+ * ========================================================
+ *
+ * One function per step, so each is a single thing and the phase change
+ * carries the student forward rather than leaving them guessing.
+ */
+
+/* STEP 2: the start of the loaded region, snapped to the body. */
+function takeDistributedLoadStart(
+    point
+) {
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            ...drawingState.interaction,
+            phase: "distributed-load-end",
+            loadStart: { ...point },
+        }
+    );
+
+    setToolMessage(
+        "Specify end point"
+    );
+
+    renderProperties();
+    renderCurrentDrawing();
+}
+
+/* STEP 3: the end of the region. Never another body. */
+function takeDistributedLoadEnd(
+    point
+) {
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            ...drawingState.interaction,
+            phase: "distributed-load-magnitude",
+            loadEnd: { ...point },
+        }
+    );
+
+    setToolMessage(
+        "Specify load magnitude"
+    );
+
+    renderProperties();
+    renderCurrentDrawing();
+}
+
+/*
+ * STEP 4: the magnitude, which arrives as an ENGINEERING VALUE.
+ *
+ * Typed, rather than dragged, because an intensity is not a distance and
+ * inferring it from how far the pointer has moved would make it depend on
+ * the zoom. It is validated before the tool moves on, so a half-typed or
+ * impossible value cannot become a load.
+ */
+function takeDistributedLoadMagnitude(
+    raw
+) {
+    const value = Number(raw);
+
+    if (
+        !Number.isFinite(value) ||
+        value <= 0
+    ) {
+        setToolMessage(
+            "Specify load magnitude - enter a value above zero in N/m"
+        );
+
+        renderProperties();
+
+        return false;
+    }
+
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            ...drawingState.interaction,
+            phase:
+                "distributed-load-direction",
+            loadMagnitude:
+                value,
+        }
+    );
+
+    setToolMessage(
+        "Specify load direction"
+    );
+
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+/*
+ * STEP 5: the direction, chosen ON THE CANVAS.
+ *
+ * This is the step the old instruction merely NAMED. There was no
+ * interaction behind it: the direction came out of wherever the cursor was,
+ * and one click did magnitude and direction at once without the student
+ * choosing either.
+ *
+ * It is now a real vector, taken from the pointer's direction relative to
+ * the MIDPOINT of the loaded region - a temporary origin that makes the
+ * choice about direction rather than about position, because the region is
+ * already fixed and pointing somewhere else must not move it.
+ *
+ * WORLD-SPACE, NOT SCREEN-SPACE. The cursor is turned through the same
+ * world-to-screen transform the drawing uses, so the stored direction is
+ * the direction the student pointed at, and it survives zooming, panning and
+ * the view being resized.
+ */
+function takeDistributedLoadDirection(
+    origin,
+    point
+) {
+    const dx = point.x - origin.x;
+    const dy = point.y - origin.y;
+
+    /*
+     * A CLICK ON THE ORIGIN IS NOT A DIRECTION. Committing {0, 0} would
+     * produce a load with no direction, which is not a load - and it would
+     * look committed, which is worse than asking again.
+     */
+    if (
+        Math.hypot(dx, dy) < 1e-6
+    ) {
+        setToolMessage(
+            "Specify load direction - point away from the load first"
+        );
+
+        return false;
+    }
+
+    /*
+     * UNIT LENGTH. The magnitude is the load intensity and the direction is
+     * only which way the arrows point; storing the two together would let
+     * the drag distance leak into the engineering value.
+     */
+    const length = Math.hypot(dx, dy);
+
+    const direction = {
+        dx: dx / length,
+        dy: dy / length,
+    };
+
+    const previous =
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
+
+    const created =
+        commitConstantLoad(direction);
+
+    if (!created) {
+        setToolMessage(
+            "Specify load direction - the loaded region is not usable"
+        );
+
+        return false;
+    }
+
+    enggDrawingState.commitDrawingChange(
+        drawingState,
+        previous
+    );
+
+    cancelInteraction();
+
+    setToolMessage(
+        "Distributed load created"
+    );
+
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+/*
  * The constant load the interaction currently describes.
+ */
+/*
+ * ========================================================
+ * THE LOAD THE INTERACTION CURRENTLY DESCRIBES
+ * ========================================================
+ *
+ * Built fresh from the interaction on every preview and every commit, so
+ * what is drawn while the student works and what is stored when they finish
+ * cannot describe different loads - they come from the same numbers.
+ *
+ * It returns null until there is enough to draw. That is the whole point of
+ * the sequence: with a body but no region there is nothing yet, and drawing
+ * a full-body load here is what the workflow existed to prevent.
  */
 function constantLoadDraft(
     interaction,
@@ -7170,78 +9494,37 @@ function constantLoadDraft(
         return null;
     }
 
-    let direction =
-        interaction.loadDirection;
-
-    /*
-     * The first, and only, force: its direction is the offset
-     * from the body to the cursor, and its magnitude is the
-     * length of that offset. One vector, so one click ends the
-     * construction.
-     */
-    if (!cursor) {
-        direction =
-            direction ??
-            enggLoadProfile
-                .DEFAULT_LOAD_DIRECTION;
-
-        return {
-            start,
-            end,
-            direction,
-            magnitude: Math.max(
-                0,
-                Number(
-                    interaction.loadMagnitude
-                ) || 0
-            )
-        };
-    }
-
-    const body = { start, end };
-
-    const t =
-        enggLoadProfile.fractionAlong(
-            body,
-            cursor
-        );
-
-    const base =
-        enggLoadProfile.pointAlong(
-            body,
-            t
-        );
-
-    const dx = cursor.x - base.x;
-    const dy = cursor.y - base.y;
-
-    const magnitude = Math.hypot(dx, dy);
-
-    if (magnitude > 1e-9) {
-        direction =
-            Math.atan2(dy, dx) * 180 / Math.PI;
-    }
-
     return {
         start,
         end,
         direction:
-            direction ??
-            enggLoadProfile
-                .DEFAULT_LOAD_DIRECTION,
-        magnitude
+            interaction.loadDirection ?? null,
+        magnitude: Math.max(
+            0,
+            Number(
+                interaction.loadMagnitude
+            ) || 0
+        )
     };
 }
 
 /*
- * Commit the constant load and create the feature.
+ * ========================================================
+ * COMMIT, ONCE ALL FIVE THINGS ARE KNOWN
+ * ========================================================
  *
- * The result is one Distributed Load: a body, a single
- * magnitude and a single direction shared by every arrow drawn
- * across it. The even field of arrows is what the renderer
- * samples from those three values.
+ * Refuses anything incomplete, rather than filling in a default - because a
+ * load created with a guessed direction or a guessed region is a load the
+ * student did not ask for and has to go and find again.
+ *
+ * THE DIRECTION IS A UNIT VECTOR, stored on the feature as one. The
+ * renderer, Switch Direction and the analysis all read this single field,
+ * so they cannot disagree about which way the load points - which is how
+ * "the arrows point down but the panel says up" happens.
  */
-function finishConstantLoadConstruction() {
+function commitConstantLoad(
+    direction
+) {
     const interaction =
         drawingState.interaction;
 
@@ -7252,21 +9535,33 @@ function finishConstantLoadConstruction() {
         );
 
     if (!draft) {
-        return;
+        return null;
     }
 
-    if (draft.magnitude <= 0) {
-        setToolMessage(
-            "Move away from the body to give the load a magnitude"
-        );
-
-        return;
+    if (
+        !Number.isFinite(draft.magnitude) ||
+        draft.magnitude <= 0
+    ) {
+        return null;
     }
 
-    const previous =
-        enggDrawingState.snapshotDrawing(
-            drawingState
-        );
+    if (!direction) {
+        return null;
+    }
+
+    /*
+     * A LOAD WITH NO LENGTH IS NOT A LOAD. Zero-length regions arise from a
+     * double click at one point, and committing one would put a feature on
+     * the sheet that draws nothing and cannot be seen to delete.
+     */
+    if (
+        Math.hypot(
+            draft.end.x - draft.start.x,
+            draft.end.y - draft.start.y
+        ) < 1e-9
+    ) {
+        return null;
+    }
 
     const object =
         enggDrawingState.geometryFactories.load(
@@ -7280,11 +9575,11 @@ function finishConstantLoadConstruction() {
         );
 
     object.geometry.direction =
-        draft.direction;
+        direction;
 
-    if (interaction.parentId) {
+    if (interaction.loadSourceId) {
         object.parentId =
-            interaction.parentId;
+            interaction.loadSourceId;
     }
 
     enggDrawingState.addObject(
@@ -7292,28 +9587,22 @@ function finishConstantLoadConstruction() {
         object
     );
 
-    enggDrawingState.commitDrawingChange(
-        drawingState,
-        previous
-    );
-
-    enggDrawingState.clearInteraction(
-        drawingState
-    );
-
     enggDrawingState.selectObject(
         drawingState,
         object.id
     );
 
-    setToolMessage(
-        "Distributed load created"
-    );
-
-    renderProperties();
-    renderCurrentDrawing();
+    return object;
 }
 
+/*
+ * Commit the constant load and create the feature.
+ *
+ * The result is one Distributed Load: a body, a single
+ * magnitude and a single direction shared by every arrow drawn
+ * across it. The even field of arrows is what the renderer
+ * samples from those three values.
+ */
 /*
  * Create the one Varying Distributed Load feature.
  *
@@ -7743,6 +10032,64 @@ function createStaticsFeature(
                 style
             );
     } else {
+        return;
+    }
+
+    /*
+     * A BODY WITH A PHYSICAL SIZE IS SIZED BEFORE IT IS COMMITTED.
+     *
+     * The other features created here - a Particle, a Point Force, a
+     * Moment, a Support, a Connection - have no meaningful creation
+     * length, so they are committed exactly as they always were. A
+     * Rigid Body is the exception: it is a real shape with a real
+     * Width and Height (or a Radius, once its shape is a circle), and
+     * a student who draws one has just decided where it goes but not
+     * how big it is. That is the same question a Beam answers through
+     * the same popup, so it is asked through the same popup.
+     *
+     * The object is NOT added first. The document is untouched while
+     * the popup is open, so cancelling - or pressing Escape - leaves
+     * nothing to remove and, crucially, leaves the document's scale
+     * exactly as uncalibrated as it was. This is the first creation
+     * dimension in many documents, so its answer is what establishes
+     * the scale, and a cancelled answer must establish nothing.
+     */
+    const sized =
+        window.enggCreationDimensioning
+            ?.hasCreationSize(object);
+
+    if (sized) {
+        enggDrawingState.clearInteraction(
+            drawingState
+        );
+
+        /*
+         * `previous` - taken at the top of this function, before the
+         * feature was built and long before any size was applied - is
+         * the state Undo must return to. It is passed in rather than
+         * re-taken, because answering the popup can CALIBRATE the
+         * document and a snapshot taken afterwards would already carry
+         * that calibration.
+         */
+        beginCreationDimensioning(
+            object,
+            previous,
+            () => {
+                commitCreatedFeature(
+                    object,
+                    true,
+                    previous
+                );
+
+                setToolMessage(
+                    `Specify ${definition.label.toLowerCase()} position`
+                );
+
+                renderProperties();
+                renderCurrentDrawing();
+            }
+        );
+
         return;
     }
 
@@ -8203,11 +10550,10 @@ function resolveAnalysisAxisPointer(
 /*
  * Short names for the snap and inference types.
  *
- * Deliberately terse. The snap STATE - the marker on the drawing, and the
- * geometry visibly snapping - already says what has happened; the status line
- * names it and stops. "Horizontal" reads as a report. "Horizontal snap"
- * repeats what the eye has established and crowds out the instruction that
- * follows it.
+ * Deliberately terse, because these are APPENDED to a tool's instruction
+ * rather than standing alone: "Horizontal" reads as a report tacked onto
+ * the question the tool is asking, where "Horizontal snap" would be a
+ * second, competing sentence.
  *
  * One table, read by every tool through `inferenceLabel`, so no two tools
  * can describe the same snap in different words.
@@ -8289,16 +10635,42 @@ function inferenceLabel(
 }
 
 /*
- * The status text for a live construction, naming whichever snap
- * is currently holding the point, and otherwise passing through the
- * tool's own instruction.
+ * ========================================================
+ * THE STATUS TEXT FOR A LIVE CONSTRUCTION
+ * ========================================================
  *
- * A snap that is working but not announced reads as a snap that is
- * not working: the geometry jumps into line and nothing says why.
- * So every construction that can be pulled square reports the
- * alignment it has taken, from the same resolution the preview was
- * drawn from, and the guide line the renderer shows and this
- * message are describing the same condition.
+ * The tool's own instruction, with the current snap APPENDED - never
+ * substituted for it.
+ *
+ * A snap that is working but not announced reads as a snap that is not
+ * working: the geometry jumps into line and nothing says why. So every
+ * construction that can be pulled square reports the alignment it has
+ * taken, from the same resolution the preview was drawn from, and the
+ * guide line the renderer shows and this message describe the same
+ * condition.
+ *
+ * WHY IT IS APPENDED AND NOT REPLACED
+ * ----------------------------------
+ * This used to return the snap label ALONE. That is the wrong shape, and
+ * it is wrong in a way that shows up on every tool at once: "Specify
+ * second point" became "Horizontal", and the student was left with a
+ * statement about geometry and no idea what the tool was asking them to
+ * do. On a tool whose instruction was the only thing carrying the next
+ * step - place a support along this beam, choose the pivot - losing it
+ * made the tool unusable mid-construction.
+ *
+ * The snap label is a REPORT and the instruction is a QUESTION. The
+ * student needs the answer to "what am I being asked to do?" first, and
+ * the answer to "what just happened?" second - which is the order they
+ * appear in, and the reason for the separator.
+ *
+ * The instruction always comes from `fallback`, so a tool whose
+ * instruction changes as the construction progresses still shows the
+ * current one rather than the one it had when the tool was armed.
+ *
+ * THE SNAP HALF IS WHAT MAKES THIS CHEAP TO GET RIGHT. Only the appended
+ * part may be empty; the base may not. That is the whole invariant, and it
+ * is why the snap label is filtered rather than the instruction.
  */
 function constructionFeedbackMessage(
     resolution,
@@ -8315,9 +10687,16 @@ function constructionFeedbackMessage(
             )
         ].filter(Boolean);
 
-    return feedback.length
-        ? feedback.join(" · ")
-        : fallback;
+    /*
+     * NO SNAP, NO SUFFIX - not a separator, not a bullet on its own. The
+     * status is then exactly the tool's instruction, which is what it was
+     * before any of this and what it must still be.
+     */
+    return (
+        feedback.length
+            ? `${fallback}  •  ${feedback.join(" · ")}`
+            : fallback
+    );
 }
 
 function updateInteractionFeedback(
@@ -8356,9 +10735,69 @@ function updateInteractionFeedback(
               : null;
 
     if (readable) {
+        /*
+         * THE ORDINATE, IN THE GRAPH'S OWN UNITS.
+         *
+         * The world coordinates are what the sheet is drawn in, but a
+         * student sketching a shear diagram wants to know the VALUE they are
+         * at - 10 kN, not the world y of a pixel - and how far along the
+         * member they are. When a diagram is under the pointer, that is
+         * added rather than replacing the coordinates, because the world
+         * reading is still the one every other tool wants.
+         *
+         * Read only for the diagram that is actually under the pointer: a
+         * value borrowed from a diagram somewhere else on the sheet would be
+         * a confident number about the wrong graph.
+         */
+        const hoveredId =
+            drawingState.selection.hoveredObjectId;
+
+        const onDiagram =
+            hoveredId
+                ? drawingState.objects.find(
+                      candidate =>
+                          candidate.id === hoveredId &&
+                          candidate.type ===
+                              "analysis-diagram"
+                  )
+                : null;
+
+        const inDiagram =
+            onDiagram &&
+            onDiagram.type === "analysis-diagram"
+                ? window.enggDrawingRenderer
+                      ?.analysisValueAt?.(
+                          onDiagram.geometry,
+                          readable
+                      )
+                : null;
+
+        const quantity =
+            {
+                sfd: "V",
+                bmd: "M",
+                afd: "N",
+            }[onDiagram?.geometry?.diagramType];
+
+        const unit =
+            {
+                sfd: "kN",
+                bmd: "kN\u00b7m",
+                afd: "kN",
+            }[onDiagram?.geometry?.diagramType];
+
         drawingCoordinates.textContent =
             `X: ${Number(readable.x).toFixed(1)} ` +
-            `Y: ${Number(readable.y).toFixed(1)} mm`;
+            `Y: ${Number(readable.y).toFixed(1)} mm` +
+            (inDiagram && quantity && unit
+                ? `    |    x = ${
+                      Number(inDiagram.x).toFixed(
+                          1
+                      )
+                  } mm    ${quantity} = ${
+                      Number(inDiagram.y).toFixed(2)
+                  } ${unit}`
+                : "");
     }
 
     /*
@@ -9123,6 +11562,61 @@ function createPreview(
     };
 }
 
+/*
+ * ========================================================
+ * REPORTING THE STATUS FROM ANY BRANCH
+ * ========================================================
+ *
+ * `updatePreview` has several places where a tool has its own preview to
+ * drive - an analysis axis, a moment's radius, an annotation's position, a
+ * dimension's placement - and each of them returns early.
+ *
+ * Every one of those returns used to skip the status text. The snap and
+ * inference half of that text is appended by a separate call, so on those
+ * tools the LAST snap the cursor happened to make stayed printed for as long
+ * as the tool was active - long after the cursor had left whatever it was
+ * aligned with. It reads as a live report because it is one, only an old
+ * one: the student drags somewhere unaligned and cannot tell whether the
+ * snap still holds or the label is simply stale.
+ *
+ * One function, called from every branch, so a branch added later cannot
+ * forget. It is deliberately thin: the wording rules live in
+ * `constructionFeedbackMessage`, and this only decides THAT it is called.
+ */
+function reportConstructionStatus(
+    resolution,
+    fallback
+) {
+    setToolMessage(
+        constructionFeedbackMessage(
+            resolution,
+            fallback
+        )
+    );
+}
+
+/*
+ * THE SAME THING, BUT WITH THE RIGHT INSTRUCTION.
+ *
+ * `updateInteractionFeedback` already knows the current instruction for the
+ * active tool and phase - an arc's four phases each have their own, and it
+ * has always preferred the snap and inference text over them. This exists so
+ * a branch that returns early can rebuild the status through THAT decision
+ * rather than inventing a second one.
+ *
+ * An earlier version passed a literal to every branch, which would have
+ * replaced "Specify arc start point" with whatever the branch happened to
+ * say - the exact substitution that `constructionFeedbackMessage` was written
+ * to prevent.
+ */
+function reportLiveConstructionStatus(
+    resolution
+) {
+    updateInteractionFeedback(
+        resolution
+    );
+}
+
 function updatePreview(
     resolution
 ) {
@@ -9166,6 +11660,36 @@ function updatePreview(
                     interaction.analysisKind
             };
         }
+
+        /*
+         * ========================================================
+         * AND THE STATUS IS REWRITTEN HERE, NOT LEFT BEHIND
+         * ========================================================
+         *
+         * This branch used to return without touching the status text. The
+         * snap and inference half of that text is APPENDED by
+         * `updateInteractionFeedback` a few lines away - so whatever the
+         * cursor happened to be aligned with on the previous frame stayed
+         * printed for as long as the placement lasted, long after the
+         * cursor had moved off anything at all.
+         *
+         * It reads as a live report because it IS one, just an old one: the
+         * student drags the axis somewhere unaligned, sees "Horizontal"
+         * still beside their instruction, and cannot tell whether the snap
+         * is still holding or the label is simply stale.
+         *
+         * So it is rebuilt from THIS frame's resolution - which the
+         * analysis placement path populates through the ordinary snapping
+         * pipeline, exactly as every other tool does. Nothing analysis-
+         * specific about it: the same tolerance, the same candidates, the
+         * same wording.
+         */
+        setToolMessage(
+            constructionFeedbackMessage(
+                resolution,
+                "Place analysis axis"
+            )
+        );
 
         return;
     }
@@ -9223,6 +11747,11 @@ function updatePreview(
                     );
         }
 
+        reportConstructionStatus(
+            resolution,
+            "Specify moment size"
+        );
+
         return;
     }
 
@@ -9256,13 +11785,36 @@ function updatePreview(
                 };
         }
 
+        reportConstructionStatus(
+            resolution,
+            "Specify note position"
+        );
+
         return;
     }
 
+    /*
+     * THE DIMENSION'S TWO LIVE STAGES.
+     *
+     * PLACEMENT: the references are settled and only the annotation's
+     * position is undecided, so it follows the cursor.
+     *
+     * WAITING FOR THE SECOND REFERENCE: a first point has been chosen
+     * and the tool is asking for its partner. There is nothing to place
+     * yet, but the status still has to be rebuilt from THIS frame's
+     * resolution so a stale snap label cannot linger after the cursor
+     * leaves whatever it was aligned with.
+     *
+     * Both are written directly to the interaction rather than through
+     * setInteraction, because a per-frame pointer position is not a
+     * change of state and must not become a history entry.
+     */
     if (
         isDimensionTool(
             drawingState.activeTool
         ) &&
+        interaction.dimensionStage ===
+            "placement" &&
         interaction.dimensionRefs?.length
     ) {
         const point =
@@ -9275,6 +11827,48 @@ function updatePreview(
                     y: point.y
                 };
         }
+
+        reportConstructionStatus(
+            resolution,
+            "Place the dimension"
+        );
+
+        return;
+    }
+
+    if (
+        isDimensionTool(
+            drawingState.activeTool
+        ) &&
+        interaction.dimensionStage === "selecting"
+    ) {
+        /*
+         * While references are being chosen the pointer does not move
+         * anything - it is only hovering to show what the next click
+         * would pick. The instruction restates how many are held and
+         * that Enter decides, so the way out of this stage is never in
+         * doubt.
+         */
+        reportConstructionStatus(
+            resolution,
+            dimensionSelectionInstruction(
+                interaction.dimensionPickedRefs || []
+            )
+        );
+
+        return;
+    }
+
+    if (
+        isDimensionTool(
+            drawingState.activeTool
+        ) &&
+        !interaction.dimensionStage
+    ) {
+        reportConstructionStatus(
+            resolution,
+            "Specify dimension reference"
+        );
 
         return;
     }
@@ -9304,6 +11898,16 @@ function updatePreview(
         !progressive &&
         !interaction.startPoint
     ) {
+        /*
+         * No start point yet, so this tool has nothing to preview - but the
+         * status still has to be REBUILT, because whatever snap the cursor
+         * was making a moment ago would otherwise stay printed through the
+         * whole of the first half of the construction.
+         */
+        reportLiveConstructionStatus(
+            resolution
+        );
+
         return;
     }
 
@@ -9714,24 +12318,47 @@ function updatePreview(
                     )
                 );
             } else if (
-                drawingState.interaction
-                    .phase ===
-                    "constant-load-build"
+                LOAD_BUILD_PHASES.has(
+                    drawingState.interaction
+                        .phase
+                )
             ) {
                 /*
-                 * A constant load previews as the very field of
-                 * parallel arrows it will become, built from the
-                 * cursor's own offset from the body. The length
-                 * and direction of the preview field therefore
-                 * follow the cursor exactly, with no ceiling on
-                 * how far the user may pull it.
+                 * ========================================================
+                 * THE PREVIEW, AND WHAT IT SHOWS DEPENDS ON THE STEP
+                 * ========================================================
+                 *
+                 * With only a body chosen there is nothing to preview, and
+                 * the old code previewed a full-body load here - which is
+                 * what made the region look decided before the student had
+                 * decided it.
+                 *
+                 * With a region chosen the arrows appear over THAT region
+                 * and nowhere else, so the selection is visible before the
+                 * magnitude and direction are given.
                  */
                 const constant =
                     constantLoadDraft(
                         drawingState.interaction,
-                        point
+                        null
                     );
 
+                /*
+                 * ========================================================
+                 * THE PREVIEW IS THE FINAL LOAD, BUILT BY THE SAME CODE
+                 * ========================================================
+                 *
+                 * The field of arrows is not drawn by the preview and again
+                 * by the feature. It is built here with the SAME factory the
+                 * commit uses, from the same numbers, so what the student is
+                 * shown is what they get. A preview assembled differently
+                 * from the result is how a load ends up somewhere else once
+                 * the click lands.
+                 *
+                 * It is dashed so it is obviously provisional, but its
+                 * ARROWS are the real ones: the same span, the same
+                 * intensity, the same arrow count and the same spacing.
+                 */
                 interaction.preview =
                     constant
                         ? {
@@ -9741,8 +12368,25 @@ function updatePreview(
                             geometry: {
                                 start: constant.start,
                                 end: constant.end,
+
+                                /*
+                                 * THE PREVIEWED DIRECTION, once the student
+                                 * is choosing one - taken from the pointer,
+                                 * about the midpoint of the region, and not
+                                 * stored. Before that step it is null and the
+                                 * renderer uses its own default, so the
+                                 * student sees the region first and the
+                                 * direction after.
+                                 *
+                                 * Using the pointer's DIRECTION rather than
+                                 * its position is what keeps aiming from
+                                 * moving the load: the origin is the
+                                 * midpoint, and where the pointer is along
+                                 * that line changes nothing but which way
+                                 * the arrows face.
+                                 */
                                 direction:
-                                    constant.direction,
+                                    loadDirectionUnderPointer(),
 
                                 /*
                                  * A constant load is the
@@ -9786,7 +12430,26 @@ function updatePreview(
                 setToolMessage(
                     constructionFeedbackMessage(
                         resolution,
-                        "Move to set the load magnitude and direction, then click"
+                        /*
+                         * THE INSTRUCTION MATCHES THE STEP.
+                         *
+                         * This said "move to set the load magnitude and
+                         * direction, then click" for all four steps - one
+                         * sentence for two separate decisions, describing
+                         * an interaction that did not exist. The student
+                         * was told to do something no sequence of clicks
+                         * could do.
+                         *
+                         * Each step now says what it is waiting for, and
+                         * the snap and inference half is appended by the
+                         * shared builder as usual - so a student being
+                         * shown "Vertical" while choosing a direction sees
+                         * both.
+                         */
+                        loadBuildInstruction(
+                            drawingState.interaction
+                                .phase
+                        )
                     )
                 );
             } else if (
@@ -11321,61 +13984,99 @@ function beginOrCompleteGeometry(
 
         return;
     } else if (
-        drawingState.interaction.phase ===
-            "constant-load-build"
+        LOAD_BUILD_PHASES.has(
+            drawingState.interaction.phase
+        )
     ) {
         /*
-         * A constant load is defined by ONE force, so a single
-         * click both reads the cursor and finishes the load.
-         * There is nothing to add afterwards and no sequence to
-         * walk through, which is what makes it the simpler of
-         * the two tools.
+         * ========================================================
+         * ONE CLICK, ONE STEP
+         * ========================================================
+         *
+         * This used to take a constant load's entire construction in a
+         * single click: the magnitude came out of how far the pointer was
+         * from the body and the direction out of which way it was pointing,
+         * so the student chose neither - the tool decided both and showed
+         * them afterwards.
+         *
+         * Now each click does exactly one thing, and the phase says which.
+         * A click that is not yet the step the tool is waiting for changes
+         * nothing, so a stray click cannot commit a load or skip a step.
          */
-        const constant =
-            constantLoadDraft(
-                drawingState.interaction,
+        const phase =
+            drawingState.interaction.phase;
+
+        if (
+            phase ===
+            "distributed-load-start"
+        ) {
+            takeDistributedLoadStart(
                 point
             );
 
-        if (!constant) {
             return;
         }
 
-        enggDrawingState.setInteraction(
-            drawingState,
-            {
-                ...resolution,
+        if (
+            phase ===
+            "distributed-load-end"
+        ) {
+            /*
+             * THE SECOND CLICK IS AGAINST THE SAME BODY.
+             *
+             * A click on a different member is not the end of this load -
+             * it is the start of a load on that member, and switching
+             * silently would leave a load on the first body that the
+             * student thought they had abandoned.
+             */
+            if (
+                !distributedLoadPointOnBody(
+                    point
+                )
+            ) {
+                setToolMessage(
+                    "Specify end point on the same body"
+                );
 
-                phase:
-                    "constant-load-build",
+                renderProperties();
 
-                loadStart: {
-                    ...constant.start
-                },
-
-                loadEnd: {
-                    ...constant.end
-                },
-
-                loadDirection:
-                    constant.direction,
-
-                loadMagnitude:
-                    constant.magnitude,
-
-                parentId:
-                    drawingState.interaction
-                        .parentId
+                return;
             }
-        );
 
-        finishConstantLoadConstruction();
+            takeDistributedLoadEnd(point);
 
-        return;
-    } else if (
-        drawingState.interaction.phase ===
-            "distributed-load-build"
-    ) {
+            return;
+        }
+
+        if (
+            phase ===
+            "distributed-load-magnitude"
+        ) {
+            setToolMessage(
+                "Specify load magnitude"
+            );
+
+            renderProperties();
+
+            return;
+        }
+
+        if (
+            phase ===
+            "distributed-load-direction"
+        ) {
+            /*
+             * The direction is taken from the pointer's direction about
+             * the MIDPOINT of the loaded region - a temporary origin, so
+             * that the choice is about direction and cannot move the load.
+             */
+            takeDistributedLoadDirection(
+                distributedLoadRegionMidpoint(),
+                point
+            );
+
+            return;
+        }
         /*
          * A distributed load takes one magnitude-defining point
          * per click and is finished with Enter, so the click
@@ -11409,7 +14110,32 @@ function beginOrCompleteGeometry(
         if (isVaryingLoadTool()) {
             startDistributedLoadBuild(span);
         } else {
-            startConstantLoadBuild(span);
+            /*
+             * TRACED IN EMPTY SPACE. There is no body, so the two clicks
+             * ARE the loaded region - the student is drawing the interval
+             * itself rather than choosing it on a member.
+             */
+            enggDrawingState.setInteraction(
+                drawingState,
+                {
+                    ...resolution,
+                    phase: "distributed-load-start",
+                    loadSourceId: null,
+                    loadStart: {
+                        ...interaction.points[0],
+                    },
+                    loadEnd: null,
+                    loadDirection: null,
+                    loadMagnitude: 0
+                }
+            );
+
+            setToolMessage(
+                "Specify end point"
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
         }
 
         return;
@@ -11420,11 +14146,6 @@ function beginOrCompleteGeometry(
         interaction.phase ===
             "statics-span"
     ) {
-        const previous =
-            enggDrawingState.snapshotDrawing(
-                drawingState
-            );
-
         /*
          * A Reference Line reuses the ordinary line
          * geometry, distinguished only by its statics
@@ -11570,33 +14291,57 @@ function beginOrCompleteGeometry(
             return;
         }
 
-        enggDrawingState.addObject(
-            drawingState,
-            object
-        );
-
-        enggDrawingState.commitDrawingChange(
-            drawingState,
-            previous
-        );
-
+        /*
+         * THE INTERACTION IS RELEASED BEFORE THE SIZE IS ASKED FOR.
+         *
+         * The span is complete, so the tool has no more points to
+         * take. The member is not added yet - it is committed by
+         * `commitCreatedFeature` once its size is known, so the
+         * creation and its dimension are one undoable action and a
+         * cancelled dimension leaves nothing behind.
+         */
         enggDrawingState.clearInteraction(
             drawingState
         );
 
-        enggDrawingState.selectObject(
-            drawingState,
-            object.id
+        /*
+         * THE DOCUMENT AS IT STANDS BEFORE THE SIZE IS APPLIED.
+         *
+         * Taken here, after the span is complete but before any value
+         * has been written, so "before" means the document the student
+         * was looking at when they answered the popup.
+         *
+         * That matters because answering it can CALIBRATE the drawing.
+         * A snapshot taken afterwards would already carry the new scale,
+         * and Undo would remove the member while leaving its calibration
+         * behind.
+         */
+        const previousObjects =
+            enggDrawingState.snapshotDrawing(
+                drawingState
+            );
+
+        beginCreationDimensioning(
+            object,
+            previousObjects,
+            () => {
+                commitCreatedFeature(
+                    object,
+                    true,
+                    previousObjects
+                );
+
+                setToolMessage(
+                    staticsInstruction(
+                        drawingState.activeTool
+                    )
+                );
+
+                renderProperties();
+                renderCurrentDrawing();
+            }
         );
 
-        setToolMessage(
-            staticsInstruction(
-                drawingState.activeTool
-            )
-        );
-
-        renderProperties();
-        renderCurrentDrawing();
         return;
     }
 
@@ -11862,30 +14607,55 @@ function beginOrCompleteGeometry(
     }
 
     if (object) {
+        /*
+         * THE INTERACTION IS RELEASED BEFORE THE SIZE IS ASKED FOR.
+         *
+         * The geometry is complete, so the tool has no more points
+         * to take - and leaving it mid-construction while a popup
+         * is open would let a stray click add another point behind
+         * the popup. The feature itself is not added yet: it is
+         * committed by `commitCreatedFeature` once its size is
+         * known, as one undoable action.
+         */
+        enggDrawingState.clearInteraction(
+            drawingState
+        );
+
+        /*
+         * THE DOCUMENT AS IT STANDS BEFORE THE SIZE IS APPLIED.
+         *
+         * Taken after the geometry is complete and before any value is
+         * written, so "before" means the document the student was
+         * looking at when they answered the popup.
+         *
+         * Answering it can CALIBRATE the drawing, so a snapshot taken
+         * afterwards would already carry the new scale - and Undo
+         * would remove the feature while leaving that scale behind,
+         * with nothing left for it to give meaning to.
+         */
         const previousObjects =
             enggDrawingState.snapshotDrawing(
                 drawingState
             );
 
-        enggDrawingState.addObject(
-            drawingState,
-            object
+        beginCreationDimensioning(
+            object,
+            previousObjects,
+            () => {
+                commitCreatedFeature(
+                    object,
+                    true,
+                    previousObjects
+                );
+
+                setToolMessage("Ready");
+
+                renderProperties();
+                renderCurrentDrawing();
+            }
         );
 
-        enggDrawingState.commitDrawingChange(
-            drawingState,
-            previousObjects
-        );
-
-        /*
-         * Select the new feature so its Features panel
-         * opens immediately, matching the Point and
-         * Polygon tools.
-         */
-        enggDrawingState.selectObject(
-            drawingState,
-            object.id
-        );
+        return;
     }
 
     enggDrawingState.clearInteraction(
@@ -12483,6 +15253,43 @@ function renderCurrentDrawing() {
         )
     );
 
+    /*
+     * ================================================================
+     * DERIVED FEATURES ARE DERIVED ON THE WAY TO THE CANVAS
+     * ================================================================
+     *
+     * A Components pair and a Resultant are not facts about a force; they are
+     * statements ABOUT one, and go stale the instant the force changes. So
+     * they cannot be refreshed only when an edit is committed.
+     *
+     * They used to be, and that is why they looked broken. A drag mutates
+     * the force on every pointermove and commits once, on release - so the
+     * arrow followed the cursor smoothly while its decomposition sat frozen
+     * at the value it had when the student first pressed down. The same gap
+     * appeared for every uncommitted path: a live resize, a preview, a
+     * handle being dragged. Committing was never the missing refresh; it was
+     * the only refresh there was.
+     *
+     * So the refresh goes HERE, in the one function every draw already
+     * passes through. That is what makes it complete rather than a longer
+     * list of call sites to remember: there is no way to move a force and
+     * render it without passing through this. A tool added next month
+     * inherits the behaviour by rendering, which is the property worth
+     * having, instead of depending on whoever wrote it remembering a call.
+     *
+     * RECORDS NOTHING. This is a consequence of an edit, not an edit of its
+     * own, so the history is untouched - a drag remains one undo entry
+     * however many times the pointer moved and however many objects the
+     * refresh touched. `commitDrawingChange` still refreshes before it
+     * snapshots, so a restored state is consistent; doing it here as well
+     * only means the undo entry describes what was on screen at the time.
+     *
+     * The cost is a map lookup per object on a draw that has already done a
+     * full canvas repaint, which is why the registry returns immediately when
+     * nothing depends on anything.
+     */
+    enggDrawingState.refreshDerivedFeatures(drawingState);
+
     enggDrawingRenderer.renderDrawing(
         drawingState,
         drawingCanvas
@@ -13006,6 +15813,7 @@ function objectAtPoint(
      * order still decides, so overlapping labels behave as they look.
      */
     const overlay =
+        pickDerivedMagnitude(point) ||
         pickDimensionOrAnnotation(point);
 
     if (overlay) {
@@ -13194,6 +16002,46 @@ function objectAtPoint(
                             geometry.position
                         ) <=
                             tolerance * 2
+                    );
+                }
+
+                /*
+                 * A DISTRIBUTED LOAD IS A FIELD, AND THE FIELD IS WHAT
+                 * YOU AIM AT.
+                 *
+                 * Neither load is picked at its two stored points, because
+                 * almost none of a load's ink is near them: the arrows
+                 * stand off the body along its normal and the envelope
+                 * closes over the top of them. A load drawn as a row of
+                 * arrows is a large, obvious target, and a student clicking
+                 * the middle of it - which is where the envelope is - got
+                 * the beam behind instead.
+                 *
+                 * Both branches read the SAME test out of the load module
+                 * that the renderer draws from, so what is clickable is
+                 * exactly what is visible at the current zoom and Vector
+                 * Scale. Testing the arrows here without the envelope would
+                 * fix half of it and leave the more obvious half broken.
+                 *
+                 * The varying load is included because it is the same
+                 * picture: a row of arrows and an envelope, drawn from the
+                 * same profile, and it was falling through to a test for
+                 * `start` and `end` that it does not have.
+                 */
+                if (isLoadGeometry(object)) {
+                    return (
+                        enggLoadProfile.loadContainsPoint(
+                            geometry,
+                            point,
+                            tolerance,
+                            enggDrawingState
+                                .BASE_PIXELS_PER_UNIT *
+                                drawingState.camera.zoom,
+                            enggLoadProfile
+                                .vectorScaleFor(
+                                    drawingState
+                                )
+                        )
                     );
                 }
 
@@ -13766,6 +16614,53 @@ function analysisObjectHit(
 
     const pick = tolerance * 2;
 
+    /*
+     * A DECOMPOSITION IS PICKED ON ITS COMPONENTS, NEVER ON THE FORCE IT
+     * DECOMPOSES.
+     *
+     * A Force Components draws the source force's arrow as its `original`,
+     * and carries that same arrow in its own `start`/`end` - they are the
+     * same segment the source force draws. So a decomposition laid over its
+     * force put identical ink on the sheet twice, and a student clicking
+     * the force's arrow got whichever of the two the pick happened to reach
+     * first.
+     *
+     * The segments that identify a decomposition are its horizontal and
+     * vertical components - the thing the tool was asked to produce. Those
+     * are what is tested, and the shared arrow is deliberately left out:
+     * clicking the force's own arrow belongs to the force.
+     */
+    if (object.type === "force-components") {
+        const components = [
+            geometry.horizontal
+                ? [geometry.horizontal.start, geometry.horizontal.end]
+                : null,
+            geometry.vertical
+                ? [geometry.vertical.start, geometry.vertical.end]
+                : null
+        ].filter(Boolean);
+
+        if (
+            components.some(
+                ([from, to]) =>
+                    distanceToSegment(
+                        point,
+                        from,
+                        to
+                    ) <= pick
+            )
+        ) {
+            return true;
+        }
+
+        /*
+         * The shared origin, which is also where the source force acts -
+         * so a student clicking the point itself is choosing the force, and
+         * this stays out of it too.
+         */
+        return false;
+    }
+
     const segments = [
         geometry.start && geometry.end
             ? [geometry.start, geometry.end]
@@ -13923,6 +16818,107 @@ function pickDimensionOrAnnotation(
                     )
             ) || null
     );
+}
+
+/*
+ * ========================================================
+ * A MAGNITUDE BOX, WHICH IS NOT IN THE DOCUMENT
+ * ========================================================
+ *
+ * A value beside a force is DERIVED from that force, so there is no feature
+ * to select - the box is drawn, not stored. But the student can move it,
+ * because `F = 100 N` printed across an arrowhead is unreadable and only they
+ * know where on a busy sheet there is room for it.
+ *
+ * So it is picked HERE, from the same derivation the renderer draws from,
+ * rather than from a list of its own that could fall out of step with what is
+ * on the sheet.
+ *
+ * A HIT ON THE BOX IS NOT A HIT ON THE FORCE. Clicking the arrow still
+ * selects the force - the arrow IS the force - but clicking the number the
+ * student deliberately moved out of the way means the number. Resolving both
+ * to the feature would make the moved box impossible to move again: every
+ * drag would grab the arrow underneath instead.
+ *
+ * IT REPORTS A PSEUDO-OBJECT, not a document id, because the caller needs to
+ * tell "what was clicked" apart from "what may be dragged", and a derived
+ * value has neither a features-panel entry nor an undo step of its own.
+ */
+function pickDerivedMagnitude(
+    point
+) {
+    const model =
+        window.enggAnnotationModel;
+
+    if (!model) {
+        return null;
+    }
+
+    for (
+        let i =
+            drawingState.objects.length -
+                1;
+        i >= 0;
+        i--
+    ) {
+        const object =
+            drawingState.objects[i];
+
+        const derived =
+            model.derivedAnnotation(
+                object,
+                drawingState
+            );
+
+        if (
+            !derived ||
+            !derived.placement
+        ) {
+            continue;
+        }
+
+        /*
+         * The same widened target an annotation gets, and for the same
+         * reason: a box of text is not a comfortable thing to hit with a
+         * pointer, and a label that cannot be clicked cannot be moved.
+         *
+         * Measured in world units, so the box stays the same size to aim at
+         * as the student zooms.
+         */
+        const reach =
+            DIMENSION_PICK_TOLERANCE_PIXELS /
+            Math.max(
+                drawingState.camera.zoom,
+                0.25
+            ) /
+            4;
+
+        if (
+            distance(
+                point,
+                derived.placement
+            ) < reach
+        ) {
+            return {
+                id: derived.id,
+                type:
+                    "derived-magnitude",
+
+                /*
+                 * The feature it belongs to and what it is called there -
+                 * both needed by the drag and by the status line, and both
+                 * read from the model rather than rebuilt here.
+                 */
+                sourceFeatureId:
+                    object.id,
+                annotationKind:
+                    derived.annotationKind,
+                annotation: derived
+            };
+        }
+    }
+
+    return null;
 }
 
 /*
@@ -15212,6 +18208,53 @@ function objectIntersectsSelection(
     }
 
     /*
+     * AN ANALYSIS OBJECT IS ONE THING, BOX-SELECTED AS ONE THING.
+     *
+     * A Force Components and a Resultant were reaching the fallback below,
+     * which asks whether any point they are drawn through lies inside the
+     * rectangle. A vector drawn horizontally passes through two points and
+     * a great many positions between them, so a box drawn around a
+     * resultant's middle - which is where a student naturally drags from -
+     * found nothing at all, and the feature could be clicked but not swept
+     * up.
+     *
+     * They are tested on their VECTORS, the same way a Point Force is
+     * tested on its arrow, and deliberately not on the source force's
+     * shared arrow for the reason given in `analysisObjectHit`: that ink
+     * belongs to the force, and a box drawn over it should take the force.
+     */
+    if (
+        object.type === "force-components" ||
+        object.type === "resultant"
+    ) {
+        const vectors =
+            object.type === "force-components"
+                ? [
+                      geometry.horizontal,
+                      geometry.vertical
+                  ]
+                : [
+                      geometry.start && geometry.end
+                          ? {
+                                start: geometry.start,
+                                end: geometry.end
+                            }
+                          : null
+                  ];
+
+        return vectors
+            .filter(Boolean)
+            .some(
+                vector =>
+                    segmentIntersectsSelection(
+                        vector.start,
+                        vector.end,
+                        selectionBox
+                    )
+            );
+    }
+
+    /*
      * Anything else: it is selected if any of the points the
      * object is drawn through is in the rectangle. That is the
      * same generous test the Feature Tree relies on, and it is
@@ -15362,6 +18405,136 @@ function objectIcon(
     );
 }
 
+/*
+ * ========================================================
+ * WHAT KIND OF FEATURE IS THIS?
+ * ========================================================
+ *
+ * The ONE answer to "which group does this feature belong in", used by
+ * the Feature Tree and by the Features panel so the two cannot disagree.
+ *
+ * IT IS ASKED OF THE FEATURE, NOT INFERRED FROM ITS TYPE ALONE.
+ *
+ * Geometry and Statics SHARE implementations - one Line class, one Arc
+ * function, one renderer - and what makes a Line a "Reference Line" is the
+ * statics discipline recorded on the object, not anything about its
+ * geometry. A function that classified by type would have to know every
+ * statics type by name, and a new statics feature would be filed as plain
+ * geometry the day it was added, which is exactly how the AFD/SFD/BMD
+ * diagrams ended up among the geometry in the first place: their factory
+ * was the one statics factory that never recorded the discipline, so every
+ * reader of that field answered "geometry" and the tree obeyed.
+ *
+ * ========================================================
+ * ONE STATICS GROUP. THERE IS NO "ANALYSIS" GROUP.
+ * ========================================================
+ *
+ * An earlier version of this gave diagrams, resultants and components a
+ * group of their own, on the reasoning that they are READINGS taken off
+ * something else rather than marks on the sheet. The distinction is real.
+ * It is also the wrong place to express it.
+ *
+ * The tree's job is to say what each feature depends on, and every one of
+ * these depends on a BODY: a diagram is read off a member, a resultant off
+ * the forces it sums, a components pair off the force it decomposes. So
+ * they already appear NESTED UNDER that body. A second grouping on top of
+ * that answered a question nobody asked while making the real one harder
+ * to answer - a student looking for their SFD found a list of bodies and
+ * had to know which one it was filed under before they could look inside.
+ *
+ * It is also a category a student cannot act on. You cannot drag a diagram
+ * into "Analysis", and it is not a thing anybody placed. A group that
+ * exists only to re-sort is a second classification competing with the
+ * parent relationship, and the two disagree the moment a diagram's source
+ * body changes - at which point the diagram belongs under a different body
+ * but is still filed in the group it was first put in.
+ *
+ * So: one Statics group, and the parent relationship does the rest. A
+ * diagram whose body is not on the sheet is still a Statics row - it has a
+ * body, the sheet simply does not have it.
+ */
+function staticsCategory(
+    object
+) {
+    return (
+        object?.engineering?.discipline ===
+            "statics"
+            ? "Statics"
+            : null
+    );
+}
+
+/*
+ * ============================================================
+ * WHERE A FEATURE IS FILED IN THE TREE
+ * ============================================================
+ *
+ * ONE answer, asked by both the root-row test and the child lookup, so a
+ * feature cannot appear as a root row in one pass and as somebody's child
+ * in another.
+ *
+ * `parentId` ALONE WAS NOT ENOUGH, AND THAT IS THE FAULT THIS FIXES.
+ *
+ * Force Components reads a force - that relationship is recorded in
+ * `engineering.sourceFeatureIds` - and it was being filed under the force's
+ * BODY, because its `parentId` was copied from the force's. So it appeared as
+ * a loose sibling of the force rather than beneath it, and a student looking
+ * for the decomposition of a force had to scan the whole branch to find it.
+ * The same was true of a Resultant.
+ *
+ * It could not simply be given the force as its `parentId`, because
+ * `parentId` means something specific everywhere else: it names the BODY a
+ * feature is drawn on. The renderer looks it up to find the member a preview
+ * belongs to, the Features panel prints it as "Relative to", and the parent
+ * body's attached-feature counts filter on it. Overloading it with a force
+ * would have moved the decomposition under the right row in the tree and
+ * quietly broken the attachment it was still supposed to have - one correct
+ * surface and three broken ones.
+ *
+ * SO A TREE PARENT IS A SEPARATE QUESTION FROM AN ATTACHMENT, and this is
+ * the answer to it. A feature is filed under its own body when it has one,
+ * and under the feature it READS when it does not. That matches what the
+ * student is actually looking at: a force's components belong with the force,
+ * a diagram belongs with its member, and neither relationship is invented
+ * here - both are already recorded on the objects.
+ *
+ * The Resultant takes its FIRST source for the same reason the derivation
+ * anchors it there: the sum is drawn from one force's application point, and
+ * that is the one whose motion it follows.
+ */
+function treeParentIdOf(
+    object
+) {
+    if (!object) {
+        return null;
+    }
+
+    if (object.parentId) {
+        return object.parentId;
+    }
+
+    /*
+     * Only for features that are a READING of something else. A body, a
+     * line or a point has no sources and returns null here, which is the
+     * same answer it gave before this existed.
+     */
+    const engineering =
+        object.engineering || {};
+
+    const sources =
+        Array.isArray(engineering.sourceFeatureIds)
+            ? engineering.sourceFeatureIds
+            : engineering.sourceFeatureId ||
+                engineering.sourceId
+                ? [
+                      engineering.sourceFeatureId ||
+                          engineering.sourceId
+                  ]
+                : [];
+
+    return sources.length ? sources[0] : null;
+}
+
 function componentGroups() {
     const groups =
         new Map();
@@ -15374,12 +18547,15 @@ function componentGroups() {
              * no longer exists leaves the feature as a root,
              * which is what keeps an old saved file readable.
              */
-            const parent =
-                drawingState.objects.find(
-                    candidate =>
-                        candidate.id ===
-                            object.parentId
-                );
+            const parentId =
+                treeParentIdOf(object);
+
+            const parent = parentId
+                ? drawingState.objects.find(
+                      candidate =>
+                          candidate.id === parentId
+                  )
+                : null;
 
             if (parent) {
                 return;
@@ -15390,20 +18566,33 @@ function componentGroups() {
              * created them. A statics feature keeps its
              * STATICS identity even when it reuses shared
              * geometry, so a Force never appears as a Line.
+             *
+             * THE TREE GROUPS A STATICS FEATURE BY WHAT IT IS.
+             *
+             * Statics is one discipline holding several kinds of thing -
+             * the bodies, the things applied to them, and the diagrams
+             * read off them - and putting them all under a single
+             * "Statics" heading hides the distinction the student is
+             * actually looking for. A Diagram is a READING of a body,
+             * not a mark on the sheet like a Support or a Point Force,
+             * and the group is where that is visible.
+             *
+             * THE ANSWER IS ONE FUNCTION, USED BY THE TREE AND THE
+             * PANEL.
+             *
+             * Both surfaces classify from `staticsCategory` below, so
+             * "the tree says Analysis" and "the panel says Geometry"
+             * cannot happen: there is only one answer to ask for.
              */
-            let group =
-                object.engineering?.discipline ===
-                    "statics"
-                    ? "Statics"
-                    : "Geometry";
+            let group = staticsCategory(
+                object
+            ) || "Geometry";
 
             if (
                 group === "Geometry" &&
-                object.type ===
-                    "construction"
+                object.type === "construction"
             ) {
-                group =
-                    "Construction";
+                group = "Construction";
             } else if (
                 group === "Geometry" &&
                 object.type ===
@@ -15454,7 +18643,7 @@ function componentChildren(
 ) {
     return drawingState.objects.filter(
         object =>
-            object.parentId ===
+            treeParentIdOf(object) ===
                 parent.id
     );
 }
@@ -15545,6 +18734,233 @@ function componentRowMarkup(
                 : ""}
         </div>
     `;
+}
+
+/*
+ * ========================================================
+ * THE PANEL FOR A LOAD BEING BUILT
+ * ========================================================
+ *
+ * What has been established so far, and the one thing still being asked
+ * for. The magnitude step is the only one with a field: the region and the
+ * direction are both chosen by clicking the canvas, which is the right
+ * instrument for both, while an intensity is a number and typing one is
+ * faster and more accurate than dragging for it.
+ *
+ * TYPING IT IS NOT COMMITTING IT. The value goes onto the interaction and
+ * the preview redraws from it, and the tool moves to the direction step.
+ * Nothing is written to the document until the direction is chosen - so a
+ * student who types a magnitude and then presses Escape has not created a
+ * load.
+ */
+function renderLoadBuildPanel(
+    interaction
+) {
+    const rows = [
+        section("DISTRIBUTED LOAD"),
+    ];
+
+    const sourceId =
+        interaction.loadSourceId;
+
+    const source = sourceId
+        ? drawingState.objects.find(
+              candidate =>
+                  candidate.id === sourceId
+          )
+        : null;
+
+    rows.push(
+        readOnly(
+            "Source Body",
+            source
+                ? source.name ||
+                  "Body"
+                : "Free span"
+        )
+    );
+
+    /*
+     * THE REGION, ONCE IT EXISTS. Shown as the student selected it - not
+     * as a default, and not at all before there is one - so the panel always
+     * describes what the tool currently has.
+     *
+     * X and Y are TWO FIELDS. They used to be one field built by gluing the
+     * two numbers together with a comma and appending "mm" to the pair:
+     *
+     *     Start
+     *     150, 300 mm
+     *
+     * which made three separate mistakes at once. The unit read as though it
+     * belonged to the second number and not the pair. The value could not be
+     * read as a position, because "150, 300" is not how a position is
+     * written - it is how two numbers are written when nobody decided which
+     * one the field was about. And if one ordinate were ever absent, the
+     * surviving one would have been printed next to a bare separator.
+     *
+     * Two engineering quantities, two rows.
+     */
+    [
+        [
+            "Start X",
+            interaction.loadStart,
+        ],
+        [
+            "End X",
+            interaction.loadEnd,
+        ],
+    ].forEach(([caption, point]) => {
+        if (!point) {
+            return;
+        }
+
+        rows.push(
+            readOnly(
+                caption,
+                number(point.x),
+                "mm"
+            )
+        );
+    });
+
+    /*
+     * THE ONE FIELD. Only on the magnitude step - on any other step it
+     * would be a field the tool is not listening to, which is worse than no
+     * field because it looks editable.
+     */
+    if (
+        interaction.phase ===
+            "distributed-load-magnitude"
+    ) {
+        rows.push(section("INTENSITY"));
+
+        rows.push(`
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Intensity
+                </span>
+                <input type="number" step="any" min="0"
+                    id="drawingLoadMagnitude"
+                    class="drawing-property-input"
+                    data-load-magnitude
+                    value="${
+                        Number.isFinite(
+                            Number(
+                                interaction.loadMagnitude
+                            )
+                        ) &&
+                        Number(
+                            interaction.loadMagnitude
+                        ) > 0
+                            ? number(
+                                  interaction.loadMagnitude
+                              )
+                            : ""
+                    }"/>
+                <span class="drawing-property-unit">
+                    N/m
+                </span>
+                <span></span>
+            </div>
+        `);
+
+        rows.push(`
+            <div class="drawing-property-hint">
+                Enter an intensity above zero, then press Enter.
+            </div>
+        `);
+    }
+
+    if (
+        interaction.phase ===
+            "distributed-load-direction"
+    ) {
+        rows.push(section("DIRECTION"));
+
+        rows.push(
+            readOnly(
+                "Intensity",
+                `${number(
+                    interaction.loadMagnitude
+                )} N/m`
+            )
+        );
+
+        rows.push(`
+            <div class="drawing-property-hint">
+                Move the pointer to aim the arrows and click.
+            </div>
+        `);
+    }
+
+    drawingProperties.innerHTML =
+        rows.join("");
+
+    /*
+     * ONE LISTENER, ATTACHED ONCE PER PANEL.
+     *
+     * The panel is rebuilt on every phase change, so attaching on every
+     * render would stack a listener per render and the field would apply its
+     * value once per keystroke it had ever been through.
+     */
+    const input =
+        drawingProperties.querySelector(
+            "[data-load-magnitude]"
+        );
+
+    if (input) {
+        /*
+         * ============================================================
+         * THE FIELD DOES NOT DEPEND ON THE STUDENT REMEMBERING ENTER
+         * ============================================================
+         *
+         * It used to listen for Enter only, so the magnitude silently did
+         * nothing unless the student happened to press that key. Every other
+         * way of leaving a number - tabbing away, clicking elsewhere on the
+         * sheet, a blur caused by the panel being rebuilt - discarded it.
+         *
+         * 'change' fires when the value is committed by ANY means, which
+         * includes Enter (and cancels the keydown so the value is read once,
+         * not twice). So the field behaves the way every other numeric field
+         * in Datum behaves.
+         */
+        input.addEventListener(
+            "change",
+            () => {
+                takeDistributedLoadMagnitude(
+                    input.value
+                );
+            },
+        );
+
+        input.addEventListener(
+            "keydown",
+            event => {
+                if (event.key !== "Enter") {
+                    return;
+                }
+
+                event.preventDefault();
+
+                takeDistributedLoadMagnitude(
+                    input.value
+                );
+            },
+        );
+
+        /*
+         * PUT THE CURSOR IN IT. The student was just told to specify a
+         * magnitude; making them find and click the box first is a step the
+         * instruction did not mention. Autofocus is suppressed where it
+         * would steal focus from the canvas on a phase we are not on.
+         */
+        if (
+            typeof input.focus === "function"
+        ) {
+            input.focus();
+            input.select?.();
+        }
+    }
 }
 
 function renderComponentTree() {
@@ -15753,8 +19169,233 @@ function renderComponentTree() {
         );
 }
 
+/*
+ * ========================================================
+ * OPENING THE ANALYSIS EDITOR
+ * ========================================================
+ *
+ * Sketch and Plot are two modes of ONE editor, and this is the single
+ * place either is opened from. It is called from two places - the panel's
+ * "Open Analysis Editor" button, and the placement commit - and both get
+ * the same editor with the same content.
+ *
+ * The mode is the FEATURE's, not the button's. A student who placed a
+ * Sketch and then opens the editor gets their sketch, not an empty Plot,
+ * because the mode was stored on the diagram at creation and is read from
+ * there every time.
+ */
+function openAnalysisEditorFor(object) {
+    if (!object || object.type !== 'analysis-diagram') {
+        return false;
+    }
+
+    const equations =
+        window.enggDiagramEquations;
+
+    if (!equations) {
+        return false;
+    }
+
+    const geometry = object.geometry || {};
+    const mode = geometry.mode === 'plot'
+        ? 'plot'
+        : 'sketch';
+
+    /*
+     * Sketch and Plot are two modes of ONE editor, and this is the single
+     * place either is opened from. It is called from two places - the panel's
+     * "Open Analysis Editor" button, and the placement commit - and both get
+     * the same editor with the same content.
+     *
+     * The mode is the FEATURE's, not the button's. A student who placed a
+     * Sketch and then opens the editor gets their sketch, not an empty Plot,
+     * because the mode was stored on the diagram at creation and is read from
+     * there every time.
+     *
+     * WHICH MODE OPENS. Plot is entered as expressions, so it opens a dialog
+     * with an expression list. Sketch is drawn by hand, so it opens the same
+     * shaped dialog with the four sketching tools instead. There is one
+     * dialog, two left-hand panels, and one Apply/Cancel.
+     */
+    if (mode === 'sketch') {
+        return openSketchEditorFor(object, geometry);
+    }
+
+    const editor =
+        window.enggPlotEditor;
+
+    if (!editor) {
+        return false;
+    }
+
+    const before =
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
+
+    /*
+     * THE QUANTITY IS CHOSEN, NOT TYPED. A student plotting a bending
+     * moment diagram writes M(x), and the diagram already knows which of
+     * the three it is - asking them to pick the letter would be asking
+     * them to restate the choice they have already made, and would let
+     * the two disagree.
+     */
+    editor.open({
+        title: `${
+            equations.titleFor(geometry.diagramType)
+        } - Plot`,
+        quantity:
+            equations.quantityFor(
+                geometry.diagramType
+            ),
+        range: geometry.localRange,
+        expressions:
+            equations.readPlot(geometry),
+        onPreview: (expressions) => {
+            geometry.expressions =
+                expressions;
+            renderCurrentDrawing();
+        },
+        onApply: (expressions) => {
+            /*
+             * THE LEGACY STORE IS CLEARED ONCE, HERE.
+             *
+             * An older file keeps its equations under `segments`, and the
+             * reader takes that list when there are no expressions.
+             * Leaving both behind would mean the old equations quietly
+             * reappearing the next time a diagram is opened.
+             */
+            delete geometry.segments;
+
+            geometry.expressions =
+                expressions;
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                before
+            );
+            renderCurrentDrawing();
+            renderProperties();
+        },
+        onCancel: () => {
+            renderCurrentDrawing();
+            renderProperties();
+        }
+    });
+
+    return true;
+}
+
+/*
+ * OPENING A SKETCH.
+ *
+ * The twin of the Plot branch above, and deliberately the same shape: the
+ * same title, the same range, the same preview-then-apply contract, the same
+ * legacy-cleanup. The only difference is that what is being edited is a list
+ * of drawn elements rather than a list of equations.
+ *
+ * The sketch elements live on the feature's own geometry, and nowhere else.
+ * They are not ordinary Lines on the sheet: a line drawn here belongs to the
+ * diagram, moves with it, and is deleted with it. Storing them as document
+ * features would make each one an independent thing the student could
+ * select, move and delete on its own - and a sketch element that can be
+ * dragged off its own diagram is not part of any diagram.
+ */
+function openSketchEditorFor(object, geometry) {
+    const editor = window.enggSketchEditor;
+    const equations = window.enggDiagramEquations;
+
+    if (!editor || !equations) {
+        return false;
+    }
+
+    const before =
+        enggDrawingState.snapshotDrawing(
+            drawingState
+        );
+
+    editor.open({
+        title: `${
+            equations.titleFor(geometry.diagramType)
+        } - Sketch`,
+        range: geometry.localRange,
+        elements: geometry.sketchElements || [],
+        onPreview: (elements) => {
+            geometry.sketchElements = elements;
+
+            /*
+             * The flag the renderer reads to decide whether the plot-area
+             * highlight is earned. It is derived from the elements rather
+             * than set by them, so it cannot disagree with what is actually
+             * there - and an empty sketch shows no highlight, which is the
+             * point of the flag.
+             */
+            geometry.sketchContent =
+                elements.length > 0;
+
+            renderCurrentDrawing();
+        },
+        onApply: (elements) => {
+            geometry.sketchElements = elements;
+
+            geometry.sketchContent =
+                elements.length > 0;
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                before
+            );
+
+            renderCurrentDrawing();
+            renderProperties();
+        },
+        onCancel: () => {
+            renderCurrentDrawing();
+            renderProperties();
+        }
+    });
+
+    return true;
+}
+
 function renderProperties() {
     syncStyleControls();
+
+    /*
+     * ========================================================
+     * A CONSTRUCTION IN PROGRESS OWNS THE PANEL
+     * ========================================================
+     *
+     * While a tool is part-way through building something, there is no
+     * FEATURE to edit - the load does not exist yet, so there is nothing for
+     * the tree to select and nothing for the property page to show. The panel
+     * falls back to the tree, which is a list of things that are not what
+     * the student is currently making.
+     *
+     * So a build in progress is answered here, with the one input it is
+     * waiting on and the region it has established so far. This is what makes
+     * "Specify load magnitude" something the student can DO rather than
+     * something they are told to do and left to work out.
+     */
+    const loadBuild =
+        loadBuildInstruction(
+            drawingState.interaction?.phase
+        );
+
+    if (
+        LOAD_BUILD_PHASES.has(
+            drawingState.interaction?.phase
+        )
+    ) {
+        drawingComponentsBack.style.display =
+            "block";
+
+        renderLoadBuildPanel(
+            drawingState.interaction
+        );
+
+        return;
+    }
 
     const selectedIds =
         drawingState.selection
@@ -15957,8 +19598,18 @@ function trianglePropertyMarkup(
     const measurements =
         triangleMeasurements(points);
 
+    /*
+     * A NUMBER THAT IS NEVER THE STRING "NaN".
+     *
+     * `Number(undefined).toFixed(2)` is "NaN", which is how a panel with a
+     * missing value printed it. A value that is not a finite number produces
+     * an empty string, so the field it belongs to can be omitted rather than
+     * showing a word that is not a measurement.
+     */
     const number = value =>
-        Number(value).toFixed(2);
+        Number.isFinite(Number(value))
+            ? Number(value).toFixed(2)
+            : "";
 
     const fixed = key =>
         Boolean(constraints[key]);
@@ -16096,11 +19747,57 @@ function trianglePropertyMarkup(
 
     rows.push(appearanceMarkup(object));
 
+    /*
+     * NO SECOND TITLE: the header above already names the feature. Repeating
+     * `object.name` printed it twice, one line under the other.
+     */
     return `<div class="drawing-properties-block">
-        <div class="drawing-properties-title">${object.name}</div>
-        ${rows.join("")}
+        ${finaliseRows(rows)}
     </div>`;
 }
+
+/*
+ * ========================================================
+ * FEATURES THAT HAVE NO LINE, AND SO NO LINE TYPE
+ * ========================================================
+ *
+ * A LINE TYPE DESCRIBES A STROKE, and these features are not strokes.
+ *
+ * A MOMENT is a curved arrow and a COUPLE is a pair of them. A SUPPORT is
+ * a symbol - hatching, rollers, a fixed base - assembled from several
+ * short marks of different kinds. A CONNECTION is a joint. None of them is
+ * drawn as one continuous line, so "Dashed" or "Centre" has no meaning to
+ * apply to: offering the control promised a choice that could not change
+ * what is on the sheet, and a student who picked one would reasonably
+ * expect to see it happen.
+ *
+ * LINE WIDTH IS DIFFERENT, AND STAYS.
+ *
+ * Every one of these is drawn from strokes, and a heavier support symbol
+ * is a real and useful thing to want - a small diagram wants a slightly
+ * heavier mark at the same size. So only the Line TYPE is removed. Cutting
+ * the whole APPEARANCE section would take away the one control here that
+ * does something.
+ *
+ * THIS IS A LIST OF FEATURE TYPES, DELIBERATELY.
+ *
+ * It is the one place in the panel that has to know which features are
+ * stroke-like, because it is the one place deciding what to OFFER rather
+ * than what to compute. Everything about how a line is drawn is read from
+ * the renderer's own vocabulary; nothing here can drift from what is
+ * actually painted, because nothing here describes a line.
+ */
+const FEATURES_WITHOUT_A_LINE_TYPE = new Set([
+    "moment",
+    "couple",
+    "pin-support",
+    "roller-support",
+    "fixed-support",
+    "smooth-support",
+    "pin-connection",
+    "fixed-connection",
+    "slider-connection"
+]);
 
 /*
  * Appearance controls shared by the property editors.
@@ -16145,8 +19842,18 @@ function appearanceMarkup(
      * the two stay in step.
      */
 
-    return `
-        <div class="drawing-properties-section">APPEARANCE</div>
+    /*
+     * ONE DROPDOWN, FOR THE FEATURES THAT HAVE A LINE.
+     *
+     * A control that offers a choice the drawing cannot act on is not a
+     * setting, so it is not offered where there is no line to style.
+     */
+    const lineTypeRow =
+        FEATURES_WITHOUT_A_LINE_TYPE.has(
+            object.type
+        )
+            ? ""
+            : `
         <div class="drawing-property-grid drawing-property-grid-value">
             <span class="drawing-property-grid-label">Line Type</span>
             <select data-style="lineType" aria-label="Line Type">
@@ -16158,13 +19865,51 @@ function appearanceMarkup(
             <span class="drawing-property-unit"></span>
             <span></span>
         </div>
+    `;
+
+    /*
+     * THE LINE WIDTH'S UNIT, AND WHY IT IS NOT "mm".
+     *
+     * It used to read "mm", which claimed that a pen width is an engineering
+     * length. It is not: the value goes straight to SVG stroke-width, which is
+     * a SCREEN property and changes with the view. A beam 500 mm long and one
+     * 5000 mm long are drawn with the same pen unless the student changes it,
+     * so calling the pen "mm" invited exactly the reading the whole
+     * engineering-scale system exists to prevent - that a number in this panel
+     * is describing the geometry.
+     *
+     * "pt" is the conventional name for a line weight, and is not an
+     * engineering unit, so the field reads as what it is without claiming to
+     * measure the drawing.
+     *
+     * If this ever becomes an engineering value, the pen has to be scaled by
+     * the view transform and stored apart from the geometry - not relabelled
+     * here.
+     */
+    /*
+     * A LINE WIDTH IS A NUMBER OR IT IS NOT A FIELD.
+     *
+     * `Number(undefined).toFixed(2)` is the string "NaN", which is how a
+     * feature that never had a width set could print "NaN" in its own panel.
+     * The width falls back to the renderer's own default only when the stored
+     * value is genuinely absent, and the field is always a real number.
+     */
+    const lineWidth = Number(style.lineWidth);
+
+    const lineWidthText = Number.isFinite(lineWidth)
+        ? lineWidth.toFixed(2)
+        : "0.50";
+
+    return `
+        <div class="drawing-properties-section">APPEARANCE</div>
+        ${lineTypeRow}
         <div class="drawing-property-grid drawing-property-grid-value">
             <span class="drawing-property-grid-label">Line Width</span>
             <input type="number" step="0.05" min="0.05"
                 data-style="lineWidth"
                 aria-label="Line Width"
-                value="${Number(style.lineWidth).toFixed(2)}">
-            <span class="drawing-property-unit">mm</span>
+                value="${lineWidthText}">
+            <span class="drawing-property-unit">pt</span>
             <span></span>
         </div>
     `;
@@ -17086,16 +20831,209 @@ function relativeChildAnchor(geometry) {
 }
 
 /*
- * The relative-position rows for a child feature, or nothing when
- * the feature stands on its own.
+ * THE PARENT'S OWN DIRECTION, as a unit vector.
  *
- * Shown INSTEAD of the absolute coordinates for a feature drawn
- * under a parent. These are genuine local coordinates, not
- * relabelled absolute ones: the number is an offset from the
- * parent, and writing it moves the child by that offset from where
- * the parent is now. A child therefore keeps its relationship to
- * its parent when the parent is dragged, which is what makes the
- * number mean anything after the fact.
+ * A station is a distance ALONG a member, so it can only be measured in
+ * the member's frame. This is that frame, and returning null for a parent
+ * with no usable span is what lets every caller fall back rather than
+ * divide by a length of zero.
+ *
+ * It is read from the body's own two ends, not from a stored angle: a body
+ * can be rotated by moving either end, and an angle field would then be
+ * describing where the body was when the angle was last written.
+ */
+function relativeParentAxis(
+    parent
+) {
+    const from =
+        parent?.geometry?.start ||
+        parent?.geometry?.position;
+
+    const to = parent?.geometry?.end;
+
+    if (
+        !from ||
+        !to ||
+        !Number.isFinite(from.x) ||
+        !Number.isFinite(from.y) ||
+        !Number.isFinite(to.x) ||
+        !Number.isFinite(to.y)
+    ) {
+        return null;
+    }
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+
+    const length = Math.hypot(dx, dy);
+
+    if (!(length > 0)) {
+        return null;
+    }
+
+    return { x: dx / length, y: dy / length };
+}
+
+/*
+ * ========================================================
+ * A CHILD'S POSITION ALONG ITS PARENT
+ * ========================================================
+ *
+ * A child of a body - a force, a load, a moment, a support - is positioned
+ * by a DISTANCE ALONG that body, and that is the whole of it. Everything
+ * else about where it sits is derived: its height above or below the
+ * centreline comes from the direction the force acts, its orientation
+ * comes from the body's own normal.
+ *
+ * IT USED TO SHOW TWO NUMBERS - Offset X and Offset Y - and both were ways
+ * to make the feature wrong.
+ *
+ * They are the child's world position expressed relative to the parent's
+ * start: two numbers describing one fact, of which the second is a
+ * consequence of the first and of the direction. A student who set both
+ * had to keep them consistent with a direction shown elsewhere in the same
+ * panel, and nothing checked it - so a load with a positive Offset Y and a
+ * downward direction is a field that can be filled in and produces a load
+ * sitting on the wrong side of the beam.
+ *
+ * THE STATION IS PROJECTED, NOT READ OFF `x`.
+ *
+ * A distance along a member is measured along its axis. Reading
+ * `anchor.x` only works for a horizontal member: on a vertical or rotated
+ * one every station reads as zero, which makes the field look like a
+ * control that does nothing. Projecting onto the parent's own direction
+ * means the number means the same thing on any beam.
+ */
+function stationOf(
+    point,
+    parent
+) {
+    if (!point) {
+        return 0;
+    }
+
+    const origin = relativeParentOrigin(parent);
+
+    if (!origin) {
+        return point.x;
+    }
+
+    const axis =
+        relativeParentAxis(parent);
+
+    if (!axis) {
+        return point.x - origin.x;
+    }
+
+    return (
+        (point.x - origin.x) * axis.x +
+        (point.y - origin.y) * axis.y
+    );
+}
+
+/*
+ * ========================================================
+ * THE FEATURES THAT ARE A REGION, NOT A POINT
+ * ========================================================
+ *
+ * A Distributed Load and a Varying Distributed Load both act over a SPAN of
+ * a body rather than at a spot on it. That is the whole reason they are
+ * positioned by two stations and not by one, and the reason their heights
+ * are derived: a region has an extent along the member and a height off
+ * it, and only the extent is the student's to choose.
+ *
+ * Named here because three places need the same answer - the panel, the
+ * property writer and the station conversion - and a list of two types
+ * repeated three times is three chances for one of them to forget the
+ * second.
+ */
+function isLoadGeometry(
+    object
+) {
+    return (
+        object?.type === "load" ||
+        object?.type === "varying-load"
+    );
+}
+
+/*
+ * ========================================================
+ * A STATION, AS A POINT ON THE SHEET
+ * ========================================================
+ *
+ * The inverse of `stationOf`, and the conversion that makes a station
+ * meaningful on a body that is not horizontal.
+ *
+ * A station is a distance along a member. Turning it back into a position
+ * is a projection onto the member's axis from its own start, which is
+ * where the member's centreline is - and on the member's centreline,
+ * because that is the line a load's extent is measured along and the line
+ * a support attaches to.
+ *
+ * It REFUSES A BODY WITH NO USABLE SPAN, returning null rather than a
+ * guessed origin. A load with a parent whose ends are coincident has
+ * nowhere to be, and putting it at the world origin would place it
+ * somewhere real and wrong; every caller treats null as "this edit cannot
+ * be applied" and leaves the drawing as it was.
+ */
+function pointAtStation(
+    parent,
+    station
+) {
+    if (
+        !parent ||
+        !Number.isFinite(station)
+    ) {
+        return null;
+    }
+
+    const origin =
+        relativeParentOrigin(parent);
+
+    const axis =
+        relativeParentAxis(parent);
+
+    if (!origin || !axis) {
+        return null;
+    }
+
+    return {
+        x: origin.x + axis.x * station,
+        y: origin.y + axis.y * station
+    };
+}
+
+/*
+ * ========================================================
+ * THE RELATIVE-POSITION ROWS FOR A CHILD
+ * ========================================================
+ *
+ * For a child that is a REGION - the two distributed loads - the rows are
+ * the region's two ends. For one that is a POINT - a force, a moment, a
+ * support - it is the single station along the body.
+ *
+ * For a load this replaces eight fields with two. It used to offer
+ * Start X, Start Y, End X and End Y, plus Offset X and Offset Y from this
+ * function: six numbers for the two facts a load actually has - the region
+ * it covers and the direction it pushes - with the height of each end
+ * stored independently of both.
+ *
+ * THAT IS WHAT MADE A LOAD FLIPPY. The height of the load's outline was
+ * a stored coordinate rather than something derived from the body and the
+ * direction, so reversing the direction changed the arrows without moving
+ * the outline, and the outline was then on the wrong side of the member
+ * with no field anywhere that said so. The load is now positioned by its
+ * two stations and its direction alone; the height follows.
+ *
+ * THE PARENT IS NAMED, AS A ROW.
+ *
+ * It was a single line of prose - "Relative to: Beam 3" - which is two
+ * pieces of information in one unbreakable string. A feature named after
+ * something a student typed ("Simply supported beam 3m") produced a line
+ * the panel was too narrow to show, and the relation - the one thing this
+ * row exists to say - was the part that disappeared. As a row, the name
+ * gets its own wrapping column and can break across lines instead of
+ * across the edge of the panel.
  */
 function relativeCoordinateRows(
     object,
@@ -17106,57 +21044,96 @@ function relativeCoordinateRows(
 
     const origin = relativeParentOrigin(parent);
 
-    const anchor = relativeChildAnchor(
-        object?.geometry
-    );
-
-    if (!parent || !origin || !anchor) {
+    if (!parent || !origin) {
         return "";
     }
 
     const { coordinate, section } = helpers;
 
     /*
-     * THE PARENT, AS A LABELLED ROW RATHER THAN A SENTENCE.
+     * A HEADING THAT STANDS OR FALLS WITH ITS FIELDS, RESOLVED HERE.
      *
-     * This was a single line of prose - "Relative to: Beam 3" - which
-     * is two pieces of information in one unbreakable string. A feature
-     * named after a student typed something like "Simply supported beam
-     * 3m" then produced a line the panel was too narrow to show, and the
-     * relation - the one thing this row exists to say - was the part
-     * that disappeared.
-     *
-     * As a row, the name gets its own wrapping column and can break
-     * across lines instead of across the edge of the panel.
+     * This helper returns its heading and its fields as one finished string,
+     * so the caller's finalise pass sees a single entry and cannot drop a
+     * heading that this function already decided was worth keeping. The shared
+     * module's `section` is used directly for that reason: it buffers the
+     * fields and emits the heading only if there are any.
      */
+    const shared =
+        globalThis.window &&
+        globalThis.window.enggPropertyPanel;
+
+    const headed = fields =>
+        shared && shared.section
+            ? shared.section(label, fields)
+            : [section(label), ...fields].join("");
+
+    const geometry = object?.geometry || {};
+
     const parentName =
         parent.name ||
         parent.type ||
         "another feature";
 
-    return [
-        section(label),
+    const parentRow = `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Relative to</span>
+            <span class="drawing-property-readonly">${parentName}</span>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
 
-        `
-            <div class="drawing-property-grid drawing-property-grid-value">
-                <span class="drawing-property-grid-label">Relative to</span>
-                <span class="drawing-property-readonly">${parentName}</span>
-                <span class="drawing-property-unit"></span>
-                <span></span>
-            </div>
-        `,
+    const unit =
+        enggLoadProfile.loadStationUnit(
+            parent
+        );
+
+    /*
+     * A LOAD IS A REGION, and its two stations are the answer to the only
+     * question a student has about where it acts.
+     */
+    if (
+        object.type === "load" ||
+        object.type === "varying-load"
+    ) {
+        return headed([
+            parentRow,
+
+            coordinate(
+                "Start",
+                "start.x",
+                stationOf(geometry.start, parent),
+                unit
+            ),
+
+            coordinate(
+                "End",
+                "end.x",
+                stationOf(geometry.end, parent),
+                unit
+            )
+        ]);
+    }
+
+    const anchor = relativeChildAnchor(
+        geometry
+    );
+
+    if (!anchor) {
+        return "";
+    }
+
+    return headed([
+        parentRow,
 
         coordinate(
-            "Offset X",
+            "Along Body",
             "relative.x",
-            anchor.x - origin.x
-        ),
-        coordinate(
-            "Offset Y",
-            "relative.y",
-            anchor.y - origin.y
+            stationOf(anchor, parent),
+            unit
         )
-    ].join("");
+    ]);
 }
 
 /*
@@ -17323,6 +21300,150 @@ function reverseDirectionMarkup(
 }
 
 /*
+ * ========================================================
+ * THE ANNOTATION CONTROLS FOR A MAGNITUDE-BEARING FEATURE
+ * ========================================================
+ *
+ * A force, a load, a moment, a resultant and a force-components pair each
+ * carry an engineering magnitude, and each can have that magnitude written
+ * beside it on the sheet as a box the student can drag to where there is room.
+ *
+ * These switches control WHETHER that box appears. They do not hold the value
+ * - the value belongs to the feature, and the box prints it from there every
+ * frame - and they are not the place the magnitude is edited. A number typed
+ * here would be a second copy of one already on the force, free to disagree
+ * with it.
+ *
+ * So this is two checkboxes and a heading, and the whole engineering half of
+ * the feature is elsewhere.
+ *
+ * WHY THE BOX IS CONTROLLED TWICE
+ *
+ * There is a sheet-wide switch as well, and the relationship is deliberate:
+ * the per-feature switch may only NARROW the sheet-wide one. A sheet full of
+ * twenty forces is unreadable with twenty boxes on it, so a student switches
+ * off the seventeen that do not matter; turning the whole class off is not a
+ * way to cope, because it also loses the three that did.
+ *
+ * So a feature switched off here stays off even when the sheet is turned back
+ * on - the choice is remembered on the feature, not recomputed from the global
+ * switch. `annotationDisplay` is where it is stored, and the annotation model
+ * reads the same field, so the checkbox and the box on the sheet cannot
+ * disagree about whether it is showing.
+ *
+ * Only features that actually HAVE a magnitude are given these controls. A
+ * beam has no magnitude to annotate, so it gets no ANNOTATION heading - see
+ * `magnitudeBearingTypes` below, and note that the section is omitted entirely
+ * for every other feature rather than rendered empty.
+ */
+function annotationSectionMarkup(
+    object,
+    types
+) {
+    const panels =
+        globalThis.window &&
+        globalThis.window.enggPropertyPanel;
+
+    /*
+     * NO SHARED MODULE, NO SECTION. The fallback renders nothing rather than a
+     * second copy of these controls that would drift from this one.
+     */
+    if (!panels) {
+        return "";
+    }
+
+    /*
+     * THE FEATURES THAT HAVE A MAGNITUDE TO ANNOTATE.
+     *
+     * A list, not a guess: the question "does this feature have an
+     * engineering magnitude" has to be answered once, and answered the same
+     * way by the panel and by the renderer. Answering it per-panel is how a
+     * Beam ends up with a Show Magnitude switch that does nothing.
+     */
+    if (
+        !types ||
+        !types.has(object.type)
+    ) {
+        return "";
+    }
+
+    const model =
+        globalThis.window.enggAnnotationModel;
+
+    const state = drawingState;
+
+    /*
+     * Read through the model's own predicate rather than by inspecting the
+     * state here. The panel and the renderer must be asking one question of
+     * one function; a panel that read `display.showMagnitudes` directly would
+     * ignore the per-feature setting and show a box the sheet does not have.
+     */
+    const shown = model
+        ? model.magnitudeShownFor(object, state)
+        : true;
+
+    const display =
+        object.annotationDisplay ||
+        {};
+
+    /*
+     * THERE IS NO "Show Unit" CONTROL, AND THERE IS NO REASON FOR ONE.
+     *
+     * It was offered here as an informational readout of the sheet's
+     * unit setting, on the reasoning that the annotation model might
+     * hide units. It does not: `unitSuffix` accepts the flag and then
+     * deliberately ignores it, because a magnitude without its unit is
+     * not the same quantity as one with it.
+     *
+     * So the switch reported a setting the user could not change and
+     * that nothing acted on - a dead control that looked meaningful.
+     * Removed rather than disabled, because a switch that cannot be
+     * flipped is worse than no switch: it implies a choice that does
+     * not exist.
+     */
+    const fields = [
+        panels.toggle({
+            label: "Show Magnitude",
+            attribute: "data-feature-show-magnitude",
+            on: shown,
+        }),
+    ];
+
+    return panels.section("ANNOTATION", fields);
+}
+
+/*
+ * THE FEATURE TYPES THAT CARRY SOMETHING WORTH ANNOTATING.
+ *
+ * Not written here. The annotation model owns this question, because it is
+ * the same question it already answers internally when it decides whether a
+ * box can be produced - and a second list would be a second answer.
+ *
+ * That is not hypothetical. The first version of this named
+ * "distributed-load" and "applied-moment"; Datum's features are called "load"
+ * and "moment", so the list matched nothing at all and the section was
+ * offered to no feature whatsoever while looking entirely correct.
+ *
+ * Read once and cached, because it is a Set built by walking the model's kind
+ * table and the answer cannot change while the page is loaded.
+ */
+const MAGNITUDE_BEARING_TYPES = (() => {
+    const model =
+        globalThis.window?.enggAnnotationModel;
+
+    if (!model?.annotatableTypes) {
+        /*
+         * No model, no feature has a box, so nothing is offered. An empty set
+         * renders no sections and breaks nothing; a guessed list would render
+         * switches for features that cannot have one.
+         */
+        return new Set();
+    }
+
+    return model.annotatableTypes();
+})();
+
+/*
  * The Arc Radius row for a rotational feature.
  *
  * PRESENTATION, and labelled as such.
@@ -17389,68 +21510,6 @@ function arcRadiusRow(
  * A broken source is stated plainly rather than shown as zero. Zero is
  * a claim, and an unresolved object has no claim to make.
  */
-/*
- * THE CHECKS UNDER A PLOT'S SEGMENTS, AS HTML.
- *
- * A shared builder because the list is produced in two places - once
- * when the panel is first built, and again whenever a number changes -
- * and two copies of the wording would be two chances for the message to
- * disagree with the thing it describes.
- *
- * Nothing is fixed here. A segment running past the end of the beam, or a
- * gap between two, is the student having made a mistake, and quietly
- * clamping or joining it would draw a diagram that looks right and is
- * not. Each problem is named, and the student decides what to do.
- */
-function diagramChecksHtml(check) {
-    if (!check || check.valid) {
-        return "";
-    }
-
-    return (
-        `<div class="drawing-properties-section">CHECKS</div>` +
-        check.problems
-            .map(
-                problem =>
-                    `<div class="drawing-property-derived">${problem}</div>`
-            )
-            .join("")
-    );
-}
-
-/*
- * REFRESH ONLY THE CHECKS.
- *
- * Their own element, so they can be replaced without rebuilding the
- * inputs around them. Re-rendering the whole panel on every keystroke
- * would put a fresh, empty input under the student's cursor and discard
- * whatever was half-typed, which would make a long equation impossible
- * to type at all.
- */
-function refreshDiagramChecks(
-    object
-) {
-    const host = drawingProperties.querySelector(
-        "[data-diagram-checks]"
-    );
-
-    if (!host) {
-        return;
-    }
-
-    const equations = window.enggDiagramEquations;
-
-    if (!equations) {
-        return;
-    }
-
-    host.innerHTML = diagramChecksHtml(
-        equations.validateSegments(
-            object.geometry.segments,
-            object.geometry.localRange
-        )
-    );
-}
 
 function analysisPanelRows(
     object
@@ -17471,39 +21530,153 @@ function analysisPanelRows(
 
     const rows = [];
 
+    /*
+     * ========================================================
+     * THE SAME PANEL VOCABULARY AS EVERY OTHER FEATURE
+     * ========================================================
+     *
+     * These rows go through the shared property-panel module for the same
+     * reason the Statics panels do: a field with a missing value is not a
+     * field, so an analysis diagram cannot print "Magnitude NaN" or leave a
+     * unit standing beside nothing. The heading is a marker that the caller's
+     * finalise pass drops when the rows under it turn out to be empty.
+     */
+    const panels =
+        globalThis.window &&
+        globalThis.window.enggPropertyPanel;
+
+    const escape = value =>
+        String(value ?? "").replace(
+            /[&<>"']/g,
+            character =>
+                ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                })[character],
+        );
+
     const section = label =>
-        `<div class="drawing-properties-section">${label}</div>`;
+        `<!--section:${label}-->`;
 
-    const readOnly = (label, value, unit) => `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">${label}</span>
-            <span class="drawing-property-derived">${value}${
-                unit ? " " + unit : ""
-            }</span>
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+    /*
+     * A READ-ONLY FIELD, OMITTED WHEN IT HAS NO VALUE.
+     *
+     * `value` may be a number (joined with its unit) or a ready-made string
+     * such as a body name or a range. Either way an absent value produces no
+     * field rather than an empty one - which is what stops a diagram printing
+     * "Magnitude NaN" or leaving a unit standing beside nothing.
+     *
+     * The shared module is used when it is present; when it is not (a bare
+     * test harness that lifts this function out on its own), the same rules are
+     * applied locally rather than the field silently vanishing.
+     */
+    const readOnly = (label, value, unit) => {
+        if (panels && panels.readOnlyQuantity) {
+            /*
+             * The shared helpers join the number and its unit, so a value that
+             * has already been formatted to a string is joined with its unit
+             * here and passed as a finished string.
+             */
+            if (typeof value === "number") {
+                return panels.readOnlyQuantity(label, value, unit || "");
+            }
 
-    const toggle = (label, key, on) => `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">${label}</span>
-            <input type="checkbox"
-                data-analysis-toggle="${key}"
-                aria-label="${label}"
-                ${on ? "checked" : ""}>
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+            if (value === undefined || value === null || String(value).trim() === "") {
+                return "";
+            }
+
+            return panels.readOnly(
+                label,
+                unit ? `${value} ${unit}` : String(value),
+            );
+        }
+
+        /*
+         * LOCAL FALLBACK. Same two rules: no value, no field; number and unit
+         * joined once.
+         */
+        if (value === undefined || value === null) {
+            return "";
+        }
+
+        if (typeof value === "number" && !Number.isFinite(value)) {
+            return "";
+        }
+
+        const shown = typeof value === "number" ? number(value) : String(value);
+
+        if (shown.trim() === "") {
+            return "";
+        }
+
+        return `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">${escape(label)}</span>
+                <span class="drawing-property-derived">${escape(shown)}</span>
+                <span class="drawing-property-unit">${escape(unit || "")}</span>
+                <span></span>
+            </div>
+        `;
+    };
+
+    const toggle = (label, key, on) => {
+        if (panels && panels.row) {
+            return panels.row({
+                label,
+                control: `<input type="checkbox"
+                      data-analysis-toggle="${escape(key)}"
+                      aria-label="${escape(label)}"
+                      ${on ? "checked" : ""}>`,
+            });
+        }
+
+        return `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">${escape(label)}</span>
+                <input type="checkbox"
+                    data-analysis-toggle="${escape(key)}"
+                    aria-label="${escape(label)}"
+                    ${on ? "checked" : ""}>
+                <span class="drawing-property-unit"></span>
+                <span></span>
+            </div>
+        `;
+    };
 
     const number = value => {
-        const rounded =
-            Math.round(Number(value) * 100) /
-            100;
+        if (panels && panels.number) {
+            return panels.number(value);
+        }
+
+        const numeric = Number(value);
+
+        if (!Number.isFinite(numeric)) {
+            return "";
+        }
+
+        const rounded = Math.round(numeric * 100) / 100;
 
         return Object.is(rounded, -0) ? "0" : String(rounded);
     };
+
+    /*
+     * THE ORDINATE'S UNIT, from the diagram type.
+     *
+     * A bending moment is kN-m and a shear force is kN, so a Y Range typed
+     * against the wrong unit would be wrong by a factor of a metre. It is
+     * read from one small table here rather than from a second copy of the
+     * diagram table, and it is the same convention the axis label uses - the
+     * two cannot end up quoting different units for the same diagram.
+     */
+    const ordinateUnit = () =>
+        ({
+            sfd: "kN",
+            bmd: "kN\u00b7m",
+            afd: "kN",
+        })[geometry.diagramType] || "";
 
     const heading = {
         "force-components": "FORCE COMPONENTS",
@@ -17576,11 +21749,27 @@ function analysisPanelRows(
         );
 
         rows.push(section("DISPLAY"));
+
+        /*
+         * OFF BY DEFAULT, and the panel has to say so.
+         *
+         * This reads `!== false`, which reports the original force as
+         * ON - so the checkbox claimed a setting the drawing was not using,
+         * and a student who unticked it saw no change, because unsetting
+         * `false` left the field absent and the renderer read absent as on
+         * too. Two places had the same wrong default and cancelled out to
+         * "always on".
+         *
+         * A Force Components feature draws Fx and Fy. The decomposed vector
+         * is a genuine reference for checking the work, so it is offered -
+         * but drawing it by default put a second copy of the force on the
+         * sheet, which is the thing the tool exists to avoid.
+         */
         rows.push(
             toggle(
                 "Show Original Force",
                 "showOriginal",
-                geometry.showOriginal !== false
+                geometry.showOriginal === true
             )
         );
         rows.push(
@@ -17640,6 +21829,27 @@ function analysisPanelRows(
                 geometry.showConstruction === true
             )
         );
+
+        /*
+         * WHETHER THE RESULTANT'S MAGNITUDE IS WRITTEN BESIDE IT.
+         *
+         * Force Components above already has its own "Show Magnitudes"
+         * control, and does not get this section as well: two switches that
+         * mean the same thing on one panel is the duplicate-control problem,
+         * and a student who unticks one and watches nothing change has no way
+         * to work out which is authoritative.
+         *
+         * The Resultant had no such control, so its value could be read but
+         * never written on the sheet - which for a derived force is the whole
+         * point of having it. This brings it into line with the features that
+         * did have the switch.
+         */
+        rows.push(
+            annotationSectionMarkup(
+                object,
+                MAGNITUDE_BEARING_TYPES
+            )
+        );
     }
 
     if (object.type === "analysis-diagram") {
@@ -17649,25 +21859,148 @@ function analysisPanelRows(
 
         rows.push(
             readOnly(
-                "Source Span",
+                "Reference",
                 span
-                    ? number(span.length)
-                    : "No source",
-                span ? "mm" : ""
+                    ? "Body Length"
+                    : "No source"
             )
         );
 
-        rows.push(
-            readOnly(
-                "Source Positions",
-                String(
-                    (
-                        geometry.referencePositions ||
-                        []
-                    ).length
+        /*
+         * ========================================================
+         * PLOT: WHAT THE DIAGRAM IS, NOT WHAT IS ON IT
+         * ========================================================
+         *
+         * A Plot holds EXPRESSIONS - relations the student has added to
+         * the graph - and the equations among them are the part that takes
+         * real thought. They are edited in the Plot Editor, which has
+         * room for a card per expression and a live graph beside them;
+         * this panel states the range the graph covers and how many
+         * expressions are in it, and then hands over.
+         *
+         * The old presentation - From/To/f(x) for every segment, plus an
+         * Add/Remove pair and a separate CHECKS block - made this panel
+         * into a data inspector. A student with five expressions had to
+         * read a wall of numbers to answer the one question they have,
+         * and every one of those rows competed with the colour, line
+         * width and position controls that also live here.
+         *
+         * THE COUNT IS THE WHOLE OF IT HERE. No equation is printed in
+         * this panel, because a partial list is worse than none: it looks
+         * like the diagram has been fully described when it has not.
+         */
+        if (geometry.mode === "plot") {
+            const equations =
+                window.enggDiagramEquations;
+
+            const range = geometry.localRange;
+
+            const expressions = equations
+                ? equations.readPlot(geometry)
+                : [];
+
+            rows.push(section("PLOT"));
+
+            rows.push(
+                readOnly(
+                    "Range",
+                    span &&
+                        range &&
+                        Number.isFinite(Number(range.from)) &&
+                        Number.isFinite(Number(range.to))
+                        ? `${number(range.from)} → ${
+                            number(range.to)
+                        } mm`
+                        : "No source body"
                 )
+            );
+
+            rows.push(
+                readOnly(
+                    "Expressions",
+                    String(expressions.length)
+                )
+            );
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label"></span>
+                    <button type="button"
+                        class="drawing-property-action"
+                        data-plot-editor-open
+                        ${equations ? "" : "disabled"}>
+                        Open Analysis Editor
+                    </button>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+        }
+
+        /*
+         * ========================================================
+         * SKETCH: THE SAME PANEL, THE OTHER MODE
+         * ========================================================
+         *
+         * A Sketch is a list of drawn elements rather than a list of
+         * equations, so it counts ELEMENTS and says so - reusing the word
+         * "expressions" would leave the student to work out which they are
+         * looking at.
+         *
+         * It offers the same one button for the same reason: the drawing is
+         * done in the editor, and this panel describes the diagram rather than
+         * being where it is made.
+         */
+        if (geometry.mode === "sketch") {
+            const range = geometry.localRange;
+
+            const elements = Array.isArray(
+                geometry.sketchElements
             )
-        );
+                ? geometry.sketchElements
+                : [];
+
+            rows.push(section("SKETCH"));
+
+            rows.push(
+                readOnly(
+                    "Range",
+                    span &&
+                        range &&
+                        Number.isFinite(Number(range.from)) &&
+                        Number.isFinite(Number(range.to))
+                        ? `${number(range.from)} → ${
+                            number(range.to)
+                        } mm`
+                        : "No source body"
+                )
+            );
+
+            rows.push(
+                readOnly(
+                    "Elements",
+                    String(elements.length)
+                )
+            );
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label"></span>
+                    <button type="button"
+                        class="drawing-property-action"
+                        data-plot-editor-open
+                        ${
+                            window.enggSketchEditor
+                                ? ""
+                                : "disabled"
+                        }>
+                        Open Analysis Editor
+                    </button>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+        }
 
         rows.push(section("DISPLAY"));
         rows.push(
@@ -17677,13 +22010,182 @@ function analysisPanelRows(
                 geometry.showZeroAxis !== false
             )
         );
+
+        /*
+         * ========================================================
+         * THE Y RANGE
+         * ========================================================
+         *
+         * Blank means "fit to what I have drawn", which is the state a
+         * student wants until they have something to fit. Leaving the
+         * fields empty is therefore a real answer rather than an unset one,
+         * and it is why the renderer falls back to the diagram's own peak
+         * rather than treating a missing range as zero.
+         *
+         * Only the ordinate is offered. The x range is not a choice: it is
+         * the length of the member the diagram describes, and a field for
+         * it would let the two disagree - a graph whose axis says 0-500
+         * while the body it belongs to is 522 long.
+         */
+        rows.push(section("Y RANGE"));
+
+        rows.push(`
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Minimum
+                </span>
+                <input type="number" step="any"
+                    class="drawing-property-input"
+                    data-geometry-field="yRange"
+                    data-geometry-part="from"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yRange?.from)
+                        )
+                            ? number(geometry.yRange.from)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `);
+
+        rows.push(`
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Maximum
+                </span>
+                <input type="number" step="any"
+                    class="drawing-property-input"
+                    data-geometry-field="yRange"
+                    data-geometry-part="to"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yRange?.to)
+                        )
+                            ? number(geometry.yRange.to)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `);
         rows.push(
             toggle(
-                "Source Positions",
+                "Source Reference",
                 "showReferencePositions",
                 geometry.showReferencePositions !== false
             )
         );
+
+        /*
+         * SHOW EQUATIONS, AND ONLY FOR A PLOT.
+         *
+         * There is nothing to write beside a Sketch - the shape IS the
+         * student's work - so offering the toggle there would be a control
+         * that does nothing, which is worse than no control.
+         *
+         * Off by default: a diagram with its equations on it reads as a
+         * finished answer.
+         */
+        if (geometry.mode === "plot") {
+            rows.push(
+                toggle(
+                    "Show Equations",
+                    "showEquations",
+                    geometry.showEquations === true
+                )
+            );
+        }
+
+        /*
+         * ========================================================
+         * TICKS
+         * ========================================================
+         *
+         * Off by default, and the spacing fields beside them do nothing
+         * until it is on - which is stated in the fields themselves rather
+         * than left to be discovered.
+         *
+         * A spacing that would produce an unreadable number of marks draws
+         * none, rather than drawing some arbitrary subset. That is
+         * deliberately visible: a student who typed 0.001 on a 5 m beam
+         * should see that it did not take, and fix it, rather than be given
+         * a scale they never asked for.
+         *
+         * The x spacing is in the member's own units and the y spacing in
+         * the ordinate's, so a beam in mm and a diagram in kN each get a
+         * number they can read.
+         */
+        rows.push(
+            toggle(
+                "Ticks",
+                "showTicks",
+                geometry.showTicks === true
+            )
+        );
+
+        const tickFields = `
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    X Spacing
+                </span>
+                <input type="number" step="any" min="0"
+                    class="drawing-property-input"
+                    data-geometry-field="xTickSpacing"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.xTickSpacing)
+                        )
+                            ? number(geometry.xTickSpacing)
+                            : ""
+                    }"
+                    placeholder="${
+                        geometry.localRange
+                            ? number(
+                                  (Number(
+                                      geometry.localRange.to,
+                                  ) -
+                                      Number(
+                                          geometry.localRange.from,
+                                      )) /
+                                      5,
+                              )
+                            : ""
+                    }"/>
+                <span class="drawing-property-unit">mm</span>
+                <span></span>
+            </div>
+
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Y Spacing
+                </span>
+                <input type="number" step="any" min="0"
+                    class="drawing-property-input"
+                    data-geometry-field="yTickSpacing"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yTickSpacing)
+                        )
+                            ? number(geometry.yTickSpacing)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `;
+
+        rows.push(tickFields);
         rows.push(
             toggle(
                 "Background",
@@ -17691,146 +22193,6 @@ function analysisPanelRows(
                 geometry.backgroundVisible !== false
             )
         );
-
-        /*
-         * ========================================================
-         * PLOT MODE: THE EQUATIONS, WHICH ARE THE STUDENT'S OWN WORK
-         * ========================================================
-         *
-         * The frame, the axes and the reference ticks are all furniture
-         * the tool supplies. These segments are not: the ranges and the
-         * equations are what the student has to work out, so they are
-         * editable here, one block per segment, in the quantity this
-         * diagram plots.
-         *
-         * A SKETCH HAS NONE OF THIS, deliberately. A sketch frame with an
-         * equation box on it would be asking for the answer as well as
-         * offering the frame, and the two ways of working are meant to be
-         * genuinely different.
-         */
-        if (geometry.mode === "plot") {
-            const variable =
-                ANALYSIS_DIAGRAM_VARIABLES[
-                    object.type
-                ] || "";
-
-            const range = geometry.localRange;
-
-            const equations =
-                window.enggDiagramEquations;
-
-            rows.push(section("EQUATIONS"));
-
-            if (
-                range &&
-                Number.isFinite(range.from) &&
-                Number.isFinite(range.to)
-            ) {
-                rows.push(
-                    readOnly(
-                        "Range",
-                        `${number(range.from)} to ${number(range.to)}`
-                    )
-                );
-            }
-
-            const segments = Array.isArray(geometry.segments)
-                ? geometry.segments
-                : [];
-
-            segments.forEach((segment, index) => {
-                rows.push(
-                    `<div class="drawing-properties-section">Segment ${
-                        index + 1
-                    }</div>`
-                );
-
-                rows.push(`
-                    <div class="drawing-property-grid">
-                        <span class="drawing-property-grid-label">From</span>
-                        <input type="number" step="any"
-                            data-diagram-segment="${index}"
-                            data-diagram-field="from"
-                            value="${number(segment.from)}">
-                        <span class="drawing-property-unit">mm</span>
-                        <span></span>
-                    </div>
-                `);
-
-                rows.push(`
-                    <div class="drawing-property-grid">
-                        <span class="drawing-property-grid-label">To</span>
-                        <input type="number" step="any"
-                            data-diagram-segment="${index}"
-                            data-diagram-field="to"
-                            value="${number(segment.to)}">
-                        <span class="drawing-property-unit">mm</span>
-                        <span></span>
-                    </div>
-                `);
-
-                rows.push(`
-                    <div class="drawing-property-grid">
-                        <span class="drawing-property-grid-label">${
-                            variable || "f(x)"
-                        }</span>
-                        <input type="text"
-                            data-diagram-segment="${index}"
-                            data-diagram-field="equation"
-                            placeholder="10 - 5x"
-                            value="${String(
-                                segment.equation ?? ""
-                            ).replace(/"/g, "&quot;")}">
-                        <span class="drawing-property-unit"></span>
-                        <span></span>
-                    </div>
-                `);
-            });
-
-            rows.push(`
-                <div class="drawing-properties-actions">
-                    <button type="button"
-                        class="drawing-properties-button"
-                        data-diagram-action="add-segment">
-                        Add Segment
-                    </button>
-                    ${
-                        segments.length
-                            ? `<button type="button"
-                                class="drawing-properties-button"
-                                data-diagram-action="remove-segment"
-                                data-diagram-segment="${
-                                    segments.length - 1
-                                }">
-                                Remove Last
-                            </button>`
-                            : ""
-                    }
-                </div>
-            `);
-
-            /*
-             * THE PROBLEMS ARE SHOWN, NOT FIXED.
-             *
-             * A segment running past the end of the beam, or a gap
-             * between two segments, is the student having made a
-             * mistake. Clamping or joining it would draw a diagram that
-             * looks right and is not - so each one is named, and the
-             * student decides what to do about it.
-             */
-            if (equations) {
-                rows.push(
-                    `<div data-diagram-checks class="drawing-diagram-checks">${
-                        diagramChecksHtml(
-                            equations.validateSegments(
-                                segments,
-                                range
-                            )
-                        )
-                    }</div>`
-                );
-            }
-        }
     }
 
     rows.push(section("POSITION"));
@@ -17841,16 +22203,66 @@ function analysisPanelRows(
             "mm"
         )
     );
-    rows.push(
-        readOnly(
-            "Y",
-            number(geometry.position?.y ?? geometry.start?.y),
-            "mm"
-        )
-    );
+        rows.push(
+            readOnly(
+                "Y",
+                number(geometry.position?.y ?? geometry.start?.y),
+                "mm"
+            )
+        );
 
-    return rows;
-}
+        /*
+         * THE HEADINGS ARE RESOLVED HERE, NOT LEFT AS MARKERS.
+         *
+         * This function returns a finished list, so a heading must stand or fall
+         * with the rows under it before it leaves - otherwise a caller that simply
+         * joins the list would show the marker as an invisible HTML comment and
+         * lose the heading text. The rules are the same ones the caller's finalise
+         * pass applies: a heading with no real field under it is dropped, and an
+         * empty fragment is dropped.
+         */
+        const finalised = [];
+
+        for (let index = 0; index < rows.length; index += 1) {
+            const entry = rows[index];
+
+            if (typeof entry !== "string" || entry.trim() === "") {
+                continue;
+            }
+
+            const marker = /^<!--section:(.*?)-->$/.exec(entry);
+
+            if (!marker) {
+                finalised.push(entry);
+                continue;
+            }
+
+            let hasField = false;
+
+            for (let ahead = index + 1; ahead < rows.length; ahead += 1) {
+                const next = rows[ahead];
+
+                if (typeof next !== "string" || next.trim() === "") {
+                    continue;
+                }
+
+                if (/^<!--section:(.*?)-->$/.test(next)) {
+                    break;
+                }
+
+                hasField = true;
+                break;
+            }
+
+            if (hasField) {
+                finalised.push(
+                    `<div class="drawing-properties-section">${escape(marker[1])}</div>`,
+                );
+            }
+        }
+
+        return finalised;
+    }
 
 /*
  * THE FEATURES PANEL FOR A SUPPORT.
@@ -17912,6 +22324,10 @@ function supportPanelRows(
         `<div class="drawing-properties-section">${label}</div>`;
 
     const number = value => {
+        if (!Number.isFinite(Number(value))) {
+            return "";
+        }
+
         const rounded =
             Math.round(Number(value) * 100) /
             100;
@@ -18084,9 +22500,15 @@ function distributedLoadPanelMarkup(
 
     const geometry = object.geometry || {};
 
+    /*
+     * A NUMBER THAT IS NEVER THE STRING "NaN". A missing value produces an
+     * empty string rather than a word that is not a measurement.
+     */
     const number =
         value =>
-            Number(value).toFixed(2);
+            Number.isFinite(Number(value))
+                ? Number(value).toFixed(2)
+                : "";
 
     const rows = [];
 
@@ -18098,34 +22520,27 @@ function distributedLoadPanelMarkup(
             helpers
         )
     );
-    rows.push(
-        coordinate(
-            "Start X",
-            "start.x",
-            geometry.start?.x ?? 0
-        )
-    );
-    rows.push(
-        coordinate(
-            "Start Y",
-            "start.y",
-            geometry.start?.y ?? 0
-        )
-    );
-    rows.push(
-        coordinate(
-            "End X",
-            "end.x",
-            geometry.end?.x ?? 0
-        )
-    );
-    rows.push(
-        coordinate(
-            "End Y",
-            "end.y",
-            geometry.end?.y ?? 0
-        )
-    );
+    /*
+     * THE LOADED REGION AND NOTHING ELSE.
+     *
+     * The four absolute coordinates that used to follow are gone: Start X,
+     * Start Y, End X and End Y. The two X values were already the
+     * load's stations wearing the wrong labels, and they are now stated as
+     * stations in `relativeCoordinateRows` above - where they belong,
+     * because they are distances along the member rather than coordinates
+     * on the sheet.
+     *
+     * The two Y values are not a setting at all. They are the heights of
+     * the load's own outline, and storing them independently of the
+     * direction is what let a reversed load keep its outline on the
+     * original side of the beam: the arrows turned over and the outline
+     * stayed, so the drawing showed a load pushing from underneath a
+     * region drawn above it. The height now follows from the body and the
+     * direction, and there is no field in which it can be got wrong.
+     *
+     * A load is therefore positioned by its two stations and its direction,
+     * and by nothing else - which is the whole of what it is.
+     */
 
     rows.push(section("FORCE"));
     rows.push(
@@ -18151,6 +22566,25 @@ function distributedLoadPanelMarkup(
             .profilePointPositions(geometry);
 
     rows.push(section("DISTRIBUTION"));
+
+    /*
+     * WHETHER THE LOAD INTENSITY IS WRITTEN BESIDE THE LOAD.
+     *
+     * Added before the early return below, because a load whose profile has
+     * no points yet still has an intensity and still deserves the control -
+     * otherwise the section would appear and disappear as the profile gained
+     * points, which reads as the panel being broken rather than as the load
+     * being incomplete.
+     */
+    const annotation =
+        annotationSectionMarkup(
+            object,
+            MAGNITUDE_BEARING_TYPES
+        );
+
+    if (annotation) {
+        rows.push(annotation);
+    }
 
     if (!points.length) {
         rows.push(`
@@ -18200,30 +22634,67 @@ function distributedLoadPanelMarkup(
 }
 
 /*
- * Shared header for every Features panel: an
- * editable Feature Name bound to the object, and a
- * read-only Feature Type.
+ * Shared header for every Features panel: the feature's own name as the
+ * panel title, and an editable Feature Name beneath it.
+ *
+ * It used to render a read-only "Feature Type" field as well. That was an
+ * inspector field, not an engineering one: it showed the student a value the
+ * model had already told them - the name at the top of this very panel - in a
+ * different vocabulary, and for a feature with no friendly label the fallback
+ * was the internal type string itself. A student reading "analysis-diagram"
+ * learns nothing about the analysis diagram they made, and it is precisely
+ * the kind of internal term that has no business being displayed.
+ *
+ * So the type now appears once, as the title, in the words the student uses.
+ * The editable name stays, because what a student calls a feature is theirs to
+ * choose and is not the same question as what kind of thing it is.
+ *
+ * The raw-type fallback is kept, but only in the title - it is how a feature
+ * with no registered label is still named at all, rather than being nameless.
  */
 function featureHeaderMarkup(
     object,
     typeLabel
 ) {
-    return `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">Feature Name</span>
-            <input type="text" data-feature-name
-                aria-label="Feature Name"
-                value="${object.name}">
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">Feature Type</span>
-            <span class="drawing-property-readonly">${typeLabel}</span>
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+    const panels =
+        globalThis.window &&
+        globalThis.window.enggPropertyPanel;
+
+    const name =
+        panels && panels.header
+            ? panels.header(typeLabel)
+            : `<div class="drawing-properties-title">${
+                escapeHtmlText(typeLabel)
+            }</div>`;
+
+    const nameField =
+        panels && panels.nameField
+            ? panels.nameField({
+                attribute: "feature-name",
+                value: object.name,
+            })
+            : "";
+
+    return name + nameField;
+}
+
+/*
+ * Escaping for the rare fallback path above. The shared module owns this
+ * normally; this exists only so the header still renders if that module is
+ * absent, rather than emitting an unescaped name into the panel.
+ */
+function escapeHtmlText(value) {
+    return String(value ?? "").replace(
+        /[&<>"']/g,
+        character =>
+            ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+            })[character],
+    );
 }
 
 /*
@@ -18377,7 +22848,47 @@ function featurePropertyMarkup(object) {
     const geometry = object.geometry;
     const constraints = object.constraints || {};
     const rows = [];
-    const number = value => Number(value).toFixed(2);
+
+    /*
+     * ========================================================
+     * THE SHARED PANEL VOCABULARY
+     * ========================================================
+     *
+     * Every field below is built through the one property-panel module rather
+     * than by hand. That module is where the two rules this panel used to break
+     * are enforced:
+     *
+     *   - NO PUNCTUATION WITHOUT A VALUE. A field with a missing value is not
+     *     emitted at all, so a panel cannot show "Direction: ," or leave a
+     *     dangling separator where an optional property was absent.
+     *   - NO EMPTY SECTIONS. A heading is produced together with the fields
+     *     that justify it, or not at all.
+     *
+     * It also joins a number and its unit in one place (so no field can read
+     * "100 NN"), escapes every string that reaches the markup, and drops
+     * trailing zeros consistently, so two panels never disagree about how a
+     * value is written.
+     *
+     * `panels` may be absent in a bare test harness, in which case the helpers
+     * below return nothing rather than throwing - an absent module leaves a
+     * field out, which is the same as an absent value.
+     */
+    const panels =
+        globalThis.window &&
+        globalThis.window.enggPropertyPanel;
+
+    /*
+     * A number as panel text. Delegated, because the shared formatter drops
+     * trailing zeros and normalises negative zero - and because a missing
+     * value must render as an absent field, not as the string "NaN".
+     */
+    const number = value =>
+        panels && panels.number
+            ? panels.number(value)
+            : Number.isFinite(Number(value))
+              ? String(Number(Number(value).toFixed(2)))
+              : "";
+
     const fixed = key => Boolean(constraints[key]);
 
     /*
@@ -18453,46 +22964,177 @@ function featurePropertyMarkup(object) {
             showKnown &&
             !known(key);
 
-        return `
-        <div class="drawing-property-grid drawing-property-grid-value${isUnknown ? " drawing-property-unknown" : ""}">
-            <span class="drawing-property-grid-label">${label}</span>
-            ${editable
-                ? `<input type="number" step="any"
-                        data-property="${key}"
-                        class="${isUnknown ? "drawing-property-input-unknown" : ""}"
-                        aria-label="${label}"
-                        ${isUnknown ? 'value=""' : `value="${number(value)}"`}
-                        ${isUnknown || fixed(key) ? "disabled" : ""}>`
-                : `<span class="drawing-property-readonly">${number(value)}</span>`}
-            <span class="drawing-property-unit">
-                ${unit}
-                ${editable && showKnown ? knownBox(key, label) : ""}
-            </span>
-            ${editable ? fixBox(key, label) : "<span></span>"}
-        </div>
-    `;
+        if (!panels || !panels.scalar) {
+            return "";
+        }
+
+        /*
+         * An unknown value has no number to state, so the value slot is left
+         * empty deliberately - which is a real, meaningful state, not the
+         * "absent value" the shared module refuses. It is passed through as
+         * an empty string so the field still renders, disabled.
+         */
+        return panels.scalar({
+            label,
+            key,
+            value: isUnknown ? "" : value,
+            unit,
+            disabled: !editable || isUnknown || fixed(key),
+            state:
+                editable && !isUnknown
+                    ? fixBox(key, label)
+                    : "",
+            classes: isUnknown
+                ? "drawing-property-unknown"
+                : "",
+        });
     };
 
+    /*
+     * ONE COORDINATE FIELD.
+     *
+     * `label` is the whole label the student reads - "Start X", or "X" under a
+     * "Start" heading - and `key` is the property it edits. One call, one field.
+     *
+     * It used to route through the shared pair-helper, which builds an X row and
+     * a Y row from a single label - so `coordinate("Start X", ...)` came out as
+     * "Start X X" and "Start X Y", the label doubled because a two-row builder
+     * was handed a one-row label. That is where the four nested coordinate
+     * combinations on a Beam came from, and none of them was ever a real
+     * engineering concept.
+     *
+     * The pair form is still available where a pair is genuinely wanted: the
+     * `coordinatePair` helper below, which names its two ordinates itself.
+     */
     const coordinate = (
         label,
         key,
         value,
         unit = "mm"
-    ) => `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">${label}</span>
-            <input type="number" step="any"
-                data-property="${key}"
-                aria-label="${label}"
-                value="${number(value)}"
-                ${fixed(key) ? "disabled" : ""}>
-            <span class="drawing-property-unit">${unit}</span>
-            ${fixBox(key, label)}
-        </div>
-    `;
+    ) => {
+        if (!panels || !panels.scalar) {
+            return "";
+        }
 
+        return panels.scalar({
+            label,
+            key,
+            value,
+            unit,
+            disabled: fixed(key),
+            state: fixed(key) ? "" : fixBox(key, label),
+        });
+    };
+
+    /*
+     * A COORDINATE PAIR, UNDER ITS OWN HEADING.
+     *
+     * This is the form a position is actually shown in: a "Start" heading, then
+     * X and Y beneath it. Two fields, each carrying its own unit, and the
+     * heading is the conceptual reference rather than a prefix repeated on every
+     * row.
+     */
+    const coordinatePair = (
+        heading,
+        xKey,
+        x,
+        yKey,
+        y,
+        unit = "mm"
+    ) => [
+        section(heading),
+        coordinate("X", xKey, x, unit),
+        coordinate("Y", yKey, y, unit),
+    ];
+
+    /*
+     * A SECTION HEADING, WHICH STANDS OR FALLS WITH ITS FIELDS.
+     *
+     * The panel is assembled by pushing a heading and then its fields into one
+     * list, so a heading cannot know at the moment it is written whether the
+     * fields below it will turn out to exist. It is therefore emitted as a
+     * MARKER, and `finaliseRows` removes any marker whose following rows are
+     * all empty - which is how an APPEARANCE heading over nothing, and the gap
+     * left where it was, both disappear.
+     *
+     * The marker is an HTML comment so a panel that somehow skipped
+     * finalisation still renders correctly, with the heading text hidden.
+     */
     const section = label =>
-        `<div class="drawing-properties-section">${label}</div>`;
+        `<!--section:${label}-->`;
+
+    /*
+     * Drop every heading that is not followed by at least one real field, and
+     * drop every empty fragment. This is the single pass that enforces "no
+     * empty sections" and "no leftover whitespace from removed fields".
+     *
+     * A heading is kept only when a non-heading, non-empty row follows it
+     * before the next heading. Trailing headings are removed too, because a
+     * heading at the end of the panel has nothing under it by definition.
+     */
+    const finaliseRows = list => {
+        const kept = [];
+
+        /*
+         * NESTED ROWS ARE FLATTENED FIRST.
+         *
+         * A helper that builds a whole group of fields - the support panel,
+         * a relative-coordinate block - returns its rows as an ARRAY, and the
+         * caller pushes that array into the panel's row list as one entry. A
+         * pass that only understood strings skipped every such entry, so a
+         * support rendered as its title and nothing else: every field it
+         * carried was silently discarded here.
+         *
+         * Flattening means a helper may return one row or many without the
+         * caller having to know which, which is the contract the builders
+         * already assume.
+         */
+        const flat = list.flat(Infinity);
+
+        for (let index = 0; index < flat.length; index += 1) {
+            const entry = flat[index];
+
+            if (typeof entry !== "string" || entry.trim() === "") {
+                continue;
+            }
+
+            const marker = /^<!--section:(.*?)-->$/.exec(entry);
+
+            if (!marker) {
+                kept.push(entry);
+                continue;
+            }
+
+            /*
+             * Keep the heading only if a real field follows it before the next
+             * heading.
+             */
+            let hasField = false;
+
+            for (let ahead = index + 1; ahead < flat.length; ahead += 1) {
+                const next = flat[ahead];
+
+                if (typeof next !== "string" || next.trim() === "") {
+                    continue;
+                }
+
+                if (/^<!--section:(.*?)-->$/.test(next)) {
+                    break;
+                }
+
+                hasField = true;
+                break;
+            }
+
+            if (hasField) {
+                kept.push(
+                    `<div class="drawing-properties-section">${escapeHtmlText(marker[1])}</div>`,
+                );
+            }
+        }
+
+        return kept.join("");
+    };
 
     /*
      * A NUMBER THAT IS TRUE BUT NOT WRITTEN.
@@ -18510,15 +23152,62 @@ function featurePropertyMarkup(object) {
      * figure in a different style would read as a different kind of
      * thing. Nothing about them is editable because editing a count is
      * not a thing anyone can mean.
+     *
+     * A derived ANGLE or LENGTH still carries its unit, though - "0.00" with
+     * nothing after it is ambiguous between degrees and millimetres on a
+     * panel that also states a Length in mm. So the unit is a third
+     * argument, and omitting it is the same mistake as omitting the unit
+     * from an editable field.
      */
-    const derived = (label, value) => `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">${label}</span>
-            <span class="drawing-property-readonly">${number(value)}</span>
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+    const derived = (label, value, unit = "") => {
+        if (!panels || !panels.readOnlyQuantity) {
+            return "";
+        }
+
+        /*
+         * A missing derived value is not a field. The shared helper refuses it,
+         * so a derived quantity that cannot be computed yet disappears rather
+         * than printing an empty row with a unit beside it.
+         */
+        return panels.readOnlyQuantity(label, value, unit);
+    };
+
+    /*
+     * A COUNT, WHICH IS NOT A MEASUREMENT.
+     *
+     * Joint Count, Member Count, Segment Count, how many supports a beam
+     * carries - these are integers. They went through `derived`, which
+     * formats every number to two decimal places, so the panel said
+     *
+     *     Segment Count
+     *     1.00
+     *
+     * Two decimal places on a count says the number is a measurement taken
+     * from something continuous and might not be exact. It is exact: there
+     * are four joints or there are not. The decimals also make the column of
+     * counts ragged against the lengths above them, so a reader scanning the
+     * panel is comparing 1.00 with 400.00 and being invited to.
+     *
+     * So counts get their own row rather than a format flag, because the
+     * distinction is not "how many decimals" - it is that one of these is a
+     * counted thing and the other is a measured one.
+     */
+    const derivedCount = (label, value) => {
+        if (!panels || !panels.readOnly) {
+            return "";
+        }
+
+        if (!Number.isFinite(Number(value))) {
+            return "";
+        }
+
+        /*
+         * A whole number, not a measurement to two decimals: a count is exact,
+         * and a column of "4.00" beside lengths reads as though the count were
+         * a measurement taken from something continuous.
+         */
+        return panels.readOnly(label, Math.round(Number(value)));
+    };
 
     /*
      * The free-text name a student gives a feature.
@@ -18529,18 +23218,24 @@ function featurePropertyMarkup(object) {
      * hierarchy: it is naming, not engineering, and putting it at the
      * top would give it a prominence the other rows do not have.
      */
-    const labelRow = object => `
-        <div class="drawing-properties-section">ANNOTATION</div>
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">Label</span>
-            <input type="text"
-                data-object-label
-                aria-label="Label"
-                value="${object.name || ""}">
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+    const labelRow = object => {
+        if (!panels || !panels.row) {
+            return "";
+        }
+
+        const name = panels.text(object.name);
+
+        return panels.section("ANNOTATION", [
+            panels.row({
+                label: "Label",
+                control: `<input type="text"
+                    data-object-label
+                    class="drawing-property-input"
+                    aria-label="Label"
+                    value="${escapeHtmlText(name === null ? "" : name)}">`,
+            }),
+        ]);
+    };
 
     /*
      * The children of a body, grouped by the role they play on it.
@@ -18594,12 +23289,18 @@ function featurePropertyMarkup(object) {
         );
 
     /*
-     * The Features panel names the feature from its own
-     * authoritative type, using the same label the toolbar
-     * and the Feature Tree use, so a Distributed Load never
-     * shows its raw internal type here.
+     * THE STUDENT-FACING NAME, NEVER THE INTERNAL TYPE.
+     *
+     * Everything above maps a feature type to the words a student would use
+     * for it. The final `|| object.type` is the one place an internal string
+     * can still reach the panel, and it was how "analysis-diagram" and
+     * "force-components" ended up displayed as panel titles.
+     *
+     * A feature with no registered label is better named for what it is than
+     * not named at all, so the fallback stays - but it is a last resort that
+     * should not be reached by any feature Datum ships.
      */
-    const typeLabel =
+    const displayLabel =
         staticsRoleLabel(object) ||
         STATICS_FEATURE_LABELS[object.type] ||
         {
@@ -18615,8 +23316,19 @@ function featurePropertyMarkup(object) {
             "reference-axis-x-negative": "Reference Axis -X",
             "reference-axis-y-positive": "Reference Axis +Y",
             "reference-axis-y-negative": "Reference Axis -Y",
-            [COORDINATE_SYSTEM_TYPE]: "2D Coordinate System"
-        }[object.type] || object.type;
+            [COORDINATE_SYSTEM_TYPE]: "2D Coordinate System",
+            /*
+             * THE ANALYSIS DIAGRAMS. These have no entry in
+             * STATICS_FEATURE_LABELS, so they were falling through to the
+             * raw type - which is how a student's SFD was titled
+             * "shear-force-diagram" in a panel describing their beam.
+             */
+            "analysis-diagram": "Analysis Diagram",
+            "force-components": "Force Components",
+            resultant: "Resultant",
+        }[object.type];
+
+    const typeLabel = displayLabel || object.type;
 
     rows.push(featureHeaderMarkup(object, typeLabel));
 
@@ -18631,7 +23343,7 @@ function featurePropertyMarkup(object) {
         rows.push(coordinate("Y", "end.y", geometry.end.y));
         rows.push(section("MEASUREMENTS"));
         rows.push(scalar("Length", "length", Math.hypot(dx, dy), "mm"));
-        rows.push(scalar("Angle", "angle", Math.atan2(dy, dx) * 180 / Math.PI, " · "));
+        rows.push(scalar("Angle", "angle", Math.atan2(dy, dx) * 180 / Math.PI, "°"));
     } else if (object.type === "point") {
         const position =
             geometry.position || geometry.point || geometry;
@@ -18642,10 +23354,7 @@ function featurePropertyMarkup(object) {
         rows.push(section("APPEARANCE"));
         rows.push(pointSizeMarkup(object));
 
-        return `<div class="drawing-properties-block">
-            <div class="drawing-properties-title">${object.name}</div>
-            ${rows.join("")}
-        </div>`;
+        return finaliseRows(rows);
     } else if (object.type === "circle") {
         rows.push(section("CENTER"));
         rows.push(coordinate("X", "center.x", geometry.center.x));
@@ -18655,12 +23364,13 @@ function featurePropertyMarkup(object) {
         rows.push(coordinate("X", "center.x", geometry.center.x));
         rows.push(coordinate("Y", "center.y", geometry.center.y));
         rows.push(section("GEOMETRY"));
-        rows.push(scalar("Radius", "radius", geometry.radius, "mm"));
-        rows.push(scalar("Start Angle", "startAngle", geometry.startAngle * 180 / Math.PI, " · "));
-        rows.push(scalar("End Angle", "endAngle", geometry.endAngle * 180 / Math.PI, " · "));
+        rows.push(scalar("Radius", "radius",
+            mmOf(geometry.radius).value, mmOf(geometry.radius).unit));
+        rows.push(scalar("Start Angle", "startAngle", geometry.startAngle * 180 / Math.PI, "°"));
+        rows.push(scalar("End Angle", "endAngle", geometry.endAngle * 180 / Math.PI, "°"));
         rows.push(scalar("Included", "includedAngle",
             ((geometry.sweep ?? (geometry.endAngle - geometry.startAngle)) * 180 / Math.PI),
-            " · ", false));
+            "°", false));
     } else if (object.type === "particle") {
         /*
          * A Particle is defined by its position and its mass, and by
@@ -18693,8 +23403,7 @@ function featurePropertyMarkup(object) {
          * shared line controls must not be added again at the foot.
          */
         return `<div class="drawing-properties-block">
-            <div class="drawing-properties-title">${object.name}</div>
-            ${rows.join("")}
+            ${finaliseRows(rows)}
         </div>`;
     } else if (object.type === "rigid-body") {
         /*
@@ -18744,10 +23453,28 @@ function featurePropertyMarkup(object) {
          * be READ as the member's attitude, and the ends are what you
          * change to alter it.
          */
+        /*
+         * A LENGTH IN THE PANEL IS AN ENGINEERING LENGTH.
+         *
+         * The geometry stores world units, which are not a physical
+         * size - they only become one through the document scale. So
+         * a panel that showed the raw number and captioned it "mm"
+         * would print 100.42 mm for a beam the student had sized at
+         * 500 mm, and the number would be both wrong and
+         * authoritative-looking.
+         *
+         * `length` is therefore the measured distance in world units,
+         * and `mmLength` is that distance in MILLIMETRES - which is
+         * what the unit beside the field promises. Both are kept
+         * because the geometry still works in world units while the
+         * panel has to speak in millimetres.
+         */
         const length = Math.hypot(
             geometry.end.x - geometry.start.x,
             geometry.end.y - geometry.start.y
         );
+
+        const mmLength = mmOf(length);
 
         rows.push(section("GEOMETRY"));
 
@@ -18764,12 +23491,32 @@ function featurePropertyMarkup(object) {
              * Span is editable and moves the structure's far end along
              * its existing direction, exactly as a beam's Length does.
              */
+            /*
+             * ONE WORD FOR THIS QUANTITY, EVERYWHERE.
+             *
+             * It was "Span" on a truss and a cable and "Length" on a
+             * beam, a line and a shaft - all of them the same property,
+             * `length`, so the same physical thing had two names
+             * depending on which feature it was drawn with. A student
+             * who learned that "Span" meant the distance end to end
+             * then found a beam calling the identical number
+             * "Length".
+             *
+             * "Length" is the word kept. It is the term the creation
+             * popup already asks for, the term the Smart Dimension
+             * reports, and the term the geometry property is called.
+             * A span is still a legitimate word in engineering, but it
+             * is a DIFFERENT quantity - the horizontal reach of a
+             * cable, say, as against how much cable there is - and
+             * using it here would mean the word stood for two things
+             * across the application.
+             */
             rows.push(
                 scalar(
-                    "Span",
+                    "Length",
                     "length",
-                    length,
-                    "mm"
+                    mmOf(length).value,
+                    mmOf(length).unit
                 )
             );
 
@@ -18777,11 +23524,11 @@ function featurePropertyMarkup(object) {
                 Number(geometry.height) || 0, "mm"));
 
             rows.push(section("JOINTS"));
-            rows.push(derived("Joint Count",
+            rows.push(derivedCount("Joint Count",
                 (geometry.joints || []).length));
 
             rows.push(section("MEMBERS"));
-            rows.push(derived("Member Count",
+            rows.push(derivedCount("Member Count",
                 (geometry.members || []).length));
 
             rows.push(section("OPTIMIZATION"));
@@ -18810,7 +23557,7 @@ function featurePropertyMarkup(object) {
              * first and keeps its attitude.
              */
             rows.push(scalar("Length", "length",
-                length, "mm"));
+                mmLength.value, mmLength.unit));
             rows.push(scalar("Height", "depth",
                 Number(geometry.depth) || 0, "mm"));
         } else if (object.type === "cable") {
@@ -18826,26 +23573,63 @@ function featurePropertyMarkup(object) {
              * For a straight cable they are the same number, and both are
              * editable, both applied to the geometry the same way.
              */
+            /*
+             * The cable's cable-length - how much cable there is - is a
+             * DIFFERENT quantity from how far it reaches, and the
+             * original code said so twice: once in the block comment
+             * above and again in a longer one here, explaining why two
+             * fields were needed and why one of them was derived.
+             *
+             * Only one of them is stored. `length` is the reach, and it
+             * is the one the creation popup and the Smart Dimension
+             * both edit. For a straight cable the cable-length equals
+             * the reach, so it can be derived from the same geometry
+             * rather than stored a second time - which is what stops
+             * the panel showing two numbers that quietly disagree the
+             * moment the cable is given a sag.
+             *
+             * The reachable amount of cable is therefore a DERIVED
+             * readout, and the field to type into is Length, named the
+             * same as everywhere else in the application.
+             */
             rows.push(
-                scalar("Span", "length", length, "mm")
+                scalar(
+                    "Length",
+                    "length",
+                    mmOf(length).value,
+                    mmOf(length).unit
+                )
             );
 
             rows.push(
-                scalar("Length", "length", length, "mm")
+                derived(
+                    "Length",
+                    (geometry.segments || []).length
+                        ? geometry.length ?? length
+                        : length,
+                    "mm"
+                )
             );
 
             rows.push(section("SEGMENTS"));
-            rows.push(derived("Segment Count",
+            rows.push(derivedCount("Segment Count",
                 (geometry.segments || []).length ||
                 Math.max(1, Number(geometry.segmentCount) || 1)));
         } else {
-            rows.push(scalar("Length", "length", length, "mm"));
+            rows.push(scalar("Length", "length",
+                mmOf(length).value, mmOf(length).unit));
             rows.push(scalar("Diameter", "diameter",
-                Number(geometry.diameter) || 0, "mm"));
+                mmOf(Number(geometry.diameter) || 0).value,
+                mmOf(Number(geometry.diameter) || 0).unit));
             rows.push(scalar("Radius", "radius",
-                Number(geometry.radius) ||
-                    (Number(geometry.diameter) || 0) / 2,
-                "mm"));
+                mmOf(
+                    Number(geometry.radius) ||
+                        (Number(geometry.diameter) || 0) / 2
+                ).value,
+                mmOf(
+                    Number(geometry.radius) ||
+                        (Number(geometry.diameter) || 0) / 2
+                ).unit));
         }
 
         /*
@@ -18865,7 +23649,7 @@ function featurePropertyMarkup(object) {
             Math.atan2(
                 geometry.end.y - geometry.start.y,
                 geometry.end.x - geometry.start.x
-            ) * 180 / Math.PI));
+            ) * 180 / Math.PI, "°"));
 
         /* Whatever is particular to this type, after the shared three. */
         if (object.type === "cable") {
@@ -18878,9 +23662,9 @@ function featurePropertyMarkup(object) {
                 Number(geometry.torque) || 0, "N·m"));
         } else if (object.type === "beam") {
             rows.push(section("RELATIONSHIPS"));
-            rows.push(derived("Supports",
+            rows.push(derivedCount("Supports",
                 attachedCount(object.id)));
-            rows.push(derived("Connections",
+            rows.push(derivedCount("Connections",
                 attachedCount(object.id, [
                     "pin-connection",
                     "fixed-connection",
@@ -18911,10 +23695,6 @@ function featurePropertyMarkup(object) {
             enggLoadProfile.forceVector(
                 geometry
             );
-
-        const number =
-            value =>
-                Number(value).toFixed(2);
 
         rows.push(section("FORCE"));
 
@@ -18999,6 +23779,21 @@ function featurePropertyMarkup(object) {
                 "Y",
                 "start.y",
                 vector.y
+            )
+        );
+
+        /*
+         * WHETHER THE MAGNITUDE IS WRITTEN BESIDE THE FORCE.
+         *
+         * Placed after the engineering half on purpose. The magnitude above
+         * is what the force IS; this is whether that number is also written
+         * on the sheet, which is a separate decision about presentation and
+         * does not belong beside the value it would duplicate.
+         */
+        rows.push(
+            annotationSectionMarkup(
+                object,
+                MAGNITUDE_BEARING_TYPES
             )
         );
     } else if (object.type === "moment") {
@@ -19120,13 +23915,27 @@ function featurePropertyMarkup(object) {
          * shortcut.
          */
 
-        rows.push(section("POSITION"));
-        rows.push(coordinate("Position X", "position.x", geometry.position.x));
-        rows.push(coordinate("Position Y", "position.y", geometry.position.y));
+            rows.push(section("POSITION"));
+            rows.push(coordinate("Position X", "position.x", geometry.position.x));
+            rows.push(coordinate("Position Y", "position.y", geometry.position.y));
+            rows.push(section("APPEARANCE"));
+            rows.push(arcRadiusRow(geometry));
 
-        rows.push(section("APPEARANCE"));
-        rows.push(arcRadiusRow(geometry));
-    } else if (
+            /*
+             * WHETHER THE MOMENT'S MAGNITUDE IS WRITTEN BESIDE ITS SYMBOL.
+             *
+             * Last, because this is presentation and the value further up is
+             * engineering. The panel reads in the order the student reasons in:
+             * how much, which way, where, how it is drawn, and finally whether
+             * its number is also written on the sheet.
+             */
+            rows.push(
+                annotationSectionMarkup(
+                    object,
+                    MAGNITUDE_BEARING_TYPES
+                )
+            );
+        } else if (
         object.type === "load" ||
         object.type === "varying-load"
     ) {
@@ -19241,7 +24050,8 @@ function featurePropertyMarkup(object) {
         `);
         rows.push(coordinate("Centre X", "center.x", geometry.center.x));
         rows.push(coordinate("Centre Y", "center.y", geometry.center.y));
-        rows.push(scalar("Radius", "radius", geometry.radius, "mm"));
+        rows.push(scalar("Radius", "radius",
+            mmOf(geometry.radius).value, mmOf(geometry.radius).unit));
         rows.push(scalar("Rotation", "rotation",
             (Number(geometry.rotation) || 0) * 180 / Math.PI, "°"));
     } else if (
@@ -19273,8 +24083,10 @@ function featurePropertyMarkup(object) {
         rows.push(section("GEOMETRY"));
         rows.push(coordinate("Centre X", "centre.x", center.x));
         rows.push(coordinate("Centre Y", "centre.y", center.y));
-        rows.push(scalar("Width", "width", geometry.width, "mm"));
-        rows.push(scalar("Height", "height", geometry.height, "mm"));
+        rows.push(scalar("Width", "width",
+                mmOf(geometry.width).value, mmOf(geometry.width).unit));
+        rows.push(scalar("Height", "height",
+                mmOf(geometry.height).value, mmOf(geometry.height).unit));
         rows.push(scalar("Rotation", "rotation", geometry.rotation || 0, "°"));
     } else if (object.type === "polyline") {
         rows.push(section("GEOMETRY"));
@@ -19310,9 +24122,16 @@ function featurePropertyMarkup(object) {
 
     rows.push(appearanceMarkup(object));
 
+    /*
+     * NO SECOND TITLE.
+     *
+     * The header at the top of this panel already states the feature's name -
+     * `featureHeaderMarkup` emits it, and the editable name field beneath it.
+     * Repeating `object.name` here printed the feature twice, one line under
+     * the other, which read as two features rather than one.
+     */
     return `<div class="drawing-properties-block">
-        <div class="drawing-properties-title">${object.name}</div>
-        ${rows.join("")}
+        ${finaliseRows(rows)}
     </div>`;
 }
 
@@ -19324,10 +24143,14 @@ function featurePropertyMarkup(object) {
 function pointSizeMarkup(
     object
 ) {
-    const size =
-        Number(
-            object.style.pointSize
-        ) || 6;
+    /*
+     * A marker size is a whole number of pixels. `|| 6` supplies the default
+     * for an absent value, and the finiteness test keeps a corrupt stored value
+     * from reaching the field as "NaN".
+     */
+    const stored = Number(object.style.pointSize);
+
+    const size = Number.isFinite(stored) && stored > 0 ? Math.round(stored) : 6;
 
     return `
         <div class="drawing-property-grid drawing-property-grid-value">
@@ -19335,7 +24158,7 @@ function pointSizeMarkup(
             <input type="number" step="1" min="1"
                 data-style="pointSize"
                 aria-label="Point Size"
-                value="${Number(size).toFixed(2)}">
+                value="${size}">
             <span class="drawing-property-unit">px</span>
             <span></span>
         </div>
@@ -19826,6 +24649,8 @@ function setRigidBodyRadius(
 }
 
 function bindFeaturePropertyControls(object) {
+    const geometry = object.geometry || {};
+
     drawingProperties.querySelectorAll('[data-triangle-mode]').forEach(input => {
         input.addEventListener('click', () => {
             trianglePanelModes.set(
@@ -20348,175 +25173,36 @@ function bindFeaturePropertyControls(object) {
         });
 
     /*
-     * THE PLOT SEGMENTS.
-     *
-     * Each field is written straight onto the segment and the drawing is
-     * re-rendered, so the curve is re-derived from the equation on every
-     * keystroke rather than being nudged. A stored polyline would have to
-     * be resampled by hand here, and would then disagree with the
-     * equation the student can still see in the box.
-     *
-     * The snapshot goes in BEFORE the change and the commit after it, so
-     * a whole run of edits is ONE undo step rather than one per
-     * keystroke - the same rule every other continuous interaction
-     * follows.
-     */
-    const previousSegments =
-        enggDrawingState.snapshotDrawing(
-            drawingState
-        );
+         * ========================================================
+         * OPENING THE PLOT EDITOR
+         * ========================================================
+         *
+         * The panel does not edit expressions; it says there are some and this
+         * is where they are edited. Apply commits the previewed state, which
+         * is what the student has already seen drawn on the sheet while they
+         * worked - so there is no separate "Plot" step and nothing to forget.
+         *
+         * THE PREVIEW IS NOT AN UNDO STEP. Editing inside the dialog changes
+         * what the sheet shows but writes nothing to the document, so opening
+         * the editor and cancelling is not something to undo. One snapshot
+         * is taken when Apply is pressed, and that is the single step that
+         * takes the whole edit.
+         *
+         * ONE IMPLEMENTATION, TWO ENTRY POINTS. `openAnalysisEditorFor` is the
+         * whole of it; the panel button below calls it, and so does the
+         * placement commit. When both had their own copy, the automatic open
+         * drifted from the manual one - different titles, different ranges,
+         * one of them clearing the legacy field and the other not - so the
+         * editor the student gets on placement was not the editor they get
+         * when they reopen the feature.
+         */
+        drawingProperties
+            .querySelector('[data-plot-editor-open]')
+            ?.addEventListener('click', () => {
+                openAnalysisEditorFor(object);
+            });
 
-    let segmentsChanged = false;
-
-    drawingProperties
-        .querySelectorAll('[data-diagram-segment]')
-        .forEach(input => {
-            const commit = () => {
-                const index = Number(
-                    input.dataset.diagramSegment
-                );
-
-                const field = input.dataset.diagramField;
-
-                const segments =
-                    object.geometry.segments;
-
-                if (
-                    !Array.isArray(segments) ||
-                    !segments[index]
-                ) {
-                    return;
-                }
-
-                const value =
-                    field === "equation"
-                        ? input.value
-                        : Number(input.value);
-
-                if (segmentsChanged) {
-                    /*
-                     * A LATER FIELD IN THE SAME EDIT PASS, so the
-                     * snapshot has already been replaced. The original
-                     * one is the one that must go back on undo, and
-                     * snapshotDrawing returns a copy each time, so
-                     * the first of them is kept.
-                     */
-                    return;
-                }
-
-                segmentsChanged = true;
-
-                segments[index] = {
-                    ...segments[index],
-                    [field]: value
-                };
-
-                enggDrawingState.commitDrawingChange(
-                    drawingState,
-                    previousSegments
-                );
-
-                renderCurrentDrawing();
-
-                /*
-                 * The panel is NOT re-rendered here. Doing so would
-                 * rebuild the inputs under the student's cursor and
-                 * throw away whatever was half-typed, which makes a
-                 * long equation untypeable. Only the CHECKS are
-                 * refreshed, because those do change as the numbers do -
-                 * and they live in their own element precisely so they
-                 * can be refreshed alone.
-                 */
-                refreshDiagramChecks(
-                    object
-                );
-            };
-
-            input.addEventListener(
-                "change",
-                commit
-            );
-        });
-
-    drawingProperties
-        .querySelectorAll('[data-diagram-action]')
-        .forEach(button => {
-            button.addEventListener(
-                "click",
-                () => {
-                    const action =
-                        button.dataset.diagramAction;
-
-                    const before =
-                        enggDrawingState.snapshotDrawing(
-                            drawingState
-                        );
-
-                    const segments =
-                        Array.isArray(object.geometry.segments)
-                            ? object.geometry.segments
-                            : [];
-
-                    const range =
-                        object.geometry.localRange;
-
-                    if (action === "add-segment") {
-                        /*
-                         * THE NEW SEGMENT STARTS WHERE THE LAST ONE
-                         * ENDED.
-                         *
-                         * That is the usual next thing a student wants
-                         * - the next load, the next reaction - and
-                         * starting it anywhere else means guessing a
-                         * number they then have to correct. The range
-                         * check still catches it if that was wrong.
-                         */
-                        const previous = segments[segments.length - 1];
-
-                        const from = previous
-                            ? previous.to
-                            : range?.from ?? 0;
-
-                        const to = previous
-                            ? previous.to +
-                              (range?.to - range.from) / 2
-                            : range?.to ?? 0;
-
-                        segments.push({
-                            id: `seg-${segments.length}`,
-                            from,
-                            to: Math.min(
-                                to,
-                                range?.to ?? to
-                            ),
-                            equation: ""
-                        });
-                    }
-
-                    if (action === "remove-segment") {
-                        const index = Number(
-                            button.dataset.diagramSegment
-                        );
-
-                        if (index >= 0) {
-                            segments.splice(index, 1);
-                        }
-                    }
-
-                    object.geometry.segments = segments;
-
-                    enggDrawingState.commitDrawingChange(
-                        drawingState,
-                        before
-                    );
-
-                    renderProperties();
-                    renderCurrentDrawing();
-                }
-            );
-        });
-
-    /*
+        /*
      * The arc radius of a Moment or a Couple Moment.
      *
      * This is a PRESENTATION control and is written as its own field
@@ -20706,6 +25392,78 @@ function bindFeaturePropertyControls(object) {
         });
     });
 
+    /*
+     * ========================================================
+     * WHETHER THIS FEATURE'S MAGNITUDE BOX IS SHOWN
+     * ========================================================
+     *
+     * One history entry per switch, and one logical change: the checkbox is
+     * the whole action, not a drag across it.
+     *
+     * The preference is written onto the FEATURE rather than recomputed from
+     * the sheet-wide switch. That is what lets a student who has turned off
+     * the seventeen boxes that do not matter keep those choices when they
+     * reach for the Magnitudes switch on the toolbar - see the note in
+     * `magnitudeShownFor`, which reads this same field.
+     *
+     * It is stored as a real boolean, not as the checkbox's string value, so
+     * that reading it back cannot turn the string "false" into a truthy
+     * preference and leave the box permanently on.
+     */
+    drawingProperties
+        .querySelectorAll(
+            '[data-feature-show-magnitude]'
+        )
+        .forEach(input => {
+            input.addEventListener(
+                'change',
+                () => {
+                    const previous =
+                        enggDrawingState
+                            .snapshotDrawing(drawingState);
+
+                    object.annotationDisplay = {
+                        ...(object.annotationDisplay || {}),
+                        showMagnitude: input.checked === true,
+                    };
+
+                    enggDrawingState
+                        .commitDrawingChange(
+                            drawingState,
+                            previous
+                        );
+
+                    /*
+                     * The panel is NOT re-rendered here.
+                     *
+                     * Re-rendering would rebuild the very control being
+                     * used, and the checkbox would lose the pointer's
+                     * focus mid-click - which on some platforms swallows the
+                     * click entirely and makes the switch feel stuck. The
+                     * sheet is redrawn, because that is what actually has to
+                     * change; the checkbox already shows the state the
+                     * student just chose.
+                     */
+                    renderCurrentDrawing();
+                }
+            );
+        });
+
+    /*
+     * THE PER-FEATURE UNIT SWITCH IS GONE, ALONG WITH ITS HANDLER.
+     *
+     * The switch is removed from the annotation section, and this
+     * listener goes with it. Leaving the handler behind would mean a
+     * dead listener on a selector that now matches nothing - code
+     * that reads as though units can still be turned off, for an
+     * option that no longer exists.
+     *
+     * Units are still printed. They are part of the quantity, not a
+     * display preference: "100" and "100 N" are not the same
+     * statement, and the annotation model formats the unit into every
+     * magnitude whether or not anything asked it to.
+     */
+
     drawingProperties.querySelectorAll('[data-property]').forEach(input => {
         /*
          * Numeric fields update on both `input` (which
@@ -20793,6 +25551,14 @@ function bindFeaturePropertyControls(object) {
         input.addEventListener('input', () => {
             capture();
 
+            /*
+             * The edit is applied here but committed on blur, so the arrow
+             * and the feature's dependants refresh as the student types
+             * rather than when they click away. That comes from the refresh
+             * inside `renderCurrentDrawing`, not from a call here - a
+             * property field is only one of the paths that can move a force,
+             * and this was the path that happened to be remembered.
+             */
             if (apply()) {
                 renderCurrentDrawing();
             }
@@ -21659,9 +26425,31 @@ function updateFeatureProperty(object, key, value) {
             return false;
         }
 
+        /*
+         * THE PANEL SPEAKS MILLIMETRES; THE GEOMETRY WORKS IN WORLD UNITS.
+         *
+         * The Features panel shows Length as a physical size and the
+         * creation popup asks for one, so a student typing 750 means
+         * 750 mm. That has to become world units before the end is
+         * moved, or the beam grows to 750 world units and is then
+         * reported back as several metres - the same number meaning
+         * two different lengths depending on who is reading it.
+         *
+         * This is the SAME conversion the creation popup uses, which
+         * is what keeps the two routes from disagreeing about what a
+         * millimetre is.
+         */
+        const world = window.enggDimensions?.fromEngineering
+            ? window.enggDimensions.fromEngineering(
+                drawingState,
+                value,
+                'mm'
+            )
+            : value;
+
         g.end = {
-            x: g.start.x + (dx / current) * value,
-            y: g.start.y + (dy / current) * value
+            x: g.start.x + (dx / current) * world,
+            y: g.start.y + (dy / current) * world
         };
 
         /*
@@ -21844,11 +26632,36 @@ function updateFeatureProperty(object, key, value) {
         }
         if (key === 'length' && positive && !fixed('length')) {
             if (fixed('end') && fixed('start')) return false;
+
+            /*
+             * THE PANEL SPEAKS MILLIMETRES, THE GEOMETRY WORKS IN
+             * WORLD UNITS.
+             *
+             * The Features panel shows Length as a physical size, so
+             * a student typing 500 there means 500 mm. The end is
+             * moved to that distance from the anchor, which means
+             * the value has to become world units first - otherwise
+             * "500" would silently become a beam of 500 world units
+             * and then be reported back as something over a metre.
+             *
+             * The conversion is the SAME one the creation popup uses,
+             * which is what keeps the two routes from disagreeing: a
+             * length typed at creation and the same length typed in
+             * the panel move the beam by the same amount.
+             */
+            const world = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(
+                    drawingState,
+                    value,
+                    'mm'
+                )
+                : value;
+
             const target = fixed('end') ? start : end;
             const anchor = fixed('end') ? end : start;
             const direction = fixed('end') ? angle + Math.PI : angle;
-            target.x = anchor.x + value * Math.cos(direction);
-            target.y = anchor.y + value * Math.sin(direction);
+            target.x = anchor.x + world * Math.cos(direction);
+            target.y = anchor.y + world * Math.sin(direction);
             return true;
         }
         if (key === 'angle' && !fixed('angle')) {
@@ -22125,8 +26938,154 @@ function updateFeatureProperty(object, key, value) {
             key === 'end.x' || key === 'end.y'
         ) {
             const [pointKey, axis] = key.split('.');
+
             if (fixed(pointKey)) return false;
+
+            /*
+             * ========================================================
+             * A LOAD'S X IS A STATION, NOT A COORDINATE
+             * ========================================================
+             *
+             * The panel shows a load's two stations as Start and End, and
+             * the two are the same numbers as `start.x` and `end.x` - so
+             * the key has to mean the same thing here as it does there.
+             *
+             * Writing the raw x would be right for a horizontal beam and
+             * wrong for every other one: on a vertical member every station
+             * reads as zero, so the field would look broken and the load
+             * would move across the sheet rather than along the beam. The
+             * value is therefore converted from a station into a world
+             * point ON THE PARENT'S AXIS, which is where a station means
+             * what it says.
+             *
+             * THE Y IS NOT WRITTEN AT ALL.
+             *
+             * It used to be writable, and it was the load's outline height
+             * - stored independently of the body and of the direction.
+             * That independence is what let a reversed load keep its
+             * outline on the side it started: the arrows turned over and
+             * the outline stayed, and no field anywhere recorded which side
+             * the outline was meant to be on. Deriving the height from the
+             * body and the direction removes the disagreement by removing
+             * the second answer.
+             */
+            if (axis === "y" && isLoadGeometry(object)) {
+                return false;
+            }
+
+            if (axis === "x") {
+                const parent =
+                    relativeParentOf(object);
+
+                if (parent) {
+                    const placed =
+                        pointAtStation(
+                            parent,
+                            value
+                        );
+
+                    if (!placed) {
+                        return false;
+                    }
+
+                    g[pointKey].x = placed.x;
+                    g[pointKey].y = placed.y;
+
+                    return true;
+                }
+            }
+
             g[pointKey][axis] = value;
+
+            return true;
+        }
+
+        /*
+         * ========================================================
+         * A CHILD'S `relative.x` IS ITS STATION
+         * ========================================================
+         *
+         * The panel shows a force, a moment or a support as a distance
+         * along the body, and "Along Body" writes `relative.x`. It used to
+         * write an OFFSET from the parent's start, in x and y, so the same
+         * field meant two different things depending on which feature was
+         * selected - which is not a property, it is a coincidence.
+         *
+         * A station is one number measured along the parent's own axis, and
+         * it is the only figure a child of a body has. It is also what the
+         * panel reads, so the round trip - shown, edited, redrawn - ends
+         * where it started.
+         *
+         * A CHILD WITH NO PARENT KEEPS ITS ABSOLUTE POSITION.
+         *
+         * A force placed on empty canvas is a legitimate thing to draw, and
+         * it has no axis to be measured along; refusing the edit would take
+         * away a control the panel still shows.
+         */
+        if (
+            key === "relative.x" ||
+            key === "relative.y"
+        ) {
+            if (fixed("relative")) return false;
+
+            if (key === "relative.y") {
+                /*
+                 * Never writable. The height of a child comes from the
+                 * body's own normal and the force's direction; a field here
+                 * would be a third answer to the same question.
+                 */
+                return false;
+            }
+
+            const parent =
+                relativeParentOf(object);
+
+            const placed = parent
+                ? pointAtStation(parent, value)
+                : null;
+
+            if (parent && !placed) {
+                return false;
+            }
+
+            const target =
+                g.position || g.start;
+
+            if (!target) {
+                return false;
+            }
+
+            if (parent) {
+                target.x = placed.x;
+                target.y = placed.y;
+            } else {
+                target.x = value;
+            }
+
+            /*
+             * A FORCE CARRIES ITS TAIL AND ITS HEAD, and moving the tail
+             * must move the head with it at the same length and direction.
+             * Writing the tail alone would stretch the arrow as though the
+             * magnitude had changed, which is a different edit entirely.
+             */
+            if (
+                object.type === "force" &&
+                g.end &&
+                Number.isFinite(g.end.x) &&
+                g.start
+            ) {
+                const dx = g.end.x - g.start.x;
+                const dy = g.end.y - g.start.y;
+
+                g.end.x = target.x + dx;
+                g.end.y = target.y + dy;
+            }
+
+            if (g.position && g.start) {
+                g.position.x = target.x;
+                g.position.y = target.y;
+            }
+
             return true;
         }
 
@@ -22163,13 +27122,33 @@ function updateFeatureProperty(object, key, value) {
 
         if (key === 'rigidWidth' || key === 'rigidHeight') {
             if (fixed(key) || !positive) return false;
-            resizeRigidBody(object, key === 'rigidWidth' ? 'width' : 'height', value);
+
+            /*
+             * MILLIMETRES IN, WORLD UNITS STORED - the same contract
+             * every other length in the panel works to, so a body
+             * sized in the creation popup and one sized in its own
+             * properties come out the same size.
+             */
+            const millimetres = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+                : value;
+
+            resizeRigidBody(object, key === 'rigidWidth' ? 'width' : 'height', millimetres);
             return true;
         }
 
         if (key === 'rigidRadius') {
             if (fixed(key) || !positive) return false;
-            setRigidBodyRadius(object, value);
+
+            /*
+             * MILLIMETRES IN, WORLD UNITS STORED - as for every other
+             * length the panel edits.
+             */
+            const millimetres = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+                : value;
+
+            setRigidBodyRadius(object, millimetres);
             return true;
         }
 
@@ -22252,7 +27231,23 @@ function updateFeatureProperty(object, key, value) {
             return true;
         }
         if ((key === 'radius' || key === 'diameter') && positive && !fixed(key) && !fixed(key === 'radius' ? 'diameter' : 'radius')) {
-            g.radius = key === 'radius' ? value : value / 2;
+            /*
+             * MILLIMETRES IN, WORLD UNITS STORED - the same contract
+             * the span and rectangle setters use, and the same
+             * conversion the creation popup applies. A Diameter is
+             * halved on the way in, after the conversion, so "50 mm"
+             * becomes a radius of 25 mm whether it was typed in the
+             * panel or in the creation popup.
+             */
+            const millimetres = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+                : value;
+
+            g.radius =
+                key === 'radius'
+                    ? millimetres
+                    : millimetres / 2;
+
             return true;
         }
         if (object.type === 'arc') {
@@ -22281,7 +27276,21 @@ function updateFeatureProperty(object, key, value) {
             return true;
         }
         if ((key === 'width' || key === 'height') && positive && !fixed(key)) {
-            g[key] = value;
+            /*
+             * The panel shows these as MILLIMETRES and the geometry
+             * stores WORLD UNITS, so the value crosses the document
+             * scale on the way in. This is the same conversion the
+             * creation popup applies, which is what makes a Width
+             * typed at creation and a Width typed in the panel produce
+             * the same rectangle.
+             */
+            g[key] = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(
+                    drawingState,
+                    value,
+                    'mm'
+                )
+                : value;
             return true;
         }
         if (key === 'rotation' && !fixed(key)) {
@@ -22312,7 +27321,15 @@ function updateFeatureProperty(object, key, value) {
         }
         if (key === 'radius') {
             if (fixed('radius') || !positive) return false;
-            g.radius = value;
+
+            /*
+             * MILLIMETRES IN, WORLD UNITS STORED - as for every other
+             * length in the panel.
+             */
+            g.radius = window.enggDimensions?.fromEngineering
+                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+                : value;
+
             return true;
         }
         if (key === 'rotation') {
@@ -22571,23 +27588,19 @@ function handleCanvasClick(
         return;
     }
 
-    if (
-        isConstructionTool(
-            drawingState.activeTool
-        )
-    ) {
-        beginOrCompleteGeometry(
-            resolution
-        );
-
-        return;
-    }
-
     /*
-     * The dimension tools. Checked before Select because they are
-     * creation tools: they are told about a click on empty canvas to
-     * place a dimension there, not treated as a click that selects
-     * nothing.
+     * THE DIMENSION TOOLS, BEFORE THE CONSTRUCTION PIPELINE.
+     *
+     * A dimension tool IS a construction tool - it needs the same
+     * snapping and inference as everything else, which is why it is
+     * listed in `isConstructionTool`. But it does not share the
+     * construction CLICK pipeline: it collects references until Enter
+     * rather than taking points until a shape is complete.
+     *
+     * Sending it to `beginOrCompleteGeometry` therefore consumed every
+     * click and built nothing. The dimension check is first so a click
+     * reaches the tool's own handler, which is still fed by the same
+     * snapping resolution computed above.
      */
     if (
         isDimensionTool(
@@ -22597,6 +27610,18 @@ function handleCanvasClick(
         handleDimensionClick(
             resolution,
             event
+        );
+
+        return;
+    }
+
+    if (
+        isConstructionTool(
+            drawingState.activeTool
+        )
+    ) {
+        beginOrCompleteGeometry(
+            resolution
         );
 
         return;
@@ -22967,7 +27992,6 @@ function openDimensionEditorFor(object) {
             : "";
 
     window.enggDimensionEditor.open({
-        dimension: object,
         dimensionType: object.dimensionType,
         measuredText,
         drawingLength,
@@ -22976,7 +28000,6 @@ function openDimensionEditorFor(object) {
                 drawingState
             )?.unit || "mm",
         precision: object.style?.precision ?? 2,
-        showUnits: object.style?.showUnits !== false,
         sourceName: source
             ? source.name || source.type
             : "unknown source",
@@ -22991,13 +28014,6 @@ function openDimensionEditorFor(object) {
                 object.style = {
                     ...(object.style || {}),
                     precision: changes.precision
-                };
-            }
-
-            if (changes.showUnits !== undefined) {
-                object.style = {
-                    ...(object.style || {}),
-                    showUnits: changes.showUnits
                 };
             }
 
@@ -23141,6 +28157,34 @@ let manipulationDrag = null;
  * return to the list: with a feature still selected, the list
  * looked the same as a request to edit it.
  */
+/*
+ * A stored length, in MILLIMETRES, for a panel field captioned with
+ * a unit.
+ *
+ * The geometry holds world units, which have no physical size of
+ * their own - they only mean something through the document scale.
+ * A panel field captioned "mm" therefore has to be given
+ * millimetres, or it will print the raw world number under a unit
+ * that says otherwise. That is how a beam sized at 500 mm came to
+ * read "100.42 mm" in its own properties.
+ *
+ * There is ONE conversion for the whole panel so that a beam, a
+ * circle, a rectangle and a rigid body cannot disagree about what a
+ * millimetre is, and so that the number the student reads is the
+ * same number the creation popup asked for.
+ *
+ * It is deliberately at module scope: the length rows live in more
+ * than one panel builder, and a second copy of this conversion is
+ * exactly the duplicate-scale-system problem.
+ */
+function mmOf(worldLength) {
+    const value = Number(worldLength);
+
+    return window.enggDimensions?.toEngineering
+        ? window.enggDimensions.toEngineering(drawingState, value)
+        : { value, unit: "mm" };
+}
+
 let featurePanelView = "tree";
 
 /*
@@ -23262,6 +28306,37 @@ function moveObjectAndChildren(
     deltaY,
     originals
 ) {
+    /*
+     * THE DRAGGED FEATURE IS RESTORED TOO, NOT ONLY ITS CHILDREN.
+     *
+     * The delta here is measured from where the PRESS happened, so it is the
+     * whole distance travelled so far - not the distance since the last
+     * pointermove. That makes this function a SET rather than a nudge: it
+     * puts the feature at "wherever it was when the drag began, plus the
+     * total distance travelled". For that to hold, the feature has to be
+     * back at its starting position first.
+     *
+     * The children were already restored for exactly this reason and the
+     * feature itself was not, so on every pointermove the children snapped
+     * back to where the drag began and were moved the full distance again,
+     * while the feature being dragged accumulated a full delta on top of
+     * the previous one. Two or three moves in and it had left the cursor by
+     * a multiple of the distance dragged - which is what "it flies off"
+     * looked like, and it got worse the longer the drag went on.
+     *
+     * Restoring the feature from the same snapshot the children are restored
+     * from makes the drag idempotent: the same pointer position always
+     * produces the same result, and the feature stays under the cursor.
+     */
+    if (originals && Object.prototype.hasOwnProperty.call(originals, object.id)) {
+        object.geometry =
+            JSON.parse(
+                JSON.stringify(
+                    originals[object.id]
+                )
+            );
+    }
+
     translateObject(
         object,
         deltaX,
@@ -23627,7 +28702,29 @@ function manipulationHandles(
     }
 
     /*
-     * A DIMENSION likewise, but it moves by the offset the student
+     * An analysis object IS dragged, and the two halves of it stay in step.
+     *
+     * A Force Components and a Resultant are re-derived from their sources
+     * on every refresh, so their geometry cannot simply be translated - the
+     * next refresh would put them back where the source says they belong
+     * and the drag would appear to do nothing. They carry a
+     * `placementOffset` for that reason, and the refresh applies it to
+     * whatever it derives, so the student's placement survives while the
+     * numbers stay true.
+     *
+     * An earlier version of this file REFUSED to move them instead, on the
+     * reasoning that a reading has no place of its own. That was the wrong
+     * conclusion from a real observation: what it actually caught was a
+     * double-translation that made them fly past the cursor, which is a bug
+     * in the move and not a reason to take the feature away. Both faults
+     * were in `translateObject` - the offset composed instead of being set,
+     * and the geometry was translated on top of the caller's own
+     * translation - and both are fixed there. The feature is draggable, and
+     * it lands under the cursor.
+     */
+
+    /*
+     * A Dimension likewise, but it moves by the offset the student
      * dragged, not by jumping to the pointer - the offset between the
      * measured geometry and the dimension line is what they chose, and
      * losing it would put the dimension back on top of the thing it
@@ -24059,7 +29156,18 @@ const CONSTRUCTION_ACTIVE_PHASES = [
     "first-point",
     "statics-span",
     "statics-attach",
-    "constant-load-build",
+
+    /*
+     * The four steps of a distributed load. Each is listed because each
+     * already holds something the student chose - the body, the start, the
+     * region - so a click continues the construction rather than beginning
+     * a new one.
+     */
+    "distributed-load-start",
+    "distributed-load-end",
+    "distributed-load-magnitude",
+    "distributed-load-direction",
+
     "distributed-load-build",
     "distributed-load-span",
     "truss-construct",
@@ -25035,6 +30143,70 @@ function applyStaticsManipulation(
     }
 
     if (kind === "position" && g.position) {
+        /*
+         * A SUPPORT IS PINNED TO ITS MEMBER, NOT TO A PLACE.
+         *
+         * This handle used to write the raw cursor point straight into
+         * `position` and then re-read the parent from wherever the pointer
+         * happened to be. Because the symbol is drawn clear of the beam, the
+         * pointer is almost never over it - so the parent came back null, the
+         * support was orphaned, and the next frame had no body to slide along
+         * and no attachment to hold it. It became a free-floating mark the
+         * student could drag anywhere, which is what "it unpins the moment I
+         * touch it" describes.
+         *
+         * So the drag is resolved the way the placement was: projected onto
+         * the member's centreline and stored as its FRACTION along it. The
+         * support keeps its body, keeps its place on that body, and survives
+         * the body being resized or moved afterwards - which is the whole
+         * point of storing a fraction rather than a world coordinate.
+         *
+         * A support with no body is the one case where a free position is
+         * right: there is no member to be pinned to, so the pointer is the
+         * only answer available.
+         */
+        if (isSupportType(object.type)) {
+            const parent = object.parentId
+                ? drawingState.objects.find(
+                      candidate => candidate.id === object.parentId,
+                  )
+                : null;
+
+            const frame = parent
+                ? enggBodyFrames.frameOf(parent)
+                : null;
+
+            if (!frame) {
+                g.position = {
+                    x: point.x,
+                    y: point.y
+                };
+
+                return;
+            }
+
+            const clamped = Math.min(
+                frame.length,
+                Math.max(0, enggBodyFrames.positionOn(frame, point)),
+            );
+
+            const moved = enggBodyFrames.pointAt(frame, clamped);
+
+            g.attachment = enggBodyFrames.attachmentFor(frame, moved);
+
+            const placement = enggBodyFrames.supportPlacement(
+                parent,
+                moved,
+                g.flipped === true,
+            );
+
+            if (placement) {
+                g.position = placement.render;
+            }
+
+            return;
+        }
+
         g.position = {
             x: point.x,
             y: point.y
@@ -25383,6 +30555,67 @@ function commitStaticsAttachment(
                     body
                 )
             );
+
+        /*
+         * THE ATTACHMENT IS TAKEN FROM THE BODY FRAME, ON THE WAY IN.
+         *
+         * The factory can only seed an attachment from the raw point it was
+         * given, and it guesses a DISTANCE ALONG the member from the point's
+         * X coordinate. That guess is only right when the body starts at the
+         * origin and runs along +X - which is why a support on any other
+         * member appeared somewhere other than where it was clicked, and
+         * usually at an end: a body from x=100 to x=400 with a support
+         * clicked at x=250 was filed 250 units along a member whose origin is
+         * at 100, so it resolved to x=350 and then clamped toward the far
+         * end. A member running diagonally was wrong in the other way, the
+         * length being measured along X on a member that leaves X behind.
+         *
+         * So the distance is measured ON THE MEMBER - the projection the body
+         * frame exists to provide - and stored as the FRACTION of its
+         * length, which is the form that also survives the member being
+         * resized later. The guess is left in place for a support with no
+         * body, where there is no frame to measure against and nothing to be
+         * wrong about either.
+         */
+        if (body) {
+            const frame =
+                enggBodyFrames.frameOf(body);
+
+            if (frame) {
+                const distance =
+                    enggBodyFrames.positionOn(
+                        frame,
+                        supportPoint
+                    );
+
+                object.geometry.attachment =
+                    enggBodyFrames.attachmentFor(
+                        frame,
+                        supportPoint
+                    );
+
+                const placement =
+                    enggBodyFrames.supportPlacement(
+                        body,
+                        supportPoint,
+                        object.geometry.flipped === true
+                    );
+
+                if (placement) {
+                    object.geometry.position =
+                        placement.render;
+                }
+
+                /*
+                 * Recorded because a support placed away from an end is the
+                 * ordinary case - a roller under the middle of a simply
+                 * supported beam - and a distance that says so is worth
+                 * having on the object itself.
+                 */
+                object.geometry.distanceAlongBody =
+                    distance;
+            }
+        }
 
         if (snappedToEnd) {
             /*
@@ -25789,6 +31022,65 @@ function beginSelectionDrag(
             point
         )
     ) {
+        /*
+         * ========================================================
+         * A DRAG THAT STARTS ON A MAGNITUDE BOX
+         * ========================================================
+         *
+         * The box is not a feature, so it is not in `selectedObjectIds` and
+         * moving the selection would move the FORCE instead - which is how a
+         * student trying to shift a label ends up shifting a load.
+         *
+         * What is recorded is the SOURCE feature, where the box naturally
+         * falls, and how far the pointer has travelled. Nothing is written
+         * until the drag ends: the offset is applied to a copy on every
+         * frame so the box follows the cursor live, and committed once on
+         * release, which is what makes the whole drag one undo step rather
+         * than one per frame.
+         */
+        const picked =
+            pickDerivedMagnitude(
+                point
+            );
+
+        if (picked) {
+            const source =
+                drawingState.objects.find(
+                    candidate =>
+                        candidate.id ===
+                        picked.sourceFeatureId
+                );
+
+            selectionDrag = {
+                pointerId:
+                    event.pointerId,
+                start: point,
+                current: point,
+                moved: false,
+                box: null,
+
+                /*
+                 * The magnitude being moved, kept apart from `box` so the
+                 * marquee code does not try to draw one.
+                 */
+                derived: {
+                    sourceFeatureId:
+                        picked.sourceFeatureId,
+                    natural:
+                        picked.annotation
+                            .placement,
+                    offsetX: 0,
+                    offsetY: 0
+                }
+            };
+
+            drawingCanvas.setPointerCapture(
+                event.pointerId
+            );
+
+            return;
+        }
+
         return;
     }
 
@@ -25867,6 +31159,41 @@ function updateSelectionDrag(
     selectionDrag.moved =
         moved;
 
+    /*
+     * A MAGNITUDE DRAG: the offset follows the pointer, and only the offset.
+     *
+     * The value itself is still derived, so the box cannot be dragged into
+     * disagreeing with the force it belongs to - moving it changes where the
+     * number is, never what it says.
+     */
+    if (selectionDrag.derived) {
+        selectionDrag.derived.offsetX =
+            point.x - start.x;
+
+        selectionDrag.derived.offsetY =
+            point.y - start.y;
+
+        const source =
+            objectsByIds([
+                selectionDrag.derived
+                    .sourceFeatureId,
+            ])[0];
+
+        if (source) {
+            source.geometry =
+                source.geometry || {};
+
+            source.geometry.magnitudeOffset = {
+                x: selectionDrag.derived.offsetX,
+                y: selectionDrag.derived.offsetY
+            };
+
+            renderCurrentDrawing();
+        }
+
+        return;
+    }
+
     selectionDrag.box = {
         start,
 
@@ -25942,6 +31269,88 @@ function finishSelectionDrag(
 
     const currentSelection =
         selectionDrag;
+
+    /*
+     * ========================================================
+     * A MOVED MAGNITUDE IS ONE UNDO STEP
+     * ========================================================
+     *
+     * The offset was written to the feature on every frame of the drag, so
+     * that the box follows the cursor. Undo is about ACTIONS, and "moved the
+     * label" is one of them - recording a history entry per frame would fill
+     * the Undo list with the intermediate positions of a single drag.
+     *
+     * So the state from BEFORE the drag is taken here, the drag is
+     * committed against it, and the whole movement is one entry. A click
+     * that did not move the box commits nothing at all.
+     *
+     * This is the same arrangement `commitMove` uses for the selection, and
+     * deliberately so - a dragged label and a dragged beam are the same kind
+     * of act to the student.
+     */
+    if (currentSelection.derived) {
+        if (currentSelection.moved) {
+            const previous =
+                enggDrawingState
+                    .snapshotDrawing(
+                        drawingState
+                    );
+
+            /*
+             * The offset is already on the feature from the move handler;
+             * this records it as a change worth undoing.
+             */
+            enggDrawingState
+                .commitDrawingChange(
+                    drawingState,
+                    previous
+                );
+
+            setToolMessage(
+                "Moved the magnitude"
+            );
+        } else {
+            /*
+             * A click with no movement: the box goes back where it
+             * naturally falls, so a nudge that was abandoned does not leave
+             * the label a pixel out of place forever.
+             */
+            const source =
+                objectsByIds([
+                    currentSelection.derived
+                        .sourceFeatureId,
+                ])[0];
+
+            if (source?.geometry) {
+                source.geometry.magnitudeOffset =
+                    null;
+            }
+
+            setToolMessage(
+                "Ready"
+            );
+        }
+
+        selectionDrag =
+            null;
+
+        syncSelectionInteraction();
+
+        renderProperties();
+        renderCurrentDrawing();
+
+        if (
+            drawingCanvas.hasPointerCapture(
+                event.pointerId
+            )
+        ) {
+            drawingCanvas.releasePointerCapture(
+                event.pointerId
+            );
+        }
+
+        return;
+    }
 
     if (
         currentSelection.moved
@@ -26043,6 +31452,13 @@ function cancelInteraction() {
     window.enggDimensionEditor?.close();
 
     /*
+     * So does the Plot Editor. It previews onto the sheet, so leaving it
+     * open across a tool switch would leave half-typed equations drawn on
+     * the drawing with nothing on screen to account for them.
+     */
+    window.enggPlotEditor?.close();
+
+    /*
      * A running Modify session is part of the
      * unfinished operation, so it is abandoned too.
      */
@@ -26114,6 +31530,22 @@ function finishActiveConstruction() {
     const interaction =
         drawingState.interaction;
 
+    /*
+     * SMART DIMENSION REFERENCE SELECTION. Enter is the commit point:
+     * it means "use what I picked" rather than "pick one more".
+     *
+     * It is checked BEFORE the phase test because the dimension tool
+     * records its stage in `dimensionStage`, not in `phase` - so
+     * `isConstructionInProgress` is false while references are being
+     * collected, and a check that relied on it would never fire.
+     */
+    if (
+        isDimensionTool(drawingState.activeTool) &&
+        interaction?.dimensionStage === "selecting"
+    ) {
+        return commitDimensionSelection();
+    }
+
     if (
         !interaction ||
         !isConstructionInProgress()
@@ -26175,6 +31607,16 @@ function finishActiveConstruction() {
     }
 
     if (isLoadBuildPhase(interaction)) {
+        /*
+         * Only the VARYING load can be finished with Enter.
+         *
+         * The constant load's steps are click-driven - start, end, direction
+         * - and Enter has nothing to finish: magnitude is typed in the
+         * panel and the direction is chosen on the canvas. Enter used to
+         * commit a constant load straight from the build phase, which is
+         * what created one with a defaulted direction the student never
+         * chose.
+         */
         const points =
             interaction
                 .distributedLoadPoints ||
@@ -26184,14 +31626,7 @@ function finishActiveConstruction() {
             return false;
         }
 
-        if (
-            phase ===
-            "constant-load-build"
-        ) {
-            finishConstantLoadConstruction();
-        } else {
-            finishDistributedLoadConstruction();
-        }
+        finishDistributedLoadConstruction();
 
         return true;
     }
@@ -26251,7 +31686,9 @@ function deselectIfJustCreated() {
      */
     if (
         window.enggScaleCalibration?.isOpen?.() ||
-        window.enggDimensionEditor?.isOpen?.()
+        window.enggDimensionEditor?.isOpen?.() ||
+        window.enggPlotEditor?.isOpen?.() ||
+        window.enggCreationDimension?.isOpen?.()
     ) {
         return false;
     }
@@ -28108,6 +33545,44 @@ function mirrorObjectAcrossLine(
          * what moves the shape.
          */
         g.points.forEach(reflect);
+
+        return;
+    }
+
+    if (object.type === "analysis-diagram") {
+        /*
+         * ========================================================
+         * AN ANALYSIS DIAGRAM IS A GRAPH, AND A GRAPH IS NOT A SHAPE
+         * ========================================================
+         *
+         * The frame moves - both ends of it, so the whole axis is
+         * reflected rather than slid.
+         *
+         * WHAT DOES NOT MOVE IS AS IMPORTANT AS WHAT DOES. The
+         * diagram's local range is the LENGTH OF A MEMBER, measured along that
+         * member, and it is unchanged by reflecting the diagram: the
+         * student still means the same 0-to-500. And the plot
+         * expressions stay exactly as they were typed - `10 - 5x` does
+         * not become `10 - 5x` reflected, because it is not a set of
+         * points but a rule, and reflecting a rule is not a thing that
+         * can be done.
+         *
+         * WITHOUT THIS BRANCH IT SILENTLY DID NOTHING. Every other Statics
+         * feature has a case here, so mirroring a beam worked and mirroring
+         * an SFD produced a second copy in the identical place - which
+         * looks exactly like the mirror failed, with no error to say so.
+         *
+         * The placement offset goes with it: it is where the student put
+         * the graph relative to its member, and reflecting the graph
+         * without reflecting that offset would put the copy back on top of
+         * the original.
+         */
+        reflect(g.start);
+        reflect(g.end);
+
+        if (g.placementOffset) {
+            reflect(g.placementOffset);
+        }
     }
 }
 
@@ -29325,35 +34800,21 @@ function renderedBounds(
     }
 
     if (object.type === "varying-load") {
+        /*
+         * THE DRAWN PROFILE, read from the load module.
+         *
+         * A varying load stores an intensity at each end, and everything
+         * that needs to know how far its arrows reach - the fit bounds here,
+         * the hit test, the renderer - has to turn that into a profile
+         * first. That conversion was written out again at each of them, and
+         * each copy could disagree with the others about how long a taper
+         * is drawn. The load module owns it now.
+         */
         return [
             ...distributedLoadRenderedPoints(
-                {
-                    start: geometry.start,
-                    end: geometry.end,
-                    direction: geometry.direction,
-                    interval: geometry.interval,
-
-                    points: [
-                        {
-                            t: 0,
-                            magnitude: Math.max(
-                                0,
-                                Math.abs(
-                                    Number(geometry.startIntensity) || 0
-                                )
-                            )
-                        },
-                        {
-                            t: 1,
-                            magnitude: Math.max(
-                                0,
-                                Math.abs(
-                                    Number(geometry.endIntensity) || 0
-                                )
-                            )
-                        }
-                    ]
-                },
+                enggLoadProfile.drawnProfile(
+                    geometry
+                ),
                 scale
             )
         ];
@@ -29557,17 +35018,31 @@ function distributedLoadRenderedPoints(
     geometry,
     scale
 ) {
+    /*
+     * THE PROFILE AS DRAWN, whatever kind of load this is.
+     *
+     * Read through the one function that builds it, so a uniform load and a
+     * varying one are measured by the same rule and neither can drift from
+     * what the renderer draws.
+     */
+    const profile =
+        typeof enggLoadProfile === "undefined"
+            ? geometry
+            : enggLoadProfile.drawnProfile(
+                geometry
+            );
+
     if (
-        !geometry ||
-        !geometry.start ||
-        !geometry.end
+        !profile ||
+        !profile.start ||
+        !profile.end
     ) {
         return [];
     }
 
     const points = [
-        geometry.start,
-        geometry.end
+        profile.start,
+        profile.end
     ];
 
     if (
@@ -29579,7 +35054,7 @@ function distributedLoadRenderedPoints(
 
     const samples =
         enggLoadProfile.arrowSamples(
-            geometry
+            profile
         );
 
     if (!samples.length) {
@@ -30622,36 +36097,56 @@ function deleteSelectedObjects() {
             selectedIds
         );
 
-    drawingState.objects =
-        drawingState.objects.filter(
-            object =>
-                !selectedSet.has(
-                    object.id
-                )
+    /*
+     * ========================================================
+     * A DELETION TAKES ITS DEPENDENTS WITH IT
+     * ========================================================
+     *
+     * Deleting a Beam used to leave its Support, its Load, its Moment and
+     * its SFD standing, each still naming a member that was no longer
+     * there. A support rendered an X - the "missing source" marker - but a
+     * diagram had no such marker and simply went on drawing its axes, its
+     * x (m) label and its frame. That is where the orphaned-axis report
+     * came from: not a renderer leaking nodes, but a FEATURE that had lost
+     * its parent and went on being drawn.
+     *
+     * THE CHILDREN GO, AND THE REASON IS NOT SYMMETRY.
+     *
+     * None of these features has a meaning without the body: a support has
+     * no member to push against, a load no region to act on, a diagram no
+     * span to be read against. The student's own work - the expressions in
+     * a Plot, the lines in a Sketch - is not discarded as data; it goes
+     * because the thing it describes is gone, and Undo brings the whole
+     * arrangement back because this is one committed change.
+     *
+     * ONE PASS, NOT A LOOP.
+     *
+     * A support may itself have children - its attachment marker - so the
+     * descendants are collected first and then removed together. Walking
+     * the tree in one pass cannot loop even on a malformed file, and a
+     * cycle would not hang the delete.
+     *
+     * `resolveAnalysisAfterDeletion` below still runs, and still decides
+     * what a surviving analysis object means, because a RESULTANT or a
+     * COMPONENTS pair is a reading of its sources rather than a child of
+     * one: it goes with them only once nothing is left to read.
+     */
+    const removedIds =
+        enggDrawingState.removeObjectsAndDescendants(
+            drawingState,
+            selectedSet
         );
 
     /*
      * Settle the analysis objects that were reading what has just gone.
      *
-     * Called with the ids that were DELETED, not with every id on the
-     * sheet, so it can tell a source that has been removed from one
-     * that is merely there. A Force Components and a Resultant are
-     * generated from their sources and mean nothing alone, so they go
-     * with them; a diagram is a workspace the student has been drawing
-     * in, so it stays and is marked.
-     *
-     * Without this, deleting a force left a live-looking components
-     * object on the sheet describing a force that was not there any
-     * more - which is worse than an error message, because it looks
-     * like an answer.
-     *
-     * It runs BEFORE the commit, so the snapshot taken for Undo
-     * already reflects the resolution and Undo restores the whole
-     * coherent state rather than resurrecting the dangling reference.
+     * It runs BEFORE the commit, so the snapshot taken for Undo already
+     * reflects the resolution and Undo restores the whole coherent state
+     * rather than resurrecting a dangling reference.
      */
     enggDrawingState.resolveAnalysisAfterDeletion(
         drawingState,
-        selectedIds
+        removedIds
     );
 
     drawingState.selection
@@ -30738,6 +36233,55 @@ if (
             )
     );
 }
+
+/*
+ * THE THREE DISPLAY SETTINGS, WIRED.
+ *
+ * Each writes its own field on `state.display` and nothing else - the
+ * three are independent, so one being turned off must not imply anything
+ * about the others. That is the whole reason they are three controls and
+ * not one "Display" switch: "magnitudes without units" is a real thing to
+ * want, and a single switch cannot express it.
+ *
+ * No snapshot and no commit. A display setting is not a change to the
+ * drawing - nothing is added, removed or moved, and the geometry is
+ * identical either way - so putting it in the Undo stack would make Ctrl+Z
+ * appear to do nothing on the first press and undo whatever the student did
+ * before it on the second. Grid and Snap are treated the same way.
+ *
+ * The dimensions are hidden by SETTING them, not by removing them, so
+ * turning the toggle back on restores every dimension exactly as it was -
+ * including the ones the student had deliberately deleted, because those are
+ * still absent from the document.
+ */
+drawingDisplayToggles.forEach(({ button, key }) => {
+    if (!button) {
+        return;
+    }
+
+    button.addEventListener("click", () => {
+        const display = {
+            ...(drawingState.display || {})
+        };
+
+        const nextOn =
+            button.getAttribute("aria-pressed") !==
+            "true";
+
+        display[key] = nextOn;
+
+        drawingState.display = display;
+
+        if (key === "showDimensions") {
+            drawingState.dimensionsVisible =
+                nextOn;
+        }
+
+        syncWorkspaceSettingToggles();
+
+        renderCurrentDrawing();
+    });
+});
 
 if (
     drawingUndo
@@ -31169,49 +36713,25 @@ function confirmDiscardUnsavedChanges(action) {
 }
 
 /*
- * The export formats offered, in one place.
+ * ========================================================
+ * SAVING AS AN IMAGE
+ * ========================================================
  *
- * PNG and JPG share the raster pipeline because they differ only in
- * how the finished image is encoded. SVG is listed with them but is
- * a genuinely different output - it keeps the drawing as vectors
- * rather than pixels - so it is marked rather than pretending to be
- * the same thing.
+ * There is no separate Export workflow. A student who wants a
+ * PNG chooses Save As and picks the PNG type in the system panel;
+ * the drawing is then rendered by the SAME renderer that draws the
+ * canvas, and the bytes go straight into the file the panel named.
+ *
+ * That is why there is one image producer here and no export menu:
+ * the format is decided once, by the Save As pipeline, and the
+ * rendering is decided once, by this function.
+ *
+ * What the image contains is the DRAWING and only the drawing - the
+ * renderer builds it from the model, not from a screenshot of the
+ * editor, so no panel, cursor, snap marker, selection highlight or
+ * half-finished preview can reach it. Selections are suppressed
+ * because the export renders from a state whose selection is empty.
  */
-const EXPORT_FORMATS = [
-  { id: "png", label: "PNG", vector: false },
-  { id: "jpg", label: "JPG", vector: false },
-  { id: "svg", label: "SVG", vector: true }
-];
-
-function openExportMenu() {
-  /*
-   * Export is a choice, not a single action, so the shortcut opens
-   * the same list the menu shows rather than silently picking a
-   * format the user did not ask for.
-   */
-  const choice = window.prompt(
-    "Export as:\n" +
-    EXPORT_FORMATS.map(
-      (format, index) => `${index + 1}. ${format.label}`
-    ).join("\n") +
-    "\n\nEnter 1, 2 or 3",
-    "1"
-  );
-
-  if (choice === null) {
-    return;
-  }
-
-  const index = Number(choice) - 1;
-
-  const format = EXPORT_FORMATS[index];
-
-  if (!format) {
-    return;
-  }
-
-  exportDrawing(format);
-}
 
 /*
  * Every point the drawing is actually drawn through, across all of
@@ -31304,12 +36824,12 @@ enggDrawingReference.configure({
 });
 
 /*
- * The document's name without its extension, which is what an
- * export is named after.
+ * The document's name without its extension, which is what an image is
+ * named after.
  *
- * An export of "Report.enggdraw" is "Report.png", not
- * "Report.enggdraw.png" - the export is a different kind of file of
- * the same drawing, not a second project file.
+ * An image of "Report.enggdraw" is "Report.png", not
+ * "Report.enggdraw.png" - the image is a different kind of file of the
+ * same drawing, not a second project file.
  */
 function exportBaseName() {
     const current =
@@ -31326,112 +36846,101 @@ function exportBaseName() {
 }
 
 /*
- * Export the drawing in a chosen format.
+ * RENDER THE ACTIVE SHEET AS AN IMAGE, AS A BLOB.
  *
- * Every format goes through the one clean render, so a PNG, a JPG
- * and a print of the same drawing differ only in how the finished
- * image is encoded - never in what they show. The bounds come from
- * what is DRAWN, so an arrowhead, a load profile or a dimension
- * that reaches past its stored geometry is still inside the image.
+ * This is the one image producer in the application. Save As calls it
+ * when the student picks PNG or JPG in the system panel; nothing else
+ * renders an image, so a PNG and a JPG of the same drawing cannot
+ * differ in what they show - only in how the finished pixels are
+ * encoded.
+ *
+ * The drawing is rebuilt from the MODEL by the same renderer the canvas
+ * uses, not captured from the screen. That is what guarantees the image
+ * is a clean engineering snip: the renderer draws committed geometry and
+ * the students' own content, and there is no code path by which a
+ * toolbar, a Feature panel, a cursor, a snap label, a selection
+ * highlight or an unfinished preview could be included.
+ *
+ * The bounds come from what is DRAWN - arrowheads, load profiles,
+ * dimension text - rather than from stored geometry, so nothing that
+ * reaches past its stored extent is cropped.
+ *
+ * Resolves to null when there is nothing to render, or the raster step
+ * fails, so the caller reports an honest failure instead of writing an
+ * empty file. Nothing about the document is touched either way.
  */
-function exportDrawing(format) {
-    if (
-        !drawingState.objects.length
-    ) {
-        setToolMessage(
-            "There is nothing to export"
-        );
+function renderSheetImageBlob(formatId) {
+    return new Promise((resolve) => {
+        if (!drawingState.objects.length) {
+            resolve(null);
+            return;
+        }
 
-        return;
-    }
+        const jpg = formatId === "jpg";
 
-    const name = exportBaseName();
+        const image =
+            enggDrawingExport.renderImage(
+                drawingState,
+                drawnBoundsPoints(),
+                {
+                    width: enggDrawingExport.DEFAULT_OUTPUT_PX,
 
-    if (format.id === "svg") {
-        exportSvg(`${name}.svg`);
+                    /*
+                     * JPG has no transparency, so it is laid down on
+                     * white. PNG is left transparent outside the
+                     * drawing, which is the more useful of the two for
+                     * a line drawing.
+                     */
+                    background: jpg ? "#ffffff" : null
+                }
+            );
 
-        return;
-    }
+        if (!image) {
+            resolve(null);
+            return;
+        }
 
-    const image =
-        enggDrawingExport.renderImage(
-            drawingState,
-            drawnBoundsPoints(),
-            {
-                width: enggDrawingExport.DEFAULT_OUTPUT_PX,
+        /*
+         * The SVG the render produced is the source of the raster, so
+         * the image is the same drawing rather than a second rendering
+         * of it that might differ.
+         */
+        const dataUrl =
+            new XMLSerializer()
+                .serializeToString(image.svg);
+
+        const encoded =
+            `data:image/svg+xml;charset=utf-8,${encodeURIComponent(dataUrl)}`;
+
+        const raster =
+            new Image();
+
+        raster.onload = () => {
+            image.context.drawImage(
+                raster,
+                0,
+                0,
+                image.canvas.width,
+                image.canvas.height
+            );
+
+            image.canvas.toBlob(
+                (blob) => resolve(blob || null),
+                jpg ? "image/jpeg" : "image/png",
 
                 /*
-                 * JPG has no transparency, so it is laid down on
-                 * white. PNG is left transparent outside the
-                 * drawing, which is the more useful of the two for
-                 * a line drawing.
+                 * A quality that keeps dimension text and graph axes
+                 * readable. High enough for engineering use, not so
+                 * high that a large sheet becomes an enormous file.
                  */
-                background:
-                    format.id === "jpg"
-                        ? "#ffffff"
-                        : null
-            }
-        );
+                0.92
+            );
+        };
 
-    if (!image) {
-        setToolMessage(
-            "Could not export that drawing"
-        );
+        raster.onerror = () => resolve(null);
 
-        return;
-    }
-
-    /*
-     * The SVG the render produced is the source of the raster, so
-     * the image is the same drawing rather than a second rendering
-     * of it that might differ.
-     */
-    const dataUrl =
-        new XMLSerializer()
-            .serializeToString(image.svg);
-
-    const encoded =
-        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(dataUrl)}`;
-
-    const raster =
-        new Image();
-
-    raster.onload = () => {
-        image.context.drawImage(
-            raster,
-            0,
-            0,
-            image.canvas.width,
-            image.canvas.height
-        );
-
-        image.canvas.toBlob(
-            (blob) => {
-                if (!blob) {
-                    setToolMessage(
-                        "Could not export that drawing"
-                    );
-
-                    return;
-                }
-
-                downloadBlob(
-                    blob,
-                    `${name}.${format.id}`
-                );
-
-                setToolMessage(
-                    `Exported ${name}.${format.id}`
-                );
-            },
-            format.id === "jpg"
-                ? "image/jpeg"
-                : "image/png",
-            0.92
-        );
-    };
-
-    raster.src = encoded;
+        raster.src = encoded;
+    });
 }
 
 /*
@@ -31519,81 +37028,6 @@ function printDrawing() {
     );
 }
 
-function downloadBlob(
-    blob,
-    fileName
-) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = fileName;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-}
-
-/*
- * Export the drawing as SVG, which keeps it as vectors.
- *
- * The drawing's own renderer already produces SVG, so this is the
- * clean render with the editor's layout styling stripped out. An
- * SVG export is for placing the drawing in other software; the
- * .enggdraw file remains the editable original.
- */
-function exportSvg(fileName) {
-    const bounds =
-        enggDrawingExport.paddedBounds(
-            drawnBoundsPoints(),
-            enggDrawingExport.DEFAULT_OUTPUT_PX,
-            enggDrawingExport.DEFAULT_OUTPUT_PX
-        );
-
-    if (!bounds) {
-        setToolMessage(
-            "There is nothing to export"
-        );
-
-        return;
-    }
-
-    const svg =
-        enggDrawingExport.renderClean(
-            drawingState,
-            bounds
-        );
-
-    if (!svg) {
-        return;
-    }
-
-    const clone = svg.cloneNode(true);
-
-    /*
-     * The render carries the editor's own classes and any styling
-     * they depend on. A standalone file cannot rely on that CSS, so
-     * the presentation attributes the renderer already set are kept
-     * and the class-based styling is not carried across.
-     */
-    downloadBlob(
-        new Blob(
-            [
-                '<?xml version="1.0" encoding="UTF-8"?>\n',
-                new XMLSerializer().serializeToString(clone)
-            ],
-            { type: "image/svg+xml" }
-        ),
-        fileName
-    );
-
-    setToolMessage(
-        `Exported ${fileName}`
-    );
-}
-
 /*
  * Save the drawing.
  *
@@ -31606,8 +37040,7 @@ function exportSvg(fileName) {
 async function saveDrawing() {
     const saved =
         await enggFileSave.save(
-            serializeDocumentBody(),
-            suggestedFileName()
+            serializeDocumentBody()
         );
 
     if (!saved) {
@@ -31629,35 +37062,72 @@ async function saveDrawing() {
 }
 
 /*
- * Save to a chosen name and location.
+ * Save to a chosen name, location and format.
  *
- * The name and the folder are the user's to choose, and the panel that
- * offers them is the operating system's own, so this behaves the way
- * saving from any other application does.
+ * The name, the folder and the FORMAT are the user's to choose, and the
+ * panel that offers them is the operating system's own, so this behaves
+ * the way saving from any other application does.
  *
- * The document's identity changes only once the file has actually been
- * written. Cancelling the panel, or a disk that refuses, leaves the
- * document as it was - still unsaved, still pointing at whatever file
- * it had. Adopting the new name first would let a cancelled Save As
- * quietly relabel the document, and the next Save would then go
- * somewhere the user never chose.
+ * The document's identity changes only once a DOCUMENT file has actually
+ * been written. Saving a PNG does not make the document "be" a PNG, so
+ * an image save leaves the document's name and handle exactly as they
+ * were - cancelling the panel, or a disk that refuses, likewise leaves
+ * the document as it was.
+ *
+ * SAVING IS NOT AN EDIT. Nothing here touches the undo history: the
+ * document is written, not changed, so there is nothing to undo and no
+ * entry is added.
  */
 async function saveDrawingAs() {
-    const saved =
+    const result =
         await enggFileSave.saveAs(
             serializeDocumentBody(),
-            suggestedFileName()
+            suggestedFileName(),
+            {
+                /*
+                 * The image producer, handed in rather than reached for.
+                 * file-save writes the bytes; this is what makes them,
+                 * from the same renderer the canvas uses. It is called
+                 * only when the chosen format is an image.
+                 */
+                renderImage: renderSheetImageBlob
+            }
         );
 
-    if (!saved) {
+    /* Cancelled. Nothing happened, so nothing is reported or changed. */
+    if (!result) {
         return;
     }
 
-    documentFileName = saved;
+    if (result.error) {
+        /*
+         * A real failure - an empty drawing, or a render that could not
+         * produce pixels. Reported honestly, and the document keeps its
+         * old name and path so a retry goes to the same place.
+         */
+        setToolMessage(result.error);
 
-    markDocumentClean();
+        return;
+    }
 
-    setToolMessage(`Saved ${saved}`);
+    /*
+     * ONLY A DOCUMENT SAVE ADOPTS THE NAME.
+     *
+     * An image is a copy of the drawing, not the document itself, so
+     * the document keeps its own file name and stays marked clean -
+     * saving a picture is a completed action, not an unsaved edit.
+     */
+    if (!result.image) {
+        documentFileName = result.name;
+
+        markDocumentClean();
+
+        setToolMessage(`Saved ${result.name}`);
+
+        return;
+    }
+
+    setToolMessage(`Saved ${result.name}`);
 }
 
 /*
@@ -31892,9 +37362,14 @@ function openDrawing() {
         ) {
             window
                 .showOpenFilePicker({
-                    types: [
-                        enggFileSave.fileTypes()
-                    ],
+                    /*
+                     * The same file types Save As offers, so what can be
+                     * opened and what can be saved are one list. It is
+                     * the array the module returns - not wrapped again,
+                     * which would hand the picker a nested list it
+                     * cannot read.
+                     */
+                    types: enggFileSave.fileTypes(),
                     multiple: false
                 })
                 .then(async (handles) => {
@@ -31933,8 +37408,7 @@ function openDrawing() {
                         )
                     ) {
                         enggFileSave.setFileHandle(
-                            handle,
-                            opened.name
+                            handle
                         );
                     }
                 })
@@ -32003,9 +37477,6 @@ const FILE_ACTIONS = {
   },
   "save-as"() {
     saveDrawingAs();
-  },
-  export() {
-    openExportMenu();
   },
   print() {
     printDrawing();
@@ -33130,14 +38601,6 @@ document.addEventListener(
                 return;
             }
 
-            if (key === "e" && event.shiftKey) {
-                event.preventDefault();
-
-                FILE_ACTIONS.export();
-
-                return;
-            }
-
             if (key === "p" && event.shiftKey) {
                 event.preventDefault();
 
@@ -33257,6 +38720,46 @@ document.addEventListener(
             closeCoordinateSystemMenu();
 
             /*
+             * A DIALOG GOES FIRST. The editors hold the keyboard while they
+             * are open - they preview the student's half-typed equations or
+             * their in-progress strokes onto the sheet - so Escape has to
+             * close them before anything on the canvas is considered, or
+             * they would sit there stranded with nothing to cancel behind
+             * them.
+             *
+             * THE CREATION DIMENSION POPUP IS ONE OF THESE. It is a dialog
+             * for exactly the same reason the others are: it is the last
+             * step of building a feature, it owns Enter and Escape while it
+             * is open, and nothing on the canvas may act behind its back.
+             *
+             * SKETCH BEFORE PLOT. Both may be open at once in principle,
+             * and the sketch editor consumes a first Escape to abandon an
+             * unfinished stroke - which is what the student almost always
+             * means when they press it mid-drawing. Offering the plot
+             * editor first would close the wrong dialog.
+             *
+             * Each returns true only if it actually consumed the key, so a
+             * dialog that is not open falls through rather than swallowing
+             * the Escape the canvas needs.
+             */
+            if (
+                window.enggCreationDimension?.handleEscape?.()
+            ) {
+                return;
+            }
+            if (
+                window.enggSketchEditor?.handleEscape?.()
+            ) {
+                return;
+            }
+
+            if (
+                window.enggPlotEditor?.handleEscape?.()
+            ) {
+                return;
+            }
+
+            /*
              * A truss in progress is the one operation that is
              * explicitly reversible mid-way: Esc throws the
              * whole construction away, including the automatic
@@ -33289,13 +38792,26 @@ document.addEventListener(
          * a construction finishing itself mid-sentence is a
          * corruption rather than a convenience.
          *
+         * THE CREATION DIMENSION FIELD IS SUCH A FIELD. Enter there
+         * confirms the size and commits the feature, and the popup
+         * is not a form input as far as this document is concerned
+         * - `editable` is decided from the EVENT TARGET, and the
+         * popup's input is not one of the elements that check
+         * recognises. Without the test below, the very Enter that
+         * confirmed "500 mm" carried on into "finish the
+         * construction", which then ran a DESELECT on the feature
+         * that had just been created, and the Features panel
+         * reverted to the tree - so the value the student had
+         * entered appeared to vanish the moment they confirmed it.
+         *
          * The cost of this ordering is that Enter cannot finish
          * a construction while a field happens to have focus.
          * That is the right trade: the user is typing, and
          * clicking the canvas is how they hand focus back.
          */
         if (
-            editable
+            editable ||
+            window.enggCreationDimension?.isOpen?.()
         ) {
             return;
         }

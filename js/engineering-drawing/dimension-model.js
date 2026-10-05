@@ -179,6 +179,14 @@
       orientation,
 
       style: {
+        /*
+         * UNITS ARE NOT OPTIONAL AND WERE NEVER A DISPLAY PREFERENCE.
+         *
+         * The flag is kept only so a drawing saved with it reads back
+         * unchanged; it no longer decides anything. `formatMeasurement`
+         * writes the unit unconditionally, because a bare number is
+         * ambiguous with every other quantity of the same size on the sheet.
+         */
         showUnits: true,
         precision: null,
         ...style,
@@ -300,6 +308,32 @@
       return propertyPoint;
     }
 
+    /*
+     * A POINT-TO-LINE MEASUREMENT IS DRAWN ALONG THE PERPENDICULAR.
+     *
+     * Its three references name the point and the line's two ends, but a
+     * dimension line drawn between the point and an END would show the
+     * distance to that end rather than the distance to the line - which is
+     * the wrong number and the wrong picture at once.
+     *
+     * So the second drawn point is the FOOT of the perpendicular: the
+     * closest place on the line to the point. That makes the drawn line the
+     * perpendicular itself, so the drawing and the stated value agree by
+     * construction.
+     */
+    if (dimension?.dimensionType === "point-line") {
+      const perpendicular = perpendicularFoot(
+        references,
+        state
+      );
+
+      if (perpendicular) {
+        return perpendicular;
+      }
+
+      return null;
+    }
+
     if (points.some((point) => point === null)) {
       return null;
     }
@@ -322,6 +356,63 @@
     }
     return points;
   }
+  /*
+   * The point and the foot of its perpendicular onto a line.
+   *
+   * The line is given by the SECOND and THIRD references, kept as two ends so
+   * the foot is recomputed from the line's current position every time. The
+   * foot is the projection of the point onto the line's infinite direction,
+   * which is what an engineering perpendicular distance is measured to - the
+   * closest point on the line, whether or not it falls between the drawn ends.
+   *
+   * Null when the three references cannot be resolved, or when the line is
+   * degenerate - a line of no length has no direction to be perpendicular to,
+   * and inventing one would state a distance to nothing.
+   */
+  function perpendicularFoot(references, state) {
+    if (!references || references.length < 3) {
+      return null;
+    }
+
+    const point = resolveReferencePoint(references[0], state);
+    const lineStart = resolveReferencePoint(references[1], state);
+    const lineEnd = resolveReferencePoint(references[2], state);
+
+    if (!point || !lineStart || !lineEnd) {
+      return null;
+    }
+
+    const deltaX = lineEnd.x - lineStart.x;
+    const deltaY = lineEnd.y - lineStart.y;
+
+    const lengthSquared =
+      deltaX * deltaX + deltaY * deltaY;
+
+    if (lengthSquared < 1e-12) {
+      return null;
+    }
+
+    /*
+     * The projection parameter is NOT clamped to [0, 1].
+     *
+     * Clamping would turn the perpendicular distance into the distance to the
+     * nearest END for a point that sits beyond the line's drawn extent - which
+     * is a different measurement, and not the one an engineering drawing means
+     * by "distance from a point to a line".
+     */
+    const t =
+      ((point.x - lineStart.x) * deltaX +
+        (point.y - lineStart.y) * deltaY) /
+      lengthSquared;
+
+    const foot = {
+      x: lineStart.x + deltaX * t,
+      y: lineStart.y + deltaY * t
+    };
+
+    return [point, foot];
+  }
+
   /*
    * The two points a stored-value measurement is drawn between.
    *
@@ -966,28 +1057,51 @@
 
     const prefix = definition?.prefix || "";
 
-    const suffix = measurement.angular
-      ? "°"
-      : definition?.unit && dimension.style.showUnits
-        ? ` ${measurement.unit}`
-        : "";
-
-    const text = `${prefix}${value}${suffix}`;
+    /*
+     * ONE FORMATTER FOR EVERY DIMENSION.
+     *
+     * The unit used to be conditional on a per-dimension `showUnits` style
+     * flag, which meant a dimension could be created and drawn as a bare
+     * number that gained its unit only once something set that flag. A
+     * dimension with no unit is ambiguous with any other quantity of the same
+     * magnitude on the same drawing - a 250 mm span beside a 250 N force -
+     * so the unit is part of what the number means rather than a piece of
+     * dressing, and it is now written unconditionally.
+     *
+     * An angle carries the degree sign and no length unit, because it is not
+     * a length.
+     *
+     * NO TILDE, ever. The `~` this replaced marked an uncalibrated
+     * measurement as approximate. But the whole point of calibrating is that
+     * the doubt is removed, and a dimension that established the scale is the
+     * LEAST approximate thing on the sheet - marking it `~` argued against
+     * the feature that produced it. A drawing that genuinely has not been
+     * calibrated has no honest length to state, and that is said once in the
+     * calibration prompt where the student can act on it, rather than
+     * repeated on every dimension where they cannot.
+     */
+    const formatter = root.enggQuantities;
 
     /*
-     * A dimension that is not calibrated shows its number with a tilde,
-     * the engineering mark for "about". It is the difference between
-     * "this drawing says 100" and "this drawing has not been told what
-     * scale it is, and currently guesses 100".
+     * THE FORMATTER IS FALLEN BACK ON, NEVER ABSENT.
+     *
+     * These models are also loaded on their own - by the module-load check,
+     * and by tests that exercise the measurement without the presentation -
+     * so reaching for the formatter directly would make a dimension
+     * unmeasurable in those contexts. The fallback below is the same rule
+     * written twice, which is the cost of the models being loadable apart.
      */
-    if (
-      measurement.calibrated === false &&
-      !measurement.angular
-    ) {
-      return `~${text}`;
+    if (!formatter) {
+      return measurement.angular
+        ? `${prefix}${value}°`
+        : `${prefix}${value} ${measurement.unit}`;
     }
 
-    return text;
+    return formatter.formatLength(rounded, measurement.unit, {
+      prefix,
+      precision,
+      angular: measurement.angular === true,
+    });
   }
 
   function resolvePrecision(dimension, state) {

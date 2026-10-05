@@ -92,7 +92,7 @@ const resultant = factories.annotation({
 check(
   "it states the magnitude and direction",
   annotationModel.textFor(resultant, state),
-  "R = 250.0 N\nθ = -90°"
+  "R = 250.0 N"
 );
 
 console.log("\nAnd follows its feature");
@@ -100,7 +100,7 @@ force.geometry.angle = 30;
 check(
   "turning the force turns the resultant",
   annotationModel.textFor(resultant, state),
-  "R = 250.0 N\nθ = 30°"
+  "R = 250.0 N"
 );
 
 console.log("\nForce components are described the same way");

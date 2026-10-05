@@ -670,11 +670,18 @@
      * vertices are numbered, and both want the pair furthest apart
      * rather than whichever two the feature listed first.
      */
-    if (dimensionType === "linear") {
-      return widestPair(object, anchors);
-    }
-
-    return [anchors[0], anchors[anchors.length - 1]];
+    /*
+     * The extremes, measured rather than assumed.
+     *
+     * Taking the first and last name only agreed with the true extent
+     * while a feature listed its ends first and nothing else. A span
+     * also publishes derived points (midpoint, quarters); appending
+     * those made the last name an interior point, so this paired start
+     * with a quarter and printed three quarters of the length as the
+     * whole of it. Naming order is an implementation detail and cannot
+     * be what decides which points are the ends.
+     */
+    return widestPair(object, anchors);
   }
 
   /*

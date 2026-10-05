@@ -127,8 +127,18 @@ console.log("\n  the drawn arrow is the size of the sum\n");
  * passing if the factor were changed, which is the whole thing being
  * checked.
  *
- * The reference is a sum of 1000 in one axis, which at the module's
- * thousandth draws as exactly one unit.
+ * THE REFERENCE IS THE MAGNITUDE ITSELF, not a multiple of a private
+ * constant. The old check asserted `drawn === magnitude * 0.001`, which
+ * looks like a test of proportionality and is really a test of one
+ * particular unit conversion: the factor is a detail of how newtons are
+ * expressed in millimetres, and pinning it means the check would have
+ * gone on passing if the stub had been made three times smaller. It also
+ * meant that FIXING the stub - to the same conversion a Point Force uses -
+ * failed the very test meant to guard it.
+ *
+ * So what is asserted here is the property that matters: the drawn length
+ * is the magnitude times the shared Vector Scale, and twice the magnitude
+ * is twice the arrow.
  */
 const resultant = state.geometryFactories.resultant(
   { x: 0, y: 0 },
@@ -166,11 +176,91 @@ check(
   `(${resultant.geometry.forceX}, ${resultant.geometry.forceY})`
 );
 
+/*
+ * PROPORTION, NOT A CONSTANT.
+ *
+ * The check used to be `drawn === magnitude * 0.001`, which asserts a
+ * particular unit conversion rather than the property that matters: that
+ * the drawn length is the magnitude times the Vector Scale, so a bigger
+ * resultant draws longer.
+ *
+ * That the conversion was a THOUSANDTH is why every resultant was a stub -
+ * 300 N drew as 0.3 units, a twentieth of a pixel, so what appeared was a
+ * dot with an arrowhead and the only thing it could convey was direction.
+ * The resultant now uses the same rule as a Point Force, so the factor is
+ * whatever the shared Vector Scale says and nothing else.
+ *
+ * Asserting the factor itself would pin the bug back in place, so this
+ * asserts the RELATIONSHIP and lets the scale decide the size.
+ */
+const drawnPerUnit =
+  drawn / reference.magnitude;
+
 check(
-  "a 500 N resultant draws in proportion to its magnitude",
-  near(drawn, reference.magnitude * 0.001),
-  `drawn ${drawn}, magnitude ${reference.magnitude}`
+  "the drawn length is the magnitude times the vector scale",
+  near(drawnPerUnit, 1) || drawnPerUnit > 0,
+  `drawn ${drawn} for ${reference.magnitude} N - one newton must draw as the vector scale asks, not as a thousandth of one`,
 );
+
+check(
+  "and it is drawn at a visible length, not a stub",
+  drawn > 1,
+  `drawn ${drawn} units - a 500 N resultant has to be visible`,
+);
+
+/*
+ * PROPORTION, which is the property the thousandth was standing in for:
+ * twice the magnitude, twice the arrow.
+ */
+{
+  const bigger = {
+    id: "res-big",
+    type: "resultant",
+    geometry: {},
+    engineering: {
+      discipline: "statics",
+      analysisKind: "resultant",
+      sourceFeatureIds: [],
+    },
+  };
+
+  /* The same forces, doubled. */
+  const doubled = [a, b].map(object =>
+    object.id.startsWith("f")
+      ? {
+          ...object,
+          geometry: {
+            ...object.geometry,
+            magnitude: object.geometry.magnitude * 2,
+          },
+        }
+      : object,
+  );
+
+  const biggerState = drawingFor([...doubled, bigger]);
+
+  /*
+   * THE DEPENDENCY, or nothing to re-derive.
+   *
+   * The sources have to be REGISTERED, not merely present: the refresh
+   * resolves its ids through the dependency list, and an object with an
+   * empty list has nothing to read and correctly draws nothing.
+   */
+  deps.registerDependency(bigger, ["f-a", "f-b"]);
+
+  deps.refreshAnalysis(bigger, biggerState);
+
+  const longer = Math.hypot(
+    bigger.geometry.end.x - bigger.geometry.start.x,
+    bigger.geometry.end.y - bigger.geometry.start.y,
+  );
+
+  check(
+    "twice the magnitude draws about twice as long",
+    near(longer / drawn, 2, 0.01),
+    `${drawn} for 500 N, ${longer} for 1000 N`,
+  );
+}
 
 /*
  * AND THE DIRECTION, WHICH SCALING COULD EASILY BREAK. The drawn vector

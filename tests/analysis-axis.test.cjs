@@ -158,6 +158,200 @@ const angleOf = (from, to) =>
   );
 }
 
+/*
+ * ============================================================
+ * THE GRAPH'S RANGE IS THE MEMBER'S, AND FOLLOWS IT
+ * ============================================================
+ *
+ * The x domain of an AFD/SFD/BMD is the body it describes. That makes it
+ * DERIVED, and a derived value that is only written once is a bug waiting for
+ * the first Length edit: the axis was rebuilt to the new length and the range
+ * stayed at the old one, so the graph was drawn correctly and every station on
+ * it read off the wrong scale.
+ *
+ * Measured ALONG the body, so a sloping member gets the same 0 to L as a level
+ * one - which is what makes a station at 2 m sit under the station at 2 m.
+ */
+console.log("\n  the range follows the member, not the moment of creation\n");
+
+/*
+ * A drawing state holding just what the dependency layer reads. The beam is
+ * replaced by mutating it between calls rather than by building a second state,
+ * because the property under test is that a refresh PICK UP A CHANGE rather
+ * than that it can be handed one.
+ */
+const state = {
+  objects: [],
+  statics: { vectorScale: 1 },
+  display: {},
+  styleDefaults: {},
+};
+
+const withSource = (length) =>
+  beam(0, 0, length, 0);
+
+{
+  /*
+   * A DIAGRAM REFRESHED AGAINST A BODY, which is what the dependency layer
+   * does whenever the body or anything on it changes.
+   */
+  const source = withSource(300);
+
+  
+
+  const diagram = {
+    id: "sfd-1",
+    type: "analysis-diagram",
+    engineering: { discipline: "statics", analysisKind: "shear-force-diagram", sourceFeatureId: source.id },
+    geometry: {
+      start: { x: 0, y: -60 },
+      end: { x: 300, y: -60 },
+      mode: "plot",
+      sourceOffset: { distance: -60 },
+      /*
+       * What the range looked like when the diagram was created. It must NOT
+       * survive the refresh below - it is the whole of the fault.
+       */
+      localRange: { from: 0, to: 100 }
+    }
+  };
+
+  state.objects = [source, diagram];
+
+  deps.refreshAnalysis(diagram, state);
+
+  check(
+    "a refresh restates the range from the body it describes",
+    diagram.geometry.localRange &&
+      near(diagram.geometry.localRange.to, 300, 1e-9),
+    `localRange = ${JSON.stringify(diagram.geometry.localRange)}`,
+  );
+
+  check(
+    "and the axis is the same length as the range",
+    near(
+      Math.hypot(
+        diagram.geometry.end.x - diagram.geometry.start.x,
+        diagram.geometry.end.y - diagram.geometry.start.y
+      ),
+      300,
+      1e-9
+    ),
+    `axis length = ${
+      Math.hypot(
+        diagram.geometry.end.x - diagram.geometry.start.x,
+        diagram.geometry.end.y - diagram.geometry.start.y
+      )
+    }`,
+  );
+
+  /* Now the member is lengthened, which is the case that used to go stale. */
+  source.geometry.end = { x: 700, y: 0 };
+
+  deps.refreshAnalysis(diagram, state);
+
+  check(
+    "lengthening the member restates the range with it",
+    diagram.geometry.localRange &&
+      near(diagram.geometry.localRange.to, 700, 1e-9),
+    `localRange = ${JSON.stringify(diagram.geometry.localRange)}`,
+  );
+
+  check(
+    "the range still starts at zero, measured along the member",
+    diagram.geometry.localRange &&
+      near(diagram.geometry.localRange.from, 0, 1e-9)
+  );
+
+  check(
+    "and the axis grew with the member rather than staying put",
+    near(diagram.geometry.end.x - diagram.geometry.start.x, 700, 1e-9),
+    `axis = ${diagram.geometry.start.x}..${diagram.geometry.end.x}`,
+  );
+}
+
+/* A SLOPING member still gets 0 to L along its own direction. */
+{
+  const source = {
+    id: "beam-slope",
+    type: "beam",
+    geometry: { start: { x: 0, y: 0 }, end: { x: 300, y: 400 }, depth: 12 }
+  };
+
+  const diagram = {
+    id: "bmd-1",
+    type: "analysis-diagram",
+    engineering: { discipline: "statics", analysisKind: "bending-moment-diagram", sourceFeatureId: source.id },
+    geometry: {
+      start: { x: 0, y: -60 },
+      end: { x: 300, y: 400 },
+      mode: "plot",
+      localRange: { from: 0, to: 100 }
+    }
+  };
+
+  state.objects = [source, diagram];
+
+  deps.refreshAnalysis(diagram, state);
+
+  check(
+    "a sloping member's range is its length, not its width",
+    diagram.geometry.localRange &&
+      near(diagram.geometry.localRange.to, 500, 1e-9),
+    `localRange = ${JSON.stringify(diagram.geometry.localRange)}, expected 500`,
+  );
+}
+
+/*
+ * THE STUDENT'S EXPRESSIONS ARE LEFT ALONE.
+ *
+ * An expression's own range says where that relation EXISTS - it is part of
+ * what was written - so a longer body must not quietly stretch it. The diagram
+ * stops covering the new ground, which is visible and correctable; silently
+ * redrawing someone's equations is not.
+ */
+{
+  const source = withSource(300);
+
+
+
+  const diagram = {
+    id: "sfd-2",
+    type: "analysis-diagram",
+    engineering: { discipline: "statics", analysisKind: "shear-force-diagram", sourceFeatureId: source.id },
+    geometry: {
+      start: { x: 0, y: -60 },
+      end: { x: 300, y: -60 },
+      mode: "plot",
+      sourceOffset: { distance: -60 },
+      expressions: [
+        {
+          id: "expr-1",
+          relationType: "functionX",
+          expression: "10",
+          xRange: { start: 0, end: 120 }
+        }
+      ]
+    }
+  };
+
+  state.objects = [source, diagram];
+
+  deps.refreshAnalysis(diagram, state);
+
+  check(
+    "an expression's own range is the student's, and is not rewritten",
+    diagram.geometry.expressions &&
+      diagram.geometry.expressions[0] &&
+      near(diagram.geometry.expressions[0].xRange.end, 120, 1e-9),
+    `xRange = ${JSON.stringify(
+      diagram.geometry.expressions &&
+        diagram.geometry.expressions[0] &&
+        diagram.geometry.expressions[0].xRange
+    )}`,
+  );
+}
+
 console.log(
   `\n  ${pass} passed, ${fail} failed\n`
 );

@@ -1,30 +1,48 @@
 /* Engineering drawing object snapping and geometric inference. */
 (function () {
     /*
-     * How close the cursor must be, in screen pixels, to snap
-     * to a named point.
+     * ========================================================
+     * HOW CLOSE THE CURSOR MUST BE TO SNAP TO A NAMED POINT
+     * ========================================================
      *
-     * Generous on purpose. The tolerance is the whole width of
-     * the target as far as the user is concerned: they aim at a
-     * joint and expect to be caught by it, not to land on it to
-     * the pixel. A tight tolerance makes snapping feel broken
-     * for anyone using a trackpad, and makes the halfway
-     * positions - midpoints and quarter points - especially hard
-     * to hit, because the eye is judging a third of a span
-     * rather than a point.
+     * Five pixels, and the argument for a small number is not that a
+     * large one is wrong but that a large one is UNRECOVERABLE.
      *
-     * It was 18, which turned out to be slightly STICKY rather
-     * than merely generous: a cursor passing a few pixels clear of
-     * one feature was caught by the next one along, so lining a
-     * member up past a row of supports became a fight. The
-     * reduction below is deliberately modest - the tolerance is
-     * still comfortably wider than the arrowheads, quarter points
-     * and half positions it has to catch - and this constant is
-     * the ONE place the value lives, so every tool, every zoom
-     * level and every kind of snap is narrowed together rather
-     * than one tool at a time.
+     * A generous tolerance is usually defended as being kind to a
+     * trackpad user who cannot land on a pixel. But the cost of being
+     * generous is not paid by the person who wanted the wider band; it is
+     * paid by the person lining a member up PAST a row of features, who
+     * finds the next one along grabbing the cursor a dozen pixels clear of
+     * it. There is no way to recover from that except to move further
+     * away and try again, and the further away they go to escape it the
+     * more likely they are to be caught by something else. A tolerance
+     * that is too wide cannot be worked around; one that is too narrow
+     * can, by zooming in.
+     *
+     * IT WAS FIFTEEN, AND THAT IS THE STICKINESS THAT WAS REPORTED.
+     *
+     * Fifteen pixels is about the width of a support symbol and wider
+     * than the gap between two ordinary snap targets on a dense beam, so
+     * the feature being passed was more likely to be caught than missed.
+     * Fifteen is a number that feels reasonable in isolation and is
+     * unusable in practice, which is why it survived being written down
+     * as deliberate.
+     *
+     * Five is still forgiving - it is five screen pixels, at any zoom,
+     * because the measurement is in screen space and the zoom is already
+     * applied to the coordinates being compared - and it is narrow enough
+     * that a cursor travelling along a member passes its targets instead
+     * of being captured by them.
+     *
+     * THE TRUSS MULTIPLIER IS GONE WITH IT, and that is deliberate. It
+     * widened the tolerance for truss work because truss joints sit close
+     * together - which is an argument for aiming better, not for a
+     * catch radius wide enough to make the wrong joint likely. A truss is
+     * now snapped with the same 5 px as everything else, so a snap that
+     * works on a beam works identically on a truss, and there is no
+     * second tolerance in the system to remember which rule applied.
      */
-    const SNAP_TOLERANCE_PX = 15;
+    const SNAP_TOLERANCE_PX = 5;
 
     /*
      * How far off horizontal or vertical the cursor may be and
@@ -40,28 +58,28 @@
     const INFERENCE_TOLERANCE_DEGREES = 12;
 
     /*
-     * Tools whose snap target is hard enough to aim at that they
-     * need a wider catch than the default.
+     * ========================================================
+     * NO PER-TOOL WIDENING
+     * ========================================================
      *
-     * A TRUSS is the case that earns this. A truss is aimed at
-     * through its joints, its intersections and its quarter
-     * regions - all of which are points ON a member rather than
-     * the member itself, and all of which the eye judges by
-     * comparison with the member running past them. Judging
-     * "is the cursor on that joint" is much harder than judging
-     * "is it near that long member", so a tolerance that feels
-     * right for a Beam's endpoints feels distinctly too tight
-     * for a truss joint, and the failure mode is a snap that
-     * appears not to work.
+     * There used to be a table of per-tool tolerance multipliers, and one
+     * tool in it.
      *
-     * The figure is deliberately modest. A truss is a dense
-     * structure, so a tolerance wide enough to be forgiving of
-     * one joint is wide enough to grab the wrong one in a
-     * crossing of several members. Generous, not loose.
+     * A per-tool tolerance is a way of saying "this tool needs to be
+     * less accurate", and the consequence is that a snap behaves
+     * differently depending on which tool is armed while doing the same
+     * kind of aim. That is the definition of a rule a user has to learn
+     * and cannot see: they aim at a joint on a truss, get caught, move
+     * slightly, and get caught by a different one - with nothing on
+     * screen to say the tolerance had changed underneath them.
+     *
+     * One tolerance for the whole sheet is the only version of this that
+     * is predictable, and predictable is what snapping is for. A tool
+     * that genuinely needs a wider catch is a tool whose TARGETS are too
+     * close together, and the answer to that is better candidates or a
+     * smaller drawing - not a different radius.
      */
-    const TOOL_SNAP_TOLERANCE_MULTIPLIER = {
-        truss: 1.4
-    };
+    const TOOL_SNAP_TOLERANCE_MULTIPLIER = {};
 
     const DEFAULT_SNAP_TOLERANCE_MULTIPLIER = 1;
 
@@ -73,6 +91,12 @@
      * the student has moved on: a truss whose panels are being
      * added is still a truss, and must still be forgiving,
      * even though the click that began it is over.
+     *
+     * With no per-tool multipliers left this returns 1 always. It is
+     * KEPT rather than deleted because it is the single point through
+     * which every tolerance passes - a future tool that does need a
+     * different band changes this function and nothing else, rather than
+     * every call site learning about it.
      */
     function getToolToleranceMultiplier(
         state
@@ -243,6 +267,27 @@
         );
     }
 
+    /*
+     * ========================================================
+     * THE CATCH BAND FOR ALIGNMENT
+     * ========================================================
+     *
+     * Stated here, in its own right, and NOT derived from the point
+     * tolerance.
+     *
+     * Alignment asks "is this line the direction I am drawing?", which is
+     * judged against a whole member rather than against a dot, and the
+     * cursor is commonly a good way off the axis while the student is
+     * still lining the member up. Squeezing the point tolerance from 15
+     * to 5 to fix the stickiness must not drag alignment in with it: that
+     * would have made the band 7.5 px, too tight to feel like it works,
+     * and the complaint would have moved rather than gone.
+     *
+     * So the two bands are stated separately and neither is derived from
+     * the other. 5 px to hit a dot; 24 px to hold a direction.
+     */
+    const ALIGNMENT_TOLERANCE_PX = 24;
+
     function getInferenceTolerancePx(state) {
         const configured =
             Number(
@@ -256,28 +301,7 @@
             return configured;
         }
 
-        /*
-         * The catch band for ALIGNMENT.
-         *
-         * Alignment is a different question from snapping to a point, and
-         * it is given its own floor. It asks "is this line the direction I
-         * am drawing?", which is judged against a whole member rather than
-         * against a dot, and the cursor is commonly a good way off the
-         * axis while the student is still lining the member up. A band
-         * derived only by scaling the point tolerance inherits every
-         * narrowing made to that tolerance, so tightening the point snap
-         * silently tightened alignment too - and that is not a change
-         * anyone asking for a stiffer point snap is asking for.
-         *
-         * So the floor is stated here rather than inherited, and the
-         * multiple still runs off the live tolerance so the two stay
-         * related. A configured value still wins outright.
-         */
-        const ALIGNMENT_TOLERANCE_PX = 27;
-        return Math.max(
-            ALIGNMENT_TOLERANCE_PX,
-            getTolerancePx(state) * 1.5
-        );
+        return ALIGNMENT_TOLERANCE_PX;
     }
 
     function normalizeAngle(angle) {
@@ -3813,33 +3837,50 @@
     }
 
     /*
-     * How long a snap guideline stays up after the cursor
-     * leaves its region.
+     * ========================================================
+     * HOW LONG A GUIDE OUTLASTS THE CURSOR
+     * ========================================================
      *
-     * Expressed in a time unit rather than a distance, because
-     * what it compensates for is how fast the hand moves, not
-     * how far away the target is.
+     * A GENEROUS FIGURE WAS THE WRONG TRADE, and it is the reason snapping
+     * was reported as sticky rather than merely too sensitive.
      *
-     * The guideline is a drafting aid, and a drafting aid that
-     * disappears the instant it stops being exactly true is not
-     * one. Two things made it read as unreliable: the guide
-     * vanished on the frame the pointer drifted out of the
-     * tolerance band, which happens constantly while lining a
-     * member up, and a guide that flickered on and off with
-     * every small movement was read as the snapping itself
-     * being unreliable. The user needs a moment in which the
-     * guide has settled in order to believe the point they are
-     * being offered is deliberate.
+     * The argument for a hold was that a drafting aid which vanishes the
+     * instant it stops being exactly true is not a drafting aid. That is
+     * true of a guide that DISAPPEARS, and it is not true of this one: the
+     * snap has already been taken by the time the guide is drawn. The
+     * guide is a picture of a decision, not the decision.
      *
-     * So the guide is held for a short grace period once it has
-     * been established, which lets a small movement inside or
-     * just outside the region keep it up, and it fades rather
-     * than cutting. It is not made permanent: leaving the
-     * region for good still clears it, because a guide pointing
-     * at a target the cursor has plainly left is worse than no
-     * guide at all.
+     * So what a long hold actually did was show a student a "Horizontal"
+     * or "Midpoint" label for a target their cursor had plainly left -
+     * three hundred milliseconds of the tool claiming something untrue -
+     * which reads as the snap being unreliable in exactly the way the
+     * original complaint describes. The status bar made it worse, because
+     * the label is text: text persists in the eye far longer than a line
+     * does, so the reported symptom was a snap status stuck on screen
+     * while the pointer was somewhere else entirely.
+     *
+     * A SHORT HOLD ONLY. Long enough that a single jittery frame does not
+     * make the guide strobe, short enough that leaving the target clears
+     * it before the eye can read the old one as current.
      */
-    const GUIDELINE_HOLD_MS = 260;
+    const GUIDELINE_HOLD_MS = 60;
+
+    /*
+     * ========================================================
+     * HOW LONG A SNAP ITSELF OUTLASTS THE CURSOR
+     * ========================================================
+     *
+     * NOT AT ALL, and that is the important half.
+     *
+     * The guide above is a picture; this is the value. When the cursor
+     * leaves every target, the snap must become null in that same frame -
+     * the point the student is about to place is the cursor, not wherever
+     * they were a moment ago.
+     *
+     * There is no grace period on the snap, and no remembered candidate,
+     * because a snap carried over from a previous frame is a point the
+     * student never aimed at being used as though they had.
+     */
 
     /*
      * The clock the hold is measured against.
@@ -3858,47 +3899,30 @@
         );
     }
 
-    function sameInferenceTarget(
-        first,
-        second
-    ) {
-        if (!first || !second) {
-            return false;
-        }
-
-        if (
-            (first.type || null) !==
-            (second.type || null)
-        ) {
-            return false;
-        }
-
-        const a = first.referencePoint;
-        const b = second.referencePoint;
-
-        if (!a || !b) {
-            return !a && !b;
-        }
-
-        return (
-            Math.abs(a.x - b.x) < 1e-6 &&
-            Math.abs(a.y - b.y) < 1e-6
-        );
-    }
-
     /*
-     * Decide which guide to show, given the one just found and
-     * the one currently on screen.
+     * ========================================================
+     * WHICH GUIDE TO DRAW
+     * ========================================================
      *
-     * `previous` is whatever was drawn last time, with the time
-     * it was drawn. The rule is deliberately simple: a fresh
-     * snap always wins, and an absent one is only replaced once
-     * the previous guide has been up long enough.
+     * `previous` is whatever was drawn last time, with the time it was
+     * drawn. A FRESH GUIDE ALWAYS WINS - without exception and without
+     * consulting the previous one - because a guide that has just been
+     * found is the true answer for this frame and any older guide is by
+     * definition stale.
      *
-     * Keeping the previous guide rather than fading it through a
-     * second mechanism is what stops the flicker. There is only
-     * ever one guide and it is either current or briefly stale,
-     * so it cannot strobe between two states.
+     * The ONLY question is what to draw when nothing fresh was found: the
+     * previous guide for the length of a very short hold, or nothing.
+     *
+     * IT IS NOT A MATTER OF WHAT THE PREVIOUS GUIDE WAS.
+     *
+     * This used to end with two branches that both returned `fresh` - one
+     * of them behind a `sameInferenceTarget` test whose two exits were
+     * identical. So the test decided nothing at all, and the code said so
+     * without ever saying it: it read as though a settled guide were held
+     * while the cursor ranged around its target, when in fact the hold
+     * below was unconditional. A branch that cannot change the answer is
+     * not a branch, and leaving it in place guarantees the next reader
+     * believes in behaviour that does not exist.
      */
     function holdGuideline(
         state,
@@ -3906,42 +3930,29 @@
         fresh,
         now
     ) {
+        if (fresh) {
+            return fresh;
+        }
+
         const previous =
             state?.interaction
                 ?.guideline;
 
-        if (!fresh) {
-            if (
-                !previous?.inference
-            ) {
-                return null;
-            }
-
-            if (
-                now - previous.at <
-                GUIDELINE_HOLD_MS
-            ) {
-                return previous.inference;
-            }
-
+        if (!previous?.inference) {
             return null;
         }
 
         /*
-         * Staying on the SAME target extends the hold, so the
-         * user can move about within the region without the
-         * guide lapsing between two adjacent frames.
+         * ONLY WHILE THE HOLD IS STILL RUNNING. Once it has expired the
+         * guide is gone even if the cursor is only a pixel away, because
+         * the alternative is a label that outlives the truth.
          */
-        if (
-            sameInferenceTarget(
-                previous?.inference,
-                fresh
-            )
-        ) {
-            return fresh;
-        }
-
-        return fresh;
+        return (
+            now - previous.at <
+                GUIDELINE_HOLD_MS
+        )
+            ? previous.inference
+            : null;
     }
 
     function resolveConstructionPoint(

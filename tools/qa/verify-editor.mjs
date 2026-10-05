@@ -98,6 +98,11 @@ export default async function run(page, ui) {
       meta: d.querySelector(".drawing-dimension-dialog-meta")?.textContent.replace(/\s+/g, " ").trim(),
       legends: [...d.querySelectorAll("legend")].map((l) => l.textContent.trim()),
       hasPrecision: !!d.querySelector("#dimPrecision"),
+      /*
+       * NO "show units" control. A visible dimension always states its unit,
+       * so the dialog has no such option to offer - and this check exists to
+       * confirm one has not crept back in.
+       */
       hasShowUnits: !!d.querySelector("[data-dim-show-units]"),
       hasRealValue: !!d.querySelector("#dimRealValue"),
       note: d.querySelector(".drawing-dimension-dialog-note")?.textContent.replace(/\s+/g, " ").trim()

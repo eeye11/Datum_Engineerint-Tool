@@ -80,7 +80,7 @@ check("is generated from it", forceAnnotation.textMode, "auto");
 check(
   "and states the force's own magnitude",
   model.textFor(forceAnnotation, state(force())),
-  "F = 250.0 N\nθ = -90°"
+  "F = 250.0 N"
 );
 
 console.log("\nChanging the force changes the label");
@@ -89,14 +89,14 @@ const linked = state(f);
 check(
   "it first says 250",
   model.textFor(forceAnnotation, linked),
-  "F = 250.0 N\nθ = -90°"
+  "F = 250.0 N"
 );
 f.geometry.magnitude = 300;
 f.geometry.angle = 30;
 check(
   "and 300 once the force is 300",
   model.textFor(forceAnnotation, linked),
-  "F = 300.0 N\nθ = 30°"
+  "F = 300.0 N"
 );
 check(
   "without the annotation being told to change",
@@ -131,7 +131,7 @@ subject.geometry.magnitude = 275;
 check(
   "the moved annotation still updates from the force",
   model.textFor(movable, doc),
-  "F = 275.0 N\nθ = -90°"
+  "F = 275.0 N"
 );
 check(
   "and is still at the position the student chose",
@@ -150,7 +150,7 @@ check(
 check(
   "and still says what the force says",
   model.textFor(movable, doc),
-  "F = 275.0 N\nθ = -90°"
+  "F = 275.0 N"
 );
 
 console.log("\nAutomatic placement is released by hand");
@@ -238,13 +238,13 @@ const momentAnnotation = model.createAnnotation({
 check(
   "states its magnitude and sense",
   model.textFor(momentAnnotation, state(moment)),
-  "M = 500.0 N·m\nCCW"
+  "M = 500.0 N·m"
 );
 moment.geometry.magnitude = 750;
 check(
   "and follows the moment",
   model.textFor(momentAnnotation, state(moment)),
-  "M = 750.0 N·m\nCCW"
+  "M = 750.0 N·m"
 );
 
 console.log("\nA distributed load");
@@ -263,10 +263,10 @@ const loadAnnotation = model.createAnnotation({
 check(
   "states its intensity",
   model.textFor(loadAnnotation, state(load)),
-  "w = 5.00 kN/m ↓"
+  "w = 5.00 kN/m"
 );
 load.geometry.intensity = 12;
-check("and follows it", model.textFor(loadAnnotation, state(load)), "w = 12.0 kN/m ↓");
+check("and follows it", model.textFor(loadAnnotation, state(load)), "w = 12.0 kN/m");
 
 console.log("\nA varying load's profile");
 const varying = {

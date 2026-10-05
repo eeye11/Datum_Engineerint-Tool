@@ -575,6 +575,418 @@ check(
   near(resultantOf(countedDrawing).geometry.magnitude, Math.hypot(200, 400)),
   `resultant ${resultantOf(countedDrawing).geometry.magnitude}`
 );
+/*
+ * ============================================================
+   EDITING A FIELD IN THE FEATURE PANEL
+ * ============================================================ */
+
+console.log("\n  a magnitude typed into the panel, not yet left behind\n");
+
+/*
+ * THE PATH A TYPED VALUE TAKES IS NOT THE PATH A COMMITTED EDIT TAKES.
+ *
+ * The property panel applies a field's new value on every keystroke but only
+ * makes the history entry when the student leaves the field, because one edit
+ * is one undo however many characters it took to type. That left a gap
+ * between the two: the arrow moved as the student typed, and the Components
+ * and Resultant beside it kept the old numbers until the click that ended the
+ * edit - long enough that they looked broken.
+ *
+ * So the fix is a refresh that records nothing, and this checks the two
+ * things that make it safe. The dependents have to update IMMEDIATELY, or the
+ * original complaint stands. And the history must NOT move, or fixing the
+ * lag has filled the undo stack with one entry per keystroke.
+ */
+const typedForce = forceOf(countedDrawing, "force-a");
+const typedComponents = componentsOf(countedDrawing);
+const typedResultant = resultantOf(countedDrawing);
+
+const pastBeforeTyping = countedDrawing.history.past.length;
+
+typedForce.geometry.magnitude = 900;
+
+const typedMagnitude = countedDrawing.objects.find(
+  object => object.id === "force-a"
+).geometry.magnitude;
+
+state.refreshDerivedFeatures(countedDrawing);
+
+check(
+  "a force edited in the panel brings its components with it at once",
+  near(
+    componentsOf(countedDrawing).geometry.horizontal.end.x -
+      componentsOf(countedDrawing).geometry.origin.x,
+    typedMagnitude
+  ),
+  `horizontal ${JSON.stringify(componentsOf(countedDrawing).geometry.horizontal)}`
+);
+
+check(
+  "and its resultant, without waiting for the field to be left",
+  near(
+    resultantOf(countedDrawing).geometry.magnitude,
+    Math.hypot(typedMagnitude, 400)
+  ),
+  `resultant ${resultantOf(countedDrawing).geometry.magnitude}`
+);
+
+check(
+  "typing records no history of its own",
+  countedDrawing.history.past.length === pastBeforeTyping,
+  `history went from ${pastBeforeTyping} to ${countedDrawing.history.past.length}`
+);
+
+check(
+  "and the objects it holds are the drawing's, not detached copies",
+  typedComponents === componentsOf(countedDrawing) &&
+    typedResultant === resultantOf(countedDrawing)
+);
+
+/*
+ * ============================================================
+   A DRAG, WHICH COMMITS NOTHING UNTIL THE POINTER IS RELEASED
+ * ============================================================ */
+
+console.log("\n  a force being dragged, mid-gesture\n");
+
+/*
+ * THE CASE THAT MATTERS MOST, AND THE ONE THE PANEL FIX DID NOT COVER.
+ *
+ * A drag mutates its force on every pointermove and commits once, on release.
+ * A typed value mutates on every keystroke and commits on blur. Both are
+ * uncommitted for most of their duration, and the refresh used to live in
+ * the commit alone - so for the whole of the gesture the arrow tracked the
+ * cursor and its decomposition sat frozen at the value it had when the
+ * student first pressed down.
+ *
+ * So this asserts the refresh works on the force ALONE, with no commit
+ * anywhere: the state a drag is actually in between two pointermove events.
+ * Committing is not what is being tested here, and a check that committed
+ * would pass even with the original fault in place.
+ */
+const draggedDrawing = freshDrawing([
+  {
+    id: "beam-1",
+    type: "beam",
+    geometry: {
+      start: { x: 0, y: 0 },
+      end: { x: 300, y: 0 },
+      depth: 12
+    }
+  },
+  {
+    id: "force-a",
+    type: "force",
+    geometry: {
+      start: { x: 0, y: 0 },
+      end: { x: 50, y: 0 },
+      position: { x: 0, y: 0 },
+      magnitude: 100,
+      angle: 0
+    }
+  },
+  {
+    id: "force-b",
+    type: "force",
+    geometry: {
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 50 },
+      position: { x: 0, y: 0 },
+      magnitude: 400,
+      angle: 90
+    }
+  },
+  state.geometryFactories["force-components"](
+    { x: 0, y: 0 },
+    { x: 30, y: 0 },
+    {}
+  ),
+  state.geometryFactories.resultant(
+    { x: 0, y: 0 },
+    { x: 0.3, y: 0.4 },
+    {}
+  )
+]);
+
+deps.registerDependency(componentsOf(draggedDrawing), ["force-a"]);
+deps.registerDependency(resultantOf(draggedDrawing), ["force-a", "force-b"]);
+
+/*
+ * A FRESH ENTRY IS WRITTEN ON EVERY FRAME, because a student who drags a
+ * handle sees exactly that - one entry per pointermove - and the dependent
+ * has to keep up with each one rather than with the last.
+ */
+const frames = [];
+
+for (let i = 1; i <= 5; i++) {
+  forceOf(draggedDrawing, "force-a").geometry.magnitude = 100 * i;
+
+  state.refreshDerivedFeatures(draggedDrawing);
+
+  frames.push({
+    magnitude: 100 * i,
+    horizontal: componentsOf(draggedDrawing).geometry.horizontal.end.x -
+      componentsOf(draggedDrawing).geometry.origin.x,
+    vertical: componentsOf(draggedDrawing).geometry.vertical.end.y -
+      componentsOf(draggedDrawing).geometry.origin.y,
+    resultant: resultantOf(draggedDrawing).geometry.magnitude
+  });
+}
+
+check(
+  "every frame of a drag brings the components with it",
+  frames.every(frame =>
+    near(frame.horizontal, frame.magnitude) && near(frame.vertical, 0)
+  ),
+  `frames ${JSON.stringify(frames)}`
+);
+
+check(
+  "and every frame brings the resultant with it",
+  frames.every(frame => near(frame.resultant, Math.hypot(frame.magnitude, 400))),
+  `frames ${JSON.stringify(frames)}`
+);
+
+check(
+  "a whole uncommitted drag leaves the history untouched",
+  draggedDrawing.history.past.length === 0,
+  `history: ${draggedDrawing.history.past.length}`
+);
+
+/*
+ * AND THE POSITION, which is the half a magnitude-only check would miss.
+ * Dragging a force slides its application point, and the components are
+ * anchored on that point - so a refresh that recomputed the arrow lengths
+ * but not the anchor would leave the decomposition behind on the sheet,
+ * still correctly sized and pointing at nothing.
+ */
+geometry.translateObject(forceOf(draggedDrawing, "force-a"), 75, -40);
+
+state.refreshDerivedFeatures(draggedDrawing);
+
+check(
+  "a force dragged to a new place takes its components with it",
+  near(componentsOf(draggedDrawing).geometry.origin.x, 75) &&
+    near(componentsOf(draggedDrawing).geometry.origin.y, -40),
+  `origin ${JSON.stringify(componentsOf(draggedDrawing).geometry.origin)}`
+);
+
+check(
+  "and its resultant, which is anchored on the same point",
+  near(resultantOf(draggedDrawing).geometry.position.x, 75) &&
+    near(resultantOf(draggedDrawing).geometry.position.y, -40),
+  `position ${JSON.stringify(resultantOf(draggedDrawing).geometry.position)}`
+);
+
+/*
+ * THE ORDER ONE LAST TIME. A drag commits ONCE. Five frames, one entry.
+ * The history is what makes the drag feel like a single action to Undo, and
+ * a refresh that recorded per frame would undo one pixel of a drag at a
+ * time - so this is a property of the fix, not of the fault.
+ */
+state.commitDrawingChange(
+  draggedDrawing,
+  state.snapshotDrawing(draggedDrawing)
+);
+
+check(
+  "one drag is one entry in the history, not one per frame",
+  draggedDrawing.history.past.length === 1,
+  `history: ${draggedDrawing.history.past.length}`
+);
+
+console.log("\n  every KIND of change to a force reaches its dependents\n");
+
+/*
+ * REFRESHING ON EVERY DRAW IS ONLY HALF THE CLAIM.
+ *
+ * `renderCurrentDrawing` refreshes before every repaint and `commitDrawingChange`
+ * refreshes before every snapshot, so a dependent cannot lag behind the source
+ * by one frame or by one blur. But that only holds if the derivation actually
+ * READS every part of the force that can change.
+ *
+ * A refresh that watched the position but not the unit would keep up with a
+ * drag and go stale on a unit change, and it would do so silently - the
+ * dependent would be updated, just from part of its source. So each part of
+ * a force that a student can edit is changed here on its own, and the
+ * dependents are asked to catch up through the ordinary refresh. If any one
+ * of these reads a field the derivation ignores, it fails.
+ *
+ * A FRESH DRAWING, because the checks above have moved and re-aimed force A
+ * many times over, and reusing it would make the expected numbers depend on
+ * the order the earlier checks ran in.
+ */
+const kindsForce = {
+  id: "kind-force",
+  type: "force",
+  geometry: {
+    start: { x: 0, y: 0 },
+    end: { x: 50, y: 0 },
+    position: { x: 0, y: 0 },
+    magnitude: 300,
+    angle: 0,
+    unit: "N"
+  }
+};
+
+const kindsDrawing = freshDrawing([
+  { ...beam },
+  kindsForce,
+  state.geometryFactories["force-components"](
+    { x: 0, y: 0 },
+    { x: 30, y: 0 },
+    {}
+  ),
+  state.geometryFactories.resultant({ x: 0, y: 0 }, { x: 0.3, y: 0.4 }, {})
+]);
+
+const kindsComponentsId = kindsDrawing.objects.find(
+  object => object.type === "force-components"
+).id;
+
+const kindsResultantId = kindsDrawing.objects.find(
+  object => object.type === "resultant"
+).id;
+
+deps.registerDependency(
+  kindsDrawing.objects.find(
+    object => object.type === "force-components"
+  ),
+  ["kind-force"]
+);
+
+deps.registerDependency(
+  kindsDrawing.objects.find(object => object.type === "resultant"),
+  ["kind-force"]
+);
+
+const kindsForceOf = drawingState =>
+  drawingState.objects.find(object => object.id === "kind-force");
+
+const kindsComponentsOf = drawingState =>
+  drawingState.objects.find(object => object.id === kindsComponentsId);
+
+const kindsResultantOf = drawingState =>
+  drawingState.objects.find(object => object.id === kindsResultantId);
+
+/*
+ * THE CHECK IS GENERIC: it re-derives what the components SHOULD be straight
+ * from the source force, and asks whether the refresh got there. That way the
+ * test states the rule rather than restating the implementation, and an
+ * implementation that stopped reading the unit cannot pass by also having
+ * changed the test's expectation.
+ */
+const componentsAgree = drawingState => {
+  const force = kindsForceOf(drawingState);
+  const drawn = kindsComponentsOf(drawingState).geometry;
+  const radians = (force.geometry.angle * Math.PI) / 180;
+
+  const expectedX = force.geometry.magnitude * Math.cos(radians);
+  const expectedY = force.geometry.magnitude * Math.sin(radians);
+
+  return (
+    near(drawn.origin.x, force.geometry.start.x) &&
+    near(drawn.origin.y, force.geometry.start.y) &&
+    near(drawn.horizontal.end.x - drawn.origin.x, expectedX) &&
+    near(drawn.vertical.end.y - drawn.origin.y, expectedY)
+  );
+};
+
+const resultantAgrees = drawingState => {
+  const force = kindsForceOf(drawingState);
+
+  return (
+    near(
+      kindsResultantOf(drawingState).geometry.magnitude,
+      Math.abs(force.geometry.magnitude)
+    ) && near(
+      kindsResultantOf(drawingState).geometry.position.x,
+      force.geometry.start.x
+    )
+  );
+};
+
+const changesOfAKind = [
+  [
+    "moved in the plane",
+    force => {
+      /*
+       * BOTH ENDS, and through `start`.
+       *
+       * A Point Force is one vector, so its application point lives on
+       * `geometry.start` and `geometry.position` is a mirror the property
+       * setter keeps in step - the panel's "Application Point" row writes
+       * `start.x`, not `position.x`. Moving only the mirror is not a move
+       * a student can perform, and the dependencies rightly ignore it;
+       * an earlier version of this check moved the mirror and reported the
+       * refresh as failing to follow a move that had never happened.
+       */
+      force.geometry.start = { x: 40, y: 25 };
+      force.geometry.position = { x: 40, y: 25 };
+      force.geometry.end = { x: 90, y: 25 };
+    }
+  ],
+  [
+    "re-magnified",
+    force => {
+      force.geometry.magnitude = 875;
+    }
+  ],
+  [
+    "re-aimed",
+    force => {
+      force.geometry.angle = 37;
+    }
+  ],
+  [
+    "given a different unit",
+    force => {
+      force.geometry.unit = "kN";
+    }
+  ],
+  [
+    "flipped end for end",
+    force => {
+      force.geometry.angle = 180 - force.geometry.angle;
+    }
+  ]
+];
+
+changesOfAKind.forEach(([description, change]) => {
+  change(kindsForceOf(kindsDrawing));
+
+  state.refreshDerivedFeatures(kindsDrawing);
+
+  check(
+    `a force ${description} brings its components with it`,
+    componentsAgree(kindsDrawing),
+    `components ${JSON.stringify(kindsComponentsOf(kindsDrawing).geometry)} for force ${JSON.stringify(kindsForceOf(kindsDrawing).geometry)}`
+  );
+
+  check(
+    `and its resultant`,
+    resultantAgrees(kindsDrawing),
+    `resultant ${JSON.stringify(kindsResultantOf(kindsDrawing).geometry)} for force ${JSON.stringify(kindsForceOf(kindsDrawing).geometry)}`
+  );
+});
+
+/*
+ * AND THROUGH A COMMIT, which is the other route an edit can take. Both routes
+ * are exercised above - the refresh here, the commit in the sections before -
+ * so a dependent cannot be correct on one and stale on the other.
+ */
+const kindCommitBefore = state.snapshotDrawing(kindsDrawing);
+
+kindsForceOf(kindsDrawing).geometry.magnitude = 120;
+
+state.commitDrawingChange(kindsDrawing, kindCommitBefore);
+
+check(
+  "the same is true of a committed change",
+  componentsAgree(kindsDrawing) && resultantAgrees(kindsDrawing),
+  `components ${JSON.stringify(kindsComponentsOf(kindsDrawing).geometry)}, resultant ${JSON.stringify(kindsResultantOf(kindsDrawing).geometry)}`
+);
+
 console.log(
   `\n  ${pass} passed, ${fail} failed\n`
 );

@@ -83,7 +83,6 @@
             drawingLength,
             unit,
             precision,
-            showUnits,
             sourceName,
             angular
         } = options;
@@ -131,17 +130,6 @@
                     Display
                 </legend>
 
-                <label class="drawing-dimension-dialog-check">
-                    <input type="checkbox"
-                        data-dim-show-units${
-                            showUnits === false ? "" : " checked"
-                        }>
-                    <span>
-                        Show units
-                    </span>
-                </label>
-
-                <label class="drawing-dimension-dialog-label"
                     for="dimPrecision">
                     Decimal places
                 </label>
@@ -210,11 +198,16 @@
      * `onApply(changes)` receives only what the student actually
      * touched:
      *
-     *   { precision, showUnits, calibration: { realValue, unit } }
+     *   { precision, calibration: { realValue, unit } }
      *
      * The calibration is absent unless a real length was entered, so
      * the caller never has to ask whether one was meant. That matters:
      * an empty field must not silently rescale a document.
+     *
+     * There is deliberately no show-units option. A visible dimension
+     * always states its unit - a bare 500 is ambiguous with every other
+     * quantity of the same size on the sheet - so whether to show it is
+     * not a choice this dialog may offer.
      *
      * `onCancel` runs for every way out, including Escape.
      */
@@ -235,7 +228,6 @@
                 options.drawingLength || "",
             unit: options.unit || "mm",
             precision: options.precision ?? 2,
-            showUnits: options.showUnits !== false,
             sourceName:
                 options.sourceName || "unknown source",
             angular
@@ -270,11 +262,6 @@
                 ) {
                     changes.precision = precision;
                 }
-
-                changes.showUnits =
-                    dialog.querySelector(
-                        "[data-dim-show-units]"
-                    ).checked;
 
                 /*
                  * A calibration is requested ONLY when a real length

@@ -3101,6 +3101,162 @@
 }
 
 /* ==========================================================================
+   CREATION-TIME DIMENSION POPUP
+
+   The one compact input a freshly drawn feature uses to say how big it is.
+   It is deliberately NOT the scale dialog's full-screen modal: the student is
+   still looking at the object they just made, and covering the drawing to ask
+   one question would hide the very thing the answer is about.
+
+   So it is a small floating card near the top of the canvas, styled from the
+   same chrome as the rest of the drawing (Arial, the same border greys, the
+   same green focus ring) so it reads as part of EnggDraw. The number and its
+   unit are shown together - "500 mm" - rather than as a value box and a unit
+   dropdown, because the document already decides the unit and a per-popup
+   selector would only invite a millimetre value in a metre document.
+   ========================================================================== */
+
+.drawing-creation-dimension {
+    position: fixed;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    min-width: 172px;
+    padding: 10px 12px;
+
+    border: 1px solid #b8b8b8;
+    border-radius: 4px;
+    background: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #000000;
+}
+
+.drawing-creation-dimension-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1f5c38;
+}
+
+.drawing-creation-dimension-body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.drawing-creation-dimension-label {
+    font-size: 12px;
+    color: #444444;
+    white-space: nowrap;
+}
+
+.drawing-creation-dimension-input-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+
+    padding: 2px 8px;
+
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+}
+
+.drawing-creation-dimension-input {
+    width: 88px;
+    border: none;
+    background: transparent;
+    color: #000000;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    text-align: right;
+}
+
+.drawing-creation-dimension-input:focus {
+    outline: none;
+}
+
+.drawing-creation-dimension-input-wrap:focus-within {
+    border-color: #1f5c38;
+    outline: 2px solid #1f5c38;
+    outline-offset: -1px;
+}
+
+/*
+ * The unit is a SELECT because the student chooses the unit their
+ * number is read in - it is part of the quantity, not a caption on
+ * it. It is sized to the widest unit symbol so switching from mm to
+ * m does not make the popup jump, and it carries no browser chrome
+ * of its own so it reads as part of the same field as the number.
+ */
+.drawing-creation-dimension-unit {
+    appearance: none;
+    -webkit-appearance: none;
+
+    min-width: 38px;
+    padding: 0 14px 0 6px;
+
+    border: none;
+    border-left: 1px solid #d0d0d0;
+    margin-left: 2px;
+
+    /*
+     * The browser's own dropdown arrow is removed so the control can
+     * sit inside the number's field rather than beside it - but a
+     * control that looks like the text "mm" gives a student nothing to
+     * click, so the arrow is drawn back as a small caret. That is the
+     * whole difference between a label and a choice, and it has to be
+     * visible or the unit cannot be selected at all.
+     */
+    background-image: linear-gradient(45deg, transparent 50%, #555555 50%),
+        linear-gradient(135deg, #555555 50%, transparent 50%);
+    background-position:
+        right 6px center,
+        right 2px center;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+
+    color: #444444;
+
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.drawing-creation-dimension-unit:hover {
+    color: #1f5c38;
+}
+
+.drawing-creation-dimension-unit:focus {
+    outline: none;
+    color: #1f5c38;
+}
+
+/* The dropdown list itself, when the select is opened. */
+.drawing-creation-dimension-unit option {
+    color: #000000;
+    background: #ffffff;
+}
+
+.drawing-creation-dimension-step {
+    font-size: 10px;
+    color: #666666;
+}
+
+.drawing-creation-dimension-error {
+    font-size: 11px;
+    color: #b00020;
+}
+
+/* ==========================================================================
    EDIT DIMENSION
 
    Same shell as the scale-calibration dialog - both are short forms that
@@ -3219,4 +3375,577 @@
     font-size: 11px;
     line-height: 1.5;
     color: #666666;
+}
+
+/* ==========================================================================
+   THE PLOT EDITOR
+
+   A LARGE two-pane surface, because the mathematics does not fit in a
+   properties panel: the left pane is a scrolling list of expression cards
+   and the right pane is the live graph they produce.
+
+   The two are the same width of attention for a reason - the curve is the
+   feedback for the equation beside it, and a student checking a jump needs
+   both at once. Stacking them would mean scrolling past the equation to
+   see what it did.
+   ========================================================================== */
+
+.drawing-plot-editor {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(255, 255, 255, 0.9);
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #000000;
+}
+
+.plot-editor {
+    display: flex;
+    flex-direction: column;
+
+    width: 960px;
+    max-width: calc(100vw - 48px);
+    height: 620px;
+    max-height: calc(100vh - 48px);
+
+    background: #ffffff;
+    border: 1px solid #c8d2d6;
+    border-radius: 4px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+}
+
+.plot-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 12px 14px;
+    border-bottom: 1px solid #dfe5e8;
+}
+
+.plot-editor-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f5c38;
+}
+
+.plot-editor-close {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #666666;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.plot-editor-close:hover {
+    color: #000000;
+}
+
+.plot-editor-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.plot-editor-left,
+.plot-editor-right {
+    display: flex;
+    flex-direction: column;
+
+    padding: 12px 14px;
+    min-height: 0;
+}
+
+.plot-editor-left {
+    width: 380px;
+    flex: 0 0 380px;
+    border-right: 1px solid #dfe5e8;
+}
+
+.plot-editor-right {
+    flex: 1;
+}
+
+.plot-editor-section {
+    margin-bottom: 10px;
+
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #555555;
+}
+
+/* ==========================================================================
+   THE EXPRESSION CARDS
+
+   A card is one mathematical expression. The NUMBER is its position and is
+   generated when the list is rendered - it is not an identity - and the
+   TYPE is a word, so nothing about relationType or an enum ever reaches the
+   student.
+   ========================================================================== */
+
+.plot-editor-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+
+    margin-bottom: 10px;
+}
+
+.plot-editor-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    padding: 10px;
+    margin-bottom: 8px;
+
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #f7f7f7;
+}
+
+.plot-editor-card-number {
+    min-width: 20px;
+
+    font-size: 12px;
+    font-weight: 700;
+    color: #888888;
+    font-variant-numeric: tabular-nums;
+}
+
+.plot-editor-card-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.plot-editor-card-type {
+    margin-bottom: 6px;
+
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6b7b83;
+}
+
+.plot-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    margin-bottom: 6px;
+}
+
+.plot-editor-row:last-child {
+    margin-bottom: 0;
+}
+
+.plot-editor-label {
+    min-width: 46px;
+
+    font-size: 12px;
+    color: #333333;
+    white-space: nowrap;
+}
+
+.plot-editor-arrow {
+    color: #888888;
+    font-size: 12px;
+}
+
+.plot-editor-input {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+
+    padding: 5px 7px;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #000000;
+
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+}
+
+.plot-editor-input-short {
+    flex: 0 0 90px;
+}
+
+.plot-editor-input:focus {
+    outline: 2px solid #1f5c38;
+    outline-offset: -1px;
+}
+
+/*
+   THE PROBLEM IS ON THE CARD THAT HAS IT.
+
+   Not a list at the foot of the dialog the student has to match up by hand
+   against the thing they are editing. It appears only when there is one,
+   and it is removed the moment the expression is right again.
+ */
+.plot-editor-card-problem {
+    margin-top: 6px;
+
+    font-size: 11px;
+    line-height: 1.4;
+    color: #a3321f;
+}
+
+.plot-editor-delete {
+    padding: 0 6px;
+    border: 1px solid #d8c4c4;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #a3321f;
+
+    font-size: 14px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.plot-editor-delete:hover {
+    background: #fdf1ef;
+}
+
+.plot-editor-add {
+    padding: 7px 10px;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #1f5c38;
+
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.plot-editor-add:hover {
+    background: #e6f0ea;
+}
+
+/*
+   THE CHOICE OF WHAT KIND OF EXPRESSION.
+
+   Asked once, in words, at the moment the expression is added - rather than
+   creating an empty From/To/f(x) row and waiting for a validation message
+   to say what was built. A vertical line is not a function of x and asking
+   for it as one is what forced the old blank-fields-then-check approach.
+ */
+.plot-editor-choose {
+    margin-top: 10px;
+    padding: 10px;
+
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #ffffff;
+}
+
+.plot-editor-choose[hidden] {
+    display: none;
+}
+
+.plot-editor-choose-title {
+    margin-bottom: 8px;
+
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #555555;
+}
+
+.plot-editor-choose-option {
+    display: block;
+    width: 100%;
+
+    padding: 7px 10px;
+    margin-bottom: 6px;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.plot-editor-choose-option:last-child {
+    margin-bottom: 0;
+}
+
+.plot-editor-choose-option:hover {
+    border-color: #1f5c38;
+    background: #e6f0ea;
+    color: #1f5c38;
+}
+
+/* ==========================================================================
+   THE LIVE GRAPH
+
+   Drawn from the same marks the sheet uses, so it is a view of the
+   diagram rather than a picture of one. The axis runs the body's own span,
+   which is why the two ends are labelled rather than the ordinate: the
+   horizontal scale is the one the student chose the expressions against.
+   ========================================================================== */
+
+.plot-editor-graph {
+    flex: 1;
+    min-height: 0;
+
+    width: 100%;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #fdfdfd;
+}
+
+.plot-editor-graph-axis {
+    stroke: #9aa7ad;
+    stroke-width: 1;
+}
+
+.plot-editor-graph-curve {
+    fill: none;
+    stroke: #1f5c38;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.plot-editor-graph-label {
+    fill: #6b7b83;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+}
+
+.plot-editor-graph-empty {
+    fill: #6b7b83;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+}
+
+/* ==========================================================================
+   THE SKETCH EDITOR
+   The twin of the plot editor, and deliberately the same shape and the same
+   size: a student switching between the two modes of one diagram should find
+   everything where they left it. The only real difference is the left panel,
+   which offers four tools instead of a list of equations.
+   ========================================================================== */
+.sketch-editor-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.sketch-editor-tool {
+    padding: 6px 10px;
+    font-size: 12px;
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.sketch-editor-tool:hover {
+    border-color: #9aa7ad;
+}
+
+.sketch-editor-tool-active {
+    background: #1f5c38;
+    border-color: #1f5c38;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.sketch-editor-hint {
+    margin-bottom: 12px;
+    font-size: 11px;
+    color: #6b7b83;
+    font-style: italic;
+    min-height: 1.4em;
+}
+
+.sketch-editor-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-bottom: 10px;
+}
+
+.sketch-editor-empty {
+    padding: 12px;
+    font-size: 12px;
+    color: #6b7b83;
+    text-align: center;
+}
+
+.sketch-editor-element {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #f7f7f7;
+}
+
+.sketch-editor-element-selected {
+    border-color: #1f5c38;
+    background: #eef5f0;
+}
+
+.sketch-editor-element-label {
+    flex: 1;
+    text-align: left;
+    font-size: 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sketch-editor-element-delete {
+    background: none;
+    border: none;
+    font-size: 16px;
+    line-height: 1;
+    color: #888888;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.sketch-editor-element-delete:hover {
+    color: #b03030;
+}
+
+.sketch-editor-detail {
+    padding: 8px;
+    border-top: 1px solid #e4e4e4;
+    font-size: 11px;
+    color: #6b7b83;
+}
+
+.sketch-editor-detail-title {
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #444444;
+}
+
+.sketch-editor-point {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.sketch-editor-point span {
+    min-width: 18px;
+    font-size: 10px;
+    color: #888888;
+}
+
+.sketch-editor-point input {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 4px;
+    font-size: 11px;
+    border: 1px solid #dcdcdc;
+    border-radius: 2px;
+}
+
+.sketch-editor-graph {
+    width: 100%;
+    border: 1px solid #dcdcdc;
+    border-radius: 3px;
+    background: #fdfdfd;
+}
+
+.sketch-editor-axis {
+    stroke: #9aa7ad;
+    stroke-width: 1;
+}
+
+.sketch-editor-stroke {
+    fill: none;
+    stroke: #1f5c38;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/*
+ * THE SELECTION IS A HEAVIER STROKE, NOT A DIFFERENT COLOUR. A selected
+ * element must still be the colour it is on the sheet; recolouring it here
+ * would make the dialog disagree with the drawing it is a preview of.
+ */
+.sketch-editor-stroke-selected {
+    stroke-width: 3.5;
+}
+
+.sketch-editor-pending {
+    fill: none;
+    stroke: #1f5c38;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0.7;
+}
+
+.sketch-editor-cursor-point {
+    fill: #1f5c38;
+}
+
+.sketch-editor-label {
+    fill: #6b7b83;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+}
+
+.plot-editor-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+
+    padding: 12px 14px;
+    border-top: 1px solid #dfe5e8;
+}
+
+.plot-editor-actions button {
+    min-width: 96px;
+    padding: 7px 14px;
+
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #000000;
+
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.plot-editor-actions button.primary {
+    border-color: #1f5c38;
+    background: #1f5c38;
+    color: #ffffff;
+}
+
+.plot-editor-actions button:hover {
+    background: #f0f0f0;
+}
+
+.plot-editor-actions button.primary:hover {
+    background: #17492b;
 }

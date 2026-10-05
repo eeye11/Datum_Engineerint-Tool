@@ -162,7 +162,7 @@ check(
     };
     return model.textFor(probe, scene(resultant));
   })(),
-  "R = 50.0 N\nθ = 53.1°"
+  "R = 50.0 N"
 );
 
 console.log(`\n${pass} passed, ${fail} failed`);

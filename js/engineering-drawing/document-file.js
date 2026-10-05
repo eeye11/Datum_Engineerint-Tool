@@ -264,10 +264,33 @@
     }
 
     /*
+     * THE DOCUMENT SCALE BECOMES THE FIRST SHEET'S SCALE.
+     *
+     * An old file had one scale for the whole document, because it
+     * had one sheet. The scale now belongs to a sheet, so it is moved
+     * onto the one sheet the migration produces rather than left at
+     * the top level.
+     *
+     * Leaving it where it was would mean an old drawing reopened with
+     * every length uncalibrated - the geometry would still be there,
+     * and so would the number that gave it meaning, but they would
+     * no longer be connected to each other.
+     */
+    if (document?.scale) {
+      first.scale = {
+        ...document.scale
+      };
+    }
+
+    /*
      * The settings that belong to the DOCUMENT rather than to any one
-     * sheet - units, scale, the active tool - stay at the top level.
-     * They are not per-sheet because they are not properties of a
-     * drawing: millimetres are millimetres on every sheet.
+     * sheet - units, the active tool - stay at the top level.
+     *
+     * Units are still a document-wide convention: millimetres are
+     * millimetres on every sheet. The LENGTH SCALE is not - that is a
+     * physical relationship between a sheet's geometry and real
+     * lengths, so two sheets may legitimately disagree about it, and
+     * it travels with the sheet that owns the geometry.
      */
     return {
       ...document,

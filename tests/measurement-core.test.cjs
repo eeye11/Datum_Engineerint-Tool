@@ -79,9 +79,21 @@ check(
   true
 );
 check(
-  "exposes both of its own endpoints",
+  "exposes its own endpoints, plus the interior points a reference needs",
   m.anchorOptions(horizontalLine),
-  ["start", "end"]
+  ["start", "end", "midpoint", "quarter1", "quarter3"]
+);
+
+/*
+ * The interior anchors are DERIVED from the ends, not stored. That is
+ * the reason to compute them here rather than keep them as geometry:
+ * move an end and the midpoint follows it, instead of drifting out of
+ * step with the line it describes.
+ */
+check(
+  "and its midpoint is the point halfway along it",
+  m.resolveAnchor(horizontalLine, "midpoint"),
+  { x: 50, y: 0 }
 );
 
 console.log("\nA vertical line");
@@ -154,7 +166,7 @@ check(
 check(
   "which carries the diameter symbol",
   m.DIMENSION_TYPES.diameter.prefix,
-  "Ø "
+  "Ø"
 );
 check(
   "and a radius is available",
@@ -198,7 +210,29 @@ check(
   m.dimensionCandidates(rectangle).slice(0, 2),
   ["horizontal", "vertical"]
 );
-check("exposes four corners", m.anchorOptions(rectangle).length, 5);
+check(
+  "exposes four corners, its centre, and each edge as a segment",
+  m.anchorOptions(rectangle).length,
+  5 + 12
+);
+/*
+ * The four named corners are still there, and the edge segments are added
+ * alongside them - a rectangle is dimensioned by an edge behaving like a line,
+ * so each edge publishes its two ends and its midpoint.
+ */
+check(
+  "with the corners still among them",
+  ["topLeft", "topRight", "bottomRight", "bottomLeft", "center"].every(
+    (name) => m.anchorOptions(rectangle).includes(name)
+  ),
+  true
+);
+check(
+  "and the first edge named as a segment",
+  m.anchorOptions(rectangle).includes("segment0Start") &&
+    m.anchorOptions(rectangle).includes("segment0Mid"),
+  true
+);
 
 console.log("\nA point force");
 const force = feature("force", {

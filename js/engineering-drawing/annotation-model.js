@@ -176,6 +176,48 @@
   }
 
   /*
+   * ========================================================
+   * THE FEATURE TYPES THAT CARRY SOMETHING WORTH ANNOTATING
+   * ========================================================
+   *
+   * Read off the KINDS table rather than kept as a second list.
+   *
+   * The table is the authority: it already says, per kind, which feature types
+   * that kind describes, and it is what decides whether a box can be produced
+   * for a feature at all. A list written anywhere else is a list that can fall
+   * behind - and it did, immediately: a list naming "distributed-load" and
+   * "applied-moment" would offer the switch to features Datum does not have
+   * (they are "load" and "moment") and so offer it to nothing at all, while
+   * omitting the support and connection labels the table does carry.
+   *
+   * Two questions are deliberately NOT answered here:
+   *
+   *   - Whether a particular feature can state a value. That is asked per
+   *     feature by `kindsFor`, which probes the feature itself, because a
+   *     support with no reaction yet genuinely has nothing to say.
+   *   - Whether the annotation should be shown. That is display state, and
+   *     lives in `magnitudeShownFor`.
+   *
+   * This only answers the structural question: is there ever a box for this
+   * kind of feature.
+   */
+  function annotatableTypes() {
+    const types = new Set();
+
+    Object.keys(KINDS).forEach((kind) => {
+      const describes = KINDS[kind]?.describes;
+
+      if (!Array.isArray(describes)) {
+        return;
+      }
+
+      describes.forEach((type) => types.add(type));
+    });
+
+    return types;
+  }
+
+  /*
    * How an annotation's text is chosen.
    *
    * The three are genuinely different, and conflating them is how
@@ -365,6 +407,193 @@
    * longer there, so a caller can mark it unresolved instead of
    * displaying text that no longer corresponds to anything.
    */
+  /*
+   * ========================================================
+   * THE THREE DISPLAY SETTINGS, AS TEXT
+   * ========================================================
+   *
+   * `showUnits`, `showMagnitudes` and `showDimensions` are INDEPENDENT,
+   * and the independence is the whole design:
+   *
+   *     Show Magnitudes = ON, Show Units = OFF
+   *
+   * states `F = 100` and `M = 25` - the magnitudes are there and their
+   * units are not. A unit is not a decoration on a number: it is what says
+   * whether 250 is millimetres, newtons or kilonewtons, and a drawing that
+   * routinely carries both a 250 mm dimension and a 250 N force needs the
+   * reader to be able to turn the distinction off and on.
+   *
+   * SO THE UNIT IS ASSEMBLED HERE, NOT PRINTED AT EACH CALL SITE.
+   *
+   * Every value below used to be written as one finished string with its
+   * unit already inside it - `F = 100 N`, `M = 25 N·m`, `w = 5 kN/m`. That
+   * makes the unit impossible to remove without rewriting every one of
+   * them, which is why it could not be a setting. Each value is now built
+   * as a NUMBER with a separate unit, and this is the one place that
+   * decides whether the unit is printed.
+   *
+   * THE NUMBER IS NEVER ROUNDED DIFFERENTLY. A unit is text beside a
+   * figure, not part of it, so hiding it cannot change the figure - a
+   * toggle that altered the value as well as its dressing would be a
+   * change to the drawing rather than to its presentation.
+   */
+  function unitSuffix(
+      unit,
+      showUnits
+  ) {
+      /*
+       * THE UNIT IS ALWAYS WRITTEN.
+       *
+       * `showUnits` is accepted so a caller that still passes it is not broken,
+       * and is then deliberately not consulted. A magnitude with no unit is a
+       * number that could be any quantity of that size - and a statics drawing
+       * routinely carries a 100 N force beside a 100 mm span, which is exactly
+       * the pair a reader must be able to tell apart.
+       *
+       * The flag used to switch this off, which meant Show Magnitudes could be
+       * on and every value drawn unitless: the setting that asked for the
+       * magnitudes was not the setting that decided whether they were
+       * readable.
+       */
+      void showUnits;
+
+      return ` ${unit}`;
+    }
+
+  /*
+   * The parts of a generated value, so a caller can decide what to do with
+   * the unit without having to strip it back out of a string.
+   */
+  function quantity(
+    label,
+    value,
+    unit,
+    showUnits
+  ) {
+    return `${label} = ${formatNumber(value)}${unitSuffix(unit, showUnits)}`;
+  }
+
+  /*
+   * ========================================================
+   * THE DISPLAY SETTINGS A LABEL IS DRAWN WITH
+   * ========================================================
+   *
+   * Read from the document state, and DEFAULTED HERE rather than assumed.
+   *
+   * These are workspace settings - Show Units, Show Magnitudes, Show
+   * Dimensions - and they live on the state rather than on any feature,
+   * because they are a property of the sheet being read rather than of
+   * anything drawn on it. That is why a label has to be told them rather
+   * than find them on its own source.
+   *
+   * EVERY SETTING DEFAULTS TO ON.
+   *
+   * The absence of a setting must not silently mean "off": a drawing saved
+   * before these existed, or one loaded by a test with a bare state, would
+   * come back with every unit and every magnitude stripped off it. The
+   * conservative reading of "nobody said otherwise" is the one that was
+   * always in force, so that is what an absent field means.
+   *
+   * Only an explicit `false` turns one off.
+   */
+  function displaySettingsOf(state) {
+    const display = (state && state.display) || {};
+
+    return {
+      showUnits: display.showUnits !== false,
+      showMagnitudes: display.showMagnitudes !== false,
+      showDimensions: display.showDimensions !== false
+    };
+  }
+
+  /*
+   * ========================================================
+   * DOES THIS ONE FEATURE'S ANNOTATION APPEAR?
+   * ========================================================
+   *
+   * There are two switches, and they are not the same question:
+   *
+   *   THE GLOBAL ONE says whether magnitude annotations are wanted on this
+   *   sheet at all. It is a bulk control: turning it off means "no magnitudes
+   *   anywhere", and no single feature may argue with that.
+   *
+   *   THE PER-FEATURE ONE says whether THIS feature's annotation is wanted,
+   *   on a sheet where magnitudes are wanted. It exists because twenty forces
+   *   on one diagram is unreadable, and the student is the only one who knows
+   *   which three matter.
+   *
+   * The per-feature switch therefore only ever NARROWS the global one. Turning
+   * Magnitudes off globally hides everything, including a feature that asked
+   * to be shown; turning it back on restores each feature to what it had
+   * asked for, rather than flattening them all to "on".
+   *
+   * That last part is why the preference is stored on the FEATURE and not
+   * recomputed from the global switch: if it were derived, toggling the
+   * global control off and on again would silently forget every individual
+   * choice the student had made in between.
+   *
+   * An absent preference means "no opinion", which is not the same as "off":
+   * it defers to the global setting, so a feature the student has never
+   * touched follows the sheet.
+   */
+  function magnitudeShownFor(object, state) {
+    const settings = displaySettingsOf(state);
+
+    if (!settings.showMagnitudes) {
+      return false;
+    }
+
+    const preference = featurePreference(object);
+
+    if (preference === null || preference === undefined) {
+      return true;
+    }
+
+    return preference !== false;
+  }
+
+  /*
+   * THE FEATURE'S OWN OPINION, read from where the panel writes it.
+   *
+   * `annotationDisplay` holds the per-feature overrides. It is read defensively
+   * because an older document will not have it at all, and an absent holder
+   * must mean "no opinion" rather than throwing while repainting a panel.
+   */
+  function featurePreference(object) {
+    if (!object || typeof object !== "object") {
+      return null;
+    }
+
+    const holder =
+        object.annotationDisplay ||
+        object.display ||
+        null;
+
+    if (
+        !holder ||
+        typeof holder !== "object"
+    ) {
+        return null;
+    }
+
+    const value = holder.showMagnitude;
+
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    /*
+     * Only an explicit boolean is an opinion. A string "false" here would be
+     * truthy and would mean the opposite of what it says, which is how a
+     * toggle ends up permanently on and inexplicable.
+     */
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    return value === "true";
+  }
+
   function textFor(
     annotation,
     state
@@ -400,7 +629,51 @@
 
     return generatedText(
       annotation,
-      object
+      object,
+      displaySettingsOf(state)
+    );
+  }
+
+  /*
+   * ========================================================
+   * SHOULD THIS ANNOTATION BE DRAWN AT ALL?
+   * ========================================================
+   *
+   * A second question from the first one, and the distinction is the whole
+   * point of having Show Magnitudes as its own control.
+   *
+   * `textFor` answers "what does it say". This answers "is there
+   * something to say". A force with Show Magnitudes OFF should have NO
+   * annotation on it - not an annotation with its text emptied, which
+   * would leave a leader line running to nowhere with a stub where the
+   * value was.
+   *
+   * ONLY GENERATED ANNOTATIONS ARE SUBJECT TO IT. A note the student
+   * WROTE is theirs: it is not a magnitude, it is their own words about
+   * the drawing, and a setting about printed engineering values has no
+   * business removing it. The same goes for a feature's name shown as a
+   * label.
+   */
+  function isVisible(annotation, state) {
+    if (annotation.textMode === TEXT_MODES.manual) {
+      return true;
+    }
+
+    if (
+      annotation.textMode ===
+      TEXT_MODES["feature-name"]
+    ) {
+      return true;
+    }
+
+    if (
+      !displaySettingsOf(state).showMagnitudes
+    ) {
+      return false;
+    }
+
+    return Boolean(
+      textFor(annotation, state)
     );
   }
 
@@ -436,6 +709,124 @@
    * come first and the plain label is the fallback.
 
    */
+  /*
+   * ========================================================
+   * A VALUE THAT FOLLOWS ITS FEATURE
+   * ========================================================
+   *
+   * Show Magnitudes was only ever able to reveal annotations that ALREADY
+   * existed, and the only thing that made one was the manual Annotation
+   * tool. So a student who enabled it on a sheet of forces saw no change:
+   * there was nothing underneath to reveal. The value was always
+   * computable - `textFor` could state it - but nothing asked it to.
+   *
+   * So the value is derived HERE, at draw time, from the feature itself.
+   *
+   * IT IS NOT STORED IN THE DOCUMENT, and that is the point. A stored one
+   * would be a second copy of a number the force already owns, free to go
+   * stale the moment the magnitude is edited, and it would push back when
+   * the force moves. Derived every frame, it cannot disagree with its
+   * source: there is nothing to fall out of step.
+   *
+   * Returning null means "this feature has no magnitude to show", which
+   * is a normal answer for a beam or a circle, not a failure.
+   */
+  function derivedAnnotation(object, state) {
+    if (!object) {
+      return null;
+    }
+
+    /*
+     * Whether magnitudes are wanted at all, and whether this feature has an
+     * opinion. The second defers to the first, and only ever narrows it.
+     */
+    if (!magnitudeShownFor(object, state)) {
+      return null;
+    }
+
+    /*
+     * The student's own annotations for this feature already say what
+     * they want said. A derived value beside them would print the
+     * magnitude twice, and neither copy would be the one they placed.
+     */
+    const existing = annotationsFor(state, object.id);
+
+    if (existing.some((a) => isGenerated(a.annotationKind))) {
+      return null;
+    }
+
+    const kind = kindsFor(object, state).find((k) =>
+      /value|components|profile/.test(k)
+    );
+
+    if (!kind) {
+      return null;
+    }
+
+    const annotation = {
+      id: `derived-${object.id}-${kind}`,
+      type: "annotation",
+      sourceFeatureId: object.id,
+      annotationKind: kind,
+      textMode: TEXT_MODES.generated,
+    };
+
+    /*
+     * Placement is asked for AFTERWARDS, because suggestPlacement reads
+     * the kind off the annotation it is handed - so it has to be handed a
+     * whole one. Building the placement inside the literal would refer to
+     * `annotation` before it exists.
+     */
+    annotation.placement = suggestPlacement(annotation, state);
+
+    /*
+     * ========================================================
+     * AND THEN THE STUDENT'S OWN MOVE IS APPLIED
+     * ========================================================
+     *
+     * The suggestion above is where the box NATURALLY falls - beyond the
+     * arrowhead, on the side the reader looks along. It is a starting
+     * position, not a fixed one: `F = 100 N` printed across an arrowhead is
+     * unreadable, and the student is the only one who knows where on a busy
+     * sheet there is room for it.
+     *
+     * So a moved box stores WHERE IT WAS PUT and this adds that to the
+     * suggestion. Only the position is remembered - the text is still
+     * derived from the feature on every frame, so moving the box cannot
+     * make its number disagree with the force it belongs to, and editing the
+     * force cannot make the box drift off the number.
+     *
+     * An offset of zero or none means "where it naturally falls", which is
+     * where a box that has never been moved sits, and where it returns if
+     * the student drags it back to where it started.
+     */
+    const offset = object.geometry?.magnitudeOffset;
+
+    if (offset && (offset.x || offset.y)) {
+      annotation.placement = {
+        x: annotation.placement.x + (offset.x || 0),
+        y: annotation.placement.y + (offset.y || 0),
+      };
+
+      /*
+       * MARKED AS MOVED, so the renderer and the hit test agree about which
+       * box is being drawn and do not each work it out separately.
+       */
+      annotation.moved = true;
+    }
+
+    /*
+     * Asked of the real object rather than assumed, so a kind that offers
+     * but cannot state (no magnitude field on this particular feature)
+     * contributes nothing instead of a leader to an empty spot.
+     */
+    if (!textFor(annotation, state)) {
+      return null;
+    }
+
+    return annotation;
+  }
+
   function kindsFor(object, state) {
     if (!object) {
       return [];
@@ -498,28 +889,31 @@
    */
   function generatedText(
     annotation,
-    object
+    object,
+    display = {}
   ) {
     const geometry = object.geometry || {};
     const type = object.type;
+    const showUnits = display.showUnits;
 
     switch (annotation.annotationKind) {
       case "force-value":
-        return forceText(geometry);
+        return forceText(geometry, showUnits);
 
       case "force-components":
-        return forceComponentText(geometry);
+        return forceComponentText(geometry, showUnits);
 
       case "moment-value":
-        return momentText(geometry);
+        return momentText(geometry, showUnits);
 
       case "load-value":
-        return loadText(geometry);
+        return loadText(geometry, showUnits);
 
       case "load-profile-value":
         return profileText(
           annotation,
-          geometry
+          geometry,
+          showUnits
         );
 
       case "support-label":
@@ -529,7 +923,7 @@
         return connectionText(object);
 
       case "resultant-value":
-        return resultantText(geometry);
+        return resultantText(geometry, showUnits);
 
       case "label":
         return object.name || null;
@@ -549,27 +943,29 @@
    * calculation about the drawing. No reaction is involved, because no
    * reaction exists on the force.
    */
-  function forceText(geometry) {
+  function forceText(geometry, showUnits) {
     const magnitude = Number(geometry.magnitude);
 
     if (!Number.isFinite(magnitude)) {
       return null;
     }
 
-    const angle = Number(geometry.angle);
-
-    const direction =
-      Number.isFinite(angle)
-        ? `\nθ = ${round(angle, 1)}°`
-        : "";
-
     /*
-     * The unit is part of the statement, not decoration. A drawing
-     * routinely carries both a 250 mm dimension and a 250 N force, and
-     * a reader who has to infer which one a number refers to is being
-     * asked to do the reading's job for it.
+     * MAGNITUDE ONLY. NO ANGLE, EVER.
+     *
+     * The direction is the ARROW's job, and it is already doing it:
+     * a vector drawn at 30 degrees needs nothing written beside it to
+     * say so, and "F = 100 N / θ = 30°" stated the same fact twice -
+     * once graphically, which is where a reader actually wants it, and
+     * once as text that can disagree with the arrow if either is
+     * edited alone.
+     *
+     * Removing the number also removes a class of bug. The arrow can be
+     * dragged, flipped and re-angled; the text was a snapshot taken
+     * when the annotation was built, so it was only ever a stale copy of
+     * what the drawing already shows.
      */
-    return `F = ${formatNumber(magnitude)} N${direction}`;
+    return quantity("F", magnitude, "N", showUnits);
   }
 
   /*
@@ -579,7 +975,7 @@
    * arrow: a force of F at angle θ has those components. Stating them
    * is a reading of the force, not a new fact about it.
    */
-  function forceComponentText(geometry) {
+  function forceComponentText(geometry, showUnits) {
     const magnitude = Number(geometry.magnitude);
     const angle = Number(geometry.angle);
 
@@ -593,16 +989,22 @@
     const radians = (angle * Math.PI) / 180;
 
     return [
-      `Fx = ${formatNumber(
-        magnitude * Math.cos(radians)
-      )} N`,
-      `Fy = ${formatNumber(
-        magnitude * Math.sin(radians)
-      )} N`
+      quantity(
+        "Fx",
+        magnitude * Math.cos(radians),
+        "N",
+        showUnits
+      ),
+      quantity(
+        "Fy",
+        magnitude * Math.sin(radians),
+        "N",
+        showUnits
+      )
     ].join("\n");
   }
 
-  function momentText(geometry) {
+  function momentText(geometry, showUnits) {
     const magnitude = Number(geometry.magnitude);
 
     if (!Number.isFinite(magnitude)) {
@@ -610,19 +1012,18 @@
     }
 
     /*
-     * The sense is the moment's own field. A moment drawn clockwise
-     * is labelled clockwise; the arrow already shows it, and the
-     * label agrees with it rather than restating it in a second
-     * convention.
+     * THE SENSE IS NOT WRITTEN DOWN EITHER.
+     *
+     * A moment's direction is the curved arrow, drawn clockwise or
+     * anticlockwise, and the arc is unambiguous. Appending "CW" or
+     * "CCW" to the number repeated it as text - and, as with the force
+     * angle, in a second place that could be stale the moment the
+     * moment was flipped.
      */
-    const sense = geometry.clockwise
-      ? "CW"
-      : "CCW";
-
-    return `M = ${formatNumber(magnitude)} N·m\n${sense}`;
+    return quantity("M", magnitude, "N·m", showUnits);
   }
 
-  function loadText(geometry) {
+  function loadText(geometry, showUnits) {
     const intensity = Number(geometry.intensity);
 
     if (!Number.isFinite(intensity)) {
@@ -632,31 +1033,15 @@
     const angle = Number(geometry.direction);
 
     /*
-     * A distributed load is drawn along an arrow, and the arrow is
-     * what says which way the pressure pushes - so the label shows
-     * the same direction rather than leaving the reader to work it
-     * out from the drawing.
-     *
-     * The test is against the load's own angle: straight down is -90
-     * degrees and straight up is +90, which are the two angles a
-     * load is actually drawn at. Comparing against 0 and 180 would
-     * test for a horizontal load, which is not a loading case.
+     * The intensity alone. Which way a distributed load pushes is
+     * shown by the row of arrows above the member - that is the
+     * standard way a load diagram reads, and adding a direction
+     * glyph to the label duplicated what the arrows already say
+     * while consuming space beside every annotation on the sheet.
      */
-    const within = (degrees) =>
-      Number.isFinite(angle) &&
-      Math.abs(angle - degrees) < 1;
+    void angle;
 
-    const arrow = within(-90)
-      ? " ↓"
-      : within(90)
-        ? " ↑"
-        : within(180)
-          ? " →"
-          : within(0)
-            ? " ←"
-            : "";
-
-    return `w = ${formatNumber(intensity)} kN/m${arrow}`;
+    return quantity("w", intensity, "kN/m", showUnits);
   }
 
   /*
@@ -670,7 +1055,8 @@
    */
   function profileText(
     annotation,
-    geometry
+    geometry,
+    showUnits
   ) {
     const points = Array.isArray(geometry.points)
       ? geometry.points
@@ -710,7 +1096,12 @@
       49 + (index % 9)
     );
 
-    return `w${suffix} = ${formatNumber(magnitude)} kN/m`;
+    return quantity(
+      `w${suffix}`,
+      magnitude,
+      "kN/m",
+      showUnits
+    );
   }
 
   /*
@@ -755,21 +1146,20 @@
       : label;
   }
 
-  function resultantText(geometry) {
+  function resultantText(geometry, showUnits) {
     const magnitude = Number(geometry.magnitude);
 
     if (!Number.isFinite(magnitude)) {
       return null;
     }
 
-    const angle = Number(geometry.angle);
-
-    return [
-      `R = ${formatNumber(magnitude)} N`,
-      ...(Number.isFinite(angle)
-        ? [`θ = ${round(angle, 1)}°`]
-        : [])
-    ].join("\n");
+    /*
+     * The resultant's MAGNITUDE. Its direction is the drawn arrow,
+     * for the same reason the force's is: the vector is the
+     * statement of direction, and a number beside it can only ever be
+     * a second copy that may disagree with it.
+     */
+    return quantity("R", magnitude, "N", showUnits);
   }
 
   function humanise(type) {
@@ -1280,11 +1670,16 @@
     TEXT_MODES,
     annotationsFor,
     createAnnotation,
+    derivedAnnotation,
+    displaySettingsOf,
     findObject,
     formatNumber,
     isGenerated,
     kindsFor,
     isResolved,
+    isVisible,
+    magnitudeShownFor,
+    annotatableTypes,
     leaderFor,
     moveAnnotation,
     onSourceDeleted,

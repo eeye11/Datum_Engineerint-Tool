@@ -228,6 +228,84 @@ check(
   frames.attachmentPoint(null, { fraction: 0.5, unit: "fraction" }) === null
 );
 
+/*
+ * ============================================================
+ * WHERE A SUPPORT ACTUALLY GOES WHEN IT IS PLACED
+ * ============================================================
+ *
+ * Everything above is about the stored value being the right SHAPE. This is
+ * about it being the right VALUE - the complaint being that supports kept
+ * appearing at the ends of their bodies rather than where the cursor was.
+ *
+ * THE FAULT WAS IN SEEDING IT. The support factory has no body, so it could
+ * only guess a distance along the member from the point it was handed, and it
+ * took the point's X. That guess is right only when the body starts at the
+ * origin and runs along +X - which is the one arrangement a student does not
+ * usually draw:
+ *
+ *   - a member from x=100 to x=400, support clicked at x=250, was filed as
+ *     250 ALONG a member whose origin is 100, and resolved to x=350;
+ *   - a member running diagonally measured its length along X on a line
+ *     that leaves X behind, giving the wrong station twice over.
+ *
+ * Once the value is wrong the support is stored wrong, so every later read
+ * - including the drag - starts from a position the student never chose, and
+ * a wrong station near the far end clamps there. Hence "always at the end".
+ *
+ * So the placement is now measured ON THE MEMBER, and stored as a fraction
+ * of its length, at the point where the body is known.
+ */
+console.log("\n  a support is placed where the pointer was\n");
+
+[
+  ["a member from the origin", { start: { x: 0, y: 0 }, end: { x: 300, y: 0 } }],
+  [
+    "a member that does NOT start at the origin",
+    { start: { x: 100, y: 0 }, end: { x: 400, y: 0 } },
+  ],
+  [
+    "a member running diagonally",
+    { start: { x: 0, y: 0 }, end: { x: 100, y: 100 } },
+  ],
+  [
+    "a member running the other way",
+    { start: { x: 300, y: 0 }, end: { x: 0, y: 0 } },
+  ],
+].forEach(([label, span]) => {
+  const beam = { id: "beam-1", type: "beam", geometry: { ...span, depth: 12 } };
+
+  const frame = frames.frameOf(beam);
+
+  /*
+   * A point genuinely a quarter of the way along the member - which is the
+   * honest way to choose a spot on it, and the shape of the question the
+   * projection answers.
+   */
+  const quarter = frames.pointAt(frame, frame.length * 0.25);
+
+  const attachment = frames.attachmentFor(frame, quarter);
+
+  const resolved = frames.attachmentPoint(frame, attachment);
+
+  const travelled = Math.hypot(
+    resolved.x - quarter.x,
+    resolved.y - quarter.y,
+  );
+
+  check(
+    `on ${label}, a quarter of the way along reads back where it was placed`,
+    travelled < 1e-9,
+    `placed at ${JSON.stringify(quarter)}, resolved to ${JSON.stringify(resolved)}`,
+  );
+
+  check(
+    `${label}: it is stored as a fraction, not an absolute distance`,
+    attachment.unit === "fraction" &&
+      near(attachment.fraction, 0.25, 1e-9),
+    `attachment = ${JSON.stringify(attachment)}`,
+  );
+});
+
 console.log(
   `\n  ${pass} passed, ${fail} failed\n`
 );

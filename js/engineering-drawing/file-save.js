@@ -1,40 +1,60 @@
 /*
- * Saving a document to disk.
+ * ========================================================
+ * SAVING A DOCUMENT, AND SAVING A DRAWING AS AN IMAGE
+ * ========================================================
  *
  * Save and Save As use the OPERATING SYSTEM's own save panel, the same
  * one a desktop application gets. Not a dialog built in the page, and
- * not window.prompt: the whole point of a file is where it ends up,
- * and choosing that is the operating system's job, not something the
+ * not window.prompt: the whole point of a file is where it ends up, and
+ * choosing that is the operating system's job, not something the
  * application should be inventing a worse version of.
  *
- * WHAT THE USER GETS
- * ------------------
- * The native panel is asked for a name, a folder and a file type.
- * The .enggdraw type is offered with the document's real extension and
- * MIME type, so the file the user sees in their file manager, and the
- * file EnggDraw can reopen, are the same one.
+ * ========================================================
+ * ONE SAVE AS, THREE OUTPUTS
+ * ========================================================
  *
+ * Save As is the ONE place a student chooses the representation they
+ * want, and the choice is made in the system panel rather than in a
+ * second, application-owned dialog:
+ *
+ *     Datum project  the editable document
+ *     PNG            a clean drawing snip
+ *     JPG / JPEG     the same snip, encoded differently
+ *
+ * There is deliberately no separate Export workflow. "Export -> Image ->
+ * PNG" asks the student to learn a second idea for the same act, and it
+ * leaves two paths that produce a file - two places for the filename,
+ * the extension and the cancellation handling to disagree. Save As
+ * decides the format; this module writes it.
+ *
+ * ========================================================
  * TWO BROWSERS, TWO ROUTES
- * ------------------------
- * Where the File System Access API exists, the panel returns a handle
- * to the file itself. That handle is kept, and a later Save writes
- * straight back to it - no panel, no filename, no chance of quietly
- * saving a second copy somewhere else. This is the behaviour that
- * makes Save genuinely different from Save As.
+ * ========================================================
+ *
+ * Where the File System Access API exists, the panel returns a handle to
+ * the file itself. That handle is kept, and a later Save writes straight
+ * back to it - no panel, no filename, and no chance of quietly saving a
+ * second copy somewhere else. This is the behaviour that makes Save
+ * genuinely different from Save As.
  *
  * Where it does not - Safari and Firefox today - a download is the only
- * thing a web page can do with a file, so that is what happens. The
- * difference is stated plainly rather than hidden, because the honest
- * consequence is that Save re-offers the name every time: without a
- * handle there is nothing to remember a handle to.
+ * thing a web page can do with a file, so that is what happens, and the
+ * browser's own download flow chooses the destination. The difference is
+ * stated plainly rather than hidden: without a handle there is nothing
+ * to remember a handle to, so Save re-offers the name every time.
  *
- * WHAT IS WRITTEN
- * ---------------
- * The document body, unmodified, in the same envelope the format module
- * defines. This module never builds content: it is handed the finished
- * document and puts it somewhere. That is what keeps the file a real
- * editable .enggdraw rather than an export that happens to use the
- * right extension.
+ * ========================================================
+ * WHAT THIS MODULE DOES NOT DO
+ * ========================================================
+ *
+ * It does not RENDER. An image is produced by the drawing renderer,
+ * which is handed to this module as a callback. Keeping the render out
+ * of here is what stops this file from growing a second, private
+ * understanding of how a drawing looks - the exported PNG is the same
+ * drawing the canvas shows, produced by the same code.
+ *
+ * It also never edits the document. Saving is not a document change, so
+ * nothing here touches the model, and the caller adds no history entry.
  */
 (function (root) {
   "use strict";
@@ -47,38 +67,143 @@
    * guess at that gets it wrong in both directions.
    */
   function supportsNativePicker() {
-    return (
-      typeof root.showSaveFilePicker === "function"
-    );
+    return typeof root.showSaveFilePicker === "function";
+  }
+
+  /* ---------------------------------------------------------- */
+  /* THE FORMATS                                                 */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * The three representations, in the order the panel should offer
+   * them: the editable document first, because it is the one that keeps
+   * the work, then the two images.
+   *
+   * `extensions` is what the native picker filters on. `mime` is what a
+   * system that knows the type will show. Both are given for each,
+   * because a picker showing an unfamiliar type with no extension is
+   * confusing and one showing only an extension cannot be filtered
+   * properly.
+   */
+  function formatTable() {
+    const file = root.enggDocumentFile;
+
+    return [
+      {
+        id: "enggdraw",
+        label: "Datum drawing",
+        extensions: [`.${file.EXTENSION}`],
+        mime: file.MEDIA_TYPE,
+        image: false
+      },
+      {
+        id: "png",
+        label: "PNG image",
+        extensions: [".png"],
+        mime: "image/png",
+        image: true
+      },
+      {
+        id: "jpg",
+        label: "JPG image",
+        extensions: [".jpg", ".jpeg"],
+        mime: "image/jpeg",
+        image: true
+      }
+    ];
   }
 
   /*
-   * The file type offered in the panel.
+   * The file-type list the native panel is given.
    *
-   * Two descriptions for one extension: the MIME type, which is what a
-   * system that knows about EnggDraw will show, and the extension as a
-   * fallback for the ones that do not. Both are needed, because a
-   * picker showing an unfamiliar type with no extension is confusing
-   * and one showing only an extension cannot be filtered properly.
+   * Each entry becomes one choice in the system panel's type control.
+   * On a platform that ignores them the panel still opens and the
+   * filename decides, which is the closest native-compatible behaviour
+   * available - and it is deliberately NOT replaced with an
+   * application-owned type dialog.
    */
   function fileTypes() {
-    const file =
-      root.enggDocumentFile;
-
-    return {
-      description: "EnggDraw drawing",
+    return formatTable().map((format) => ({
+      description: format.label,
       accept: {
-        [file.MEDIA_TYPE]: [`.${file.EXTENSION}`]
+        [format.mime]: format.extensions
       }
-    };
+    }));
   }
+
+  /*
+   * The format a chosen filename asks for, or the document format.
+   *
+   * The extension is the only signal the system panel gives us across
+   * every browser, so it is what decides. An unrecognised extension is
+   * treated as the document: a name the user typed freely should save
+   * their WORK, not silently become an image they did not ask for.
+   */
+  function formatForName(name) {
+    const lower = String(name || "").toLowerCase();
+
+    const match = formatTable().find((format) =>
+      format.extensions.some((extension) =>
+        lower.endsWith(extension),
+      ),
+    );
+
+    return match || formatTable()[0];
+  }
+
+  /*
+   * A filename whose extension matches the chosen format, exactly once.
+   *
+   * A student who picks "Beam Diagram" and then the PNG type should get
+   * "Beam Diagram.png" - not "Beam Diagram" with no extension, and not
+   * "Beam Diagram.png.png". The rule is: strip any extension this
+   * application understands, then add the one the format wants.
+   */
+  function normaliseName(name, format) {
+    const chosen = format || formatForName(name);
+
+    const wanted = chosen.extensions[0];
+
+    let base = String(name || "").trim();
+
+    if (!base) {
+      base = "drawing";
+    }
+
+    /* Strip a known extension, so the format's own is not doubled. */
+    const known = formatTable().flatMap((entry) => entry.extensions);
+
+    const lower = base.toLowerCase();
+
+    const stripped = known.find((extension) =>
+      lower.endsWith(extension),
+    );
+
+    if (stripped) {
+      base = base.slice(0, base.length - stripped.length);
+    }
+
+    if (!base) {
+      base = "drawing";
+    }
+
+    return `${base}${wanted}`;
+  }
+
+  /* ---------------------------------------------------------- */
+  /* THE FILE HANDLE                                             */
+  /* ---------------------------------------------------------- */
 
   /*
    * The file handle for the document, if the browser gave us one.
    *
-   * Held across saves and deliberately not shared with anything else:
-   * it is the only record of where the document lives, and losing it
-   * is exactly what turns Save into Save As.
+   * Held across saves and deliberately not shared with anything else: it
+   * is the only record of where the document lives, and losing it is
+   * exactly what turns Save into Save As.
+   *
+   * It is only ever set for a DOCUMENT save. Saving a PNG does not make
+   * the document "be" a PNG, so an image save leaves this untouched -
+   * which is what stops a later Save from writing JSON into a .png.
    */
   let currentHandle = null;
 
@@ -90,17 +215,13 @@
    * Remember a file the user already has open.
    *
    * When a document is opened rather than saved, the browser can hand
-   * back a handle for the file it read. Keeping it means the first
-   * Save after an Open writes back to that file rather than producing
-   * a copy - the behaviour a user who opened a document and corrected
-   * it expects.
+   * back a handle for the file it read. Keeping it means the first Save
+   * after an Open writes back to that file rather than producing a copy
+   * - the behaviour a user who opened a document and corrected it
+   * expects.
    */
-  function setFileHandle(
-    handle,
-    fileName
-  ) {
-    currentHandle =
-      handle || null;
+  function setFileHandle(handle) {
+    currentHandle = handle || null;
 
     return currentHandle;
   }
@@ -109,38 +230,116 @@
     currentHandle = null;
   }
 
-  function payloadFor(documentBody) {
-    return root.enggDocumentFile.createDocument(
-      documentBody
+  /* ---------------------------------------------------------- */
+  /* CONTENT                                                     */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * The document body, as the text that goes in a .enggdraw file.
+   *
+   * Built here, once, so the envelope is written by the format module
+   * rather than assembled at each call site.
+   */
+  function documentText(documentBody) {
+    const payload = root.enggDocumentFile.createDocument(
+      documentBody,
     );
+
+    return JSON.stringify(payload, null, 2);
   }
 
   /*
-   * Save, choosing a location.
+   * The bytes to write, and the type they are, for a chosen format.
+   *
+   * A document is text; an image is produced by the renderer the caller
+   * supplied. This is the ONLY place the two are told apart, so there is
+   * one pipeline and one place the routing can be wrong.
+   *
+   * Returns null when an image was asked for and the renderer could not
+   * produce one - a drawing with nothing in it, or a canvas that
+   * refused - which the caller reports rather than claiming a success.
+   */
+  async function contentFor(format, documentBody, renderImage) {
+    if (!format.image) {
+      return {
+        blob: new Blob([documentText(documentBody)], {
+          type: format.mime
+        }),
+        mime: format.mime
+      };
+    }
+
+    if (typeof renderImage !== "function") {
+      return null;
+    }
+
+    const blob = await renderImage(format.id);
+
+    if (!blob) {
+      return null;
+    }
+
+    return {
+      blob,
+      mime: format.mime
+    };
+  }
+
+  /* ---------------------------------------------------------- */
+  /* SAVE                                                        */
+  /* ---------------------------------------------------------- */
+
+  /*
+   * Save to the file this document already belongs to.
+   *
+   * No panel, no new name, and no chance of the document ending up in
+   * two places. Returns null when there is nowhere to save to yet, which
+   * the caller answers by doing a Save As instead.
+   *
+   * A Save is ALWAYS a document save. It never becomes a PNG because the
+   * last Save As happened to be one: the document is the thing that has
+   * a location, so it is the thing Save writes.
+   */
+  async function save(documentBody) {
+    if (!currentHandle) {
+      return null;
+    }
+
+    const text = documentText(documentBody);
+
+    const writable = await currentHandle.createWritable();
+
+    await writable.write(
+      new Blob([text], {
+        type: root.enggDocumentFile.MEDIA_TYPE
+      }),
+    );
+
+    await writable.close();
+
+    return currentHandle.name;
+  }
+
+  /*
+   * Save, choosing a location and a representation.
    *
    * Always shows the panel. That is what Save As means: the user is
-   * asking to put this document somewhere specific, and the somewhere
-   * is their decision to make.
+   * asking to put this document somewhere specific, and the somewhere -
+   * and the format - is their decision to make.
    *
-   * The document keeps its old identity until the write has actually
-   * succeeded. That ordering is the difference between "saved as" and
-   * "claims to have saved as": if the panel is cancelled, or the disk
-   * refuses, the document must still be the one it was - still marked
-   * unsaved, still pointing at the file it came from. Adopting the new
-   * name first would mean a cancelled Save As silently relabelled the
-   * document and the next Save went somewhere the user never chose.
+   * The document keeps its identity until the write has actually
+   * succeeded, and only a DOCUMENT write changes it. Cancelling the
+   * panel, or a disk that refuses, leaves the document as it was - still
+   * unsaved, still pointing at whatever file it had.
+   *
+   * `renderImage(formatId)` is the caller's image producer. It is only
+   * consulted when the chosen format is an image, so a document save
+   * never pays for a render it does not use.
    */
-  async function saveAs(
-    documentBody,
-    suggestedName
-  ) {
-    const payload = payloadFor(documentBody);
+  async function saveAs(documentBody, suggestedName, options = {}) {
+    const renderImage = options.renderImage;
 
-    const text = JSON.stringify(
-      payload,
-      null,
-      2
-    );
+    const fallbackFormat = formatTable()[0];
 
     if (supportsNativePicker()) {
       let handle = null;
@@ -154,20 +353,19 @@
           /*
            * The panel opens beside the file the document already
            * belongs to, when it belongs to one. Opening in the
-           * browser's last-used folder instead would send a
-           * correction of an existing drawing somewhere unrelated to
-           * it.
+           * browser's last-used folder instead would send a correction
+           * of an existing drawing somewhere unrelated to it.
            */
           startIn: currentHandle || undefined,
 
-          types: [fileTypes()]
+          types: fileTypes()
         });
       } catch (error) {
         /*
          * The user closed the panel. Cancelling a Save As is a
-         * perfectly ordinary thing to do and is not an error to
-         * report - the document is untouched and still unsaved, which
-         * is exactly what they asked for.
+         * perfectly ordinary thing to do and is not an error to report
+         * - the document is untouched, which is exactly what they
+         * asked for.
          */
         if (
           error &&
@@ -180,128 +378,77 @@
         throw error;
       }
 
-      const blob = new Blob([text], {
-        type: root.enggDocumentFile.MEDIA_TYPE
-      });
-
       /*
-       * The write, and only the write, decides whether this
-       * succeeded. Everything before it was preparation.
+       * WHICH FORMAT - decided by the name the system panel returned.
+       *
+       * The extension is the one signal every browser gives back, and it
+       * is the one the user actually saw and chose. Reading it here, at
+       * the moment of the write, is what makes the filename and the
+       * content agree: "Beam.png" is a PNG because the name says so, not
+       * because of a setting somewhere else that could disagree.
        */
+      const format = formatForName(handle.name);
+
+      const content = await contentFor(
+        format,
+        documentBody,
+        renderImage,
+      );
+
+      if (!content) {
+        return { error: "could not render the drawing" };
+      }
+
       const writable = await handle.createWritable();
 
-      await writable.write(blob);
+      await writable.write(content.blob);
       await writable.close();
 
       /*
-       * Now - and only now - does the document have a new identity.
+       * Only a DOCUMENT save adopts the handle. An image save must not,
+       * or the next Save would write JSON into a .png.
        */
-      currentHandle = handle;
+      if (!format.image) {
+        currentHandle = handle;
+      }
 
-      return handle.name;
+      return {
+        name: handle.name,
+        format: format.id,
+        image: format.image
+      };
     }
 
     /*
-     * No handle to hold, so the download route. The name still comes
-     * from the operating system's own save panel, which is the part
-     * that matters: the user chooses the folder and the name, not the
-     * application.
+     * No handle to hold, so the download route. The browser's own
+     * download flow chooses the destination and the name is the one the
+     * application suggested - the closest native behaviour available
+     * where there is no file panel to drive.
      */
-    const name = await downloadWithPicker(text, {
-      suggestedName:
-        suggestedName ||
-        `drawing.${root.enggDocumentFile.EXTENSION}`
-    });
+    const format = options.format
+      ? formatTable().find((entry) => entry.id === options.format) ||
+        fallbackFormat
+      : formatForName(suggestedName || "");
 
-    return name;
-  }
+    const content = await contentFor(
+      format,
+      documentBody,
+      renderImage,
+    );
 
-  /*
-   * Save to the file this document already belongs to.
-   *
-   * No panel, no new name, and no chance of the document ending up in
-   * two places. Returns false when there is nowhere to save to yet,
-   * which the caller answers by doing a Save As instead.
-   */
-  async function save(
-    documentBody,
-    suggestedName
-  ) {
-    if (!currentHandle) {
-      return null;
+    if (!content) {
+      return { error: "could not render the drawing" };
     }
 
-    const payload = payloadFor(documentBody);
+    const fileName = normaliseName(suggestedName || "drawing", format);
 
-    const writable = await currentHandle.createWritable();
+    downloadBlob(content.blob, fileName);
 
-    await writable.write(
-      new Blob([JSON.stringify(payload, null, 2)], {
-        type: root.enggDocumentFile.MEDIA_TYPE
-      })
-    );
-
-    await writable.close();
-
-    return currentHandle.name;
-  }
-
-  /*
-   * Ask for a location and a name where a native save panel is not
-   * available, then download.
-   *
-   * This is the fallback route, and it exists because without the
-   * handle API a web page cannot write to a chosen path - it can only
-   * hand the browser a file to download. The user still names the file
-   * and the operating system still chooses where it goes.
-   *
-   * The name is asked for in the application's own dialog, rather than
-   * window.prompt, so the one moment where the OS panel is missing
-   * still looks like part of EnggDraw. It is used only here, and only
-   * on browsers that have no native save panel at all.
-   */
-  async function downloadWithPicker(
-    text,
-    { suggestedName }
-  ) {
-    const values = await root.enggUi.promptDialog(
-      "This browser has no system save panel, so " +
-        "EnggDraw will ask for the file name here. " +
-        "Your browser will then choose where it is saved.",
-      {
-        title: "Save drawing",
-        fields: [
-          {
-            name: "name",
-            label: "File name",
-            value: suggestedName,
-            placeholder: "drawing.enggdraw"
-          }
-        ],
-        confirm: "Save",
-        cancel: "Cancel",
-
-        /*
-         * Cancelling leaves the document exactly as it was: nothing
-         * about the save happened, so nothing about it is recorded.
-         */
-        onConfirm: (entered) =>
-          (entered.name || "").trim()
-            ? entered
-            : false
-      }
-    );
-
-    if (!values) {
-      return null;
-    }
-
-    return downloadBlob(
-      new Blob([text], {
-        type: root.enggDocumentFile.MEDIA_TYPE
-      }),
-      root.enggDocumentFile.withExtension(values.name)
-    );
+    return {
+      name: fileName,
+      format: format.id,
+      image: format.image
+    };
   }
 
   /*
@@ -312,8 +459,7 @@
   function downloadBlob(blob, fileName) {
     const url = URL.createObjectURL(blob);
 
-    const link =
-      document.createElement("a");
+    const link = document.createElement("a");
 
     link.href = url;
     link.download = fileName;
@@ -331,6 +477,8 @@
     currentFileHandle,
     fileTypes,
     forgetFileHandle,
+    formatForName,
+    normaliseName,
     save,
     saveAs,
     setFileHandle,

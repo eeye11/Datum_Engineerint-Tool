@@ -288,7 +288,7 @@ const drawingToolGroups = [
 			{ id: "triangle", label: "Triangle", shortcut: "T" },
 			{ id: "rectangle", label: "Rectangle", shortcut: "R" },
 			{ id: "circle", label: "Circle", shortcut: "C" },
-			{ id: "arc", label: "Arc", shortcut: "A" },
+			{ id: "arc", label: "Arc", shortcut: "A", submenu: true },
 			{ id: "polygon", label: "Polygon", shortcut: "G" }
 		]
 	},
@@ -402,7 +402,7 @@ const disciplineToolGroups = {
 				 * and editing - so it feels identical to use, and
 				 * only the finished feature differs.
 				 */
-				{ id: "reference-arc", label: "Reference Arc" }
+				{ id: "reference-arc", label: "Reference Arc", submenu: true }
 			]
 		}
 	]

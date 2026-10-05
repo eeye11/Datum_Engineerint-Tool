@@ -194,12 +194,64 @@
      * the plot to fill the axis would silently rescale every value the
      * student drew against it.
      */
+    /*
+     * THE GRAPH FRAME.
+     *
+     * One box, in screen pixels from the zero line, that says how big the
+     * coordinate system is. It is the same for all three diagrams and both
+     * modes, because six independently sized frames would mean a student
+     * comparing an SFD with a BMD is comparing two drawing conventions
+     * rather than two results.
+     *
+     * THESE ARE SCREEN PIXELS, and they scale with the zoom so the frame
+     * keeps its proportions at any magnification - a frame drawn at fixed
+     * pixels becomes a stamp at high zoom and swallows the sheet at low.
+     *
+     * ========================================================
+     * THE ORDINATE IS SYMMETRIC ABOUT THE ZERO LINE, AND TALL
+     * ========================================================
+     *
+     * It used to be 92 above and 46 below, which is not a neutral choice
+     * but a claim: that twice as much ordinate is available above as below.
+     * For a shear force or a bending moment diagram that is simply wrong,
+     * because those are the quantities that change sign, and the half that
+     * is drawn smaller is the half that holds the interesting answers. A
+     * student comparing the tension and compression regions of an SFD was
+     * reading them off an asymmetric scale.
+     *
+     * So there is one height, used both ways. The frame is as tall below
+     * the axis as above it, the y-axis spans all of it, and neither figure
+     * depends on what has been drawn in it.
+     *
+     * WHY IT IS TALL. The frame is the graph's coordinate system, and a
+     * coordinate system with a stubby y-axis reads as a picture of a
+     * diagram rather than as something to plot against. 110 either way
+     * gives room for a full shear jump or a moment hump without the curve
+     * having to be shrunk to fit, and leaves margin at the top and bottom
+     * of the plot region - which is what the y-axis is there to span.
+     *
+     * THE MARGINS ARE NOT PART OF THE ENGINEERING DOMAIN. The body runs
+     * from `from` to `to`, and that span is what every value is plotted
+     * against. The axis reaching further right is PRESENTATION - it makes
+     * room for the arrowhead and the axis label - and nothing is ever
+     * plotted into that margin, because the curve is mapped by fraction
+     * along `from`-`to` and not along the drawn axis.
+     *
+     * That distinction is the whole reason the margin is safe. Stretching
+     * the plot to fill the axis would silently rescale every value the
+     * student drew against it.
+     */
     const ANALYSIS_FRAME = {
-        /* The y-axis, above the zero line. */
-        positiveHeightPx: 92,
-
-        /* And below it, so a negative ordinate has somewhere to go. */
-        negativeHeightPx: 46,
+        /*
+         * The ordinate, above AND below the zero line.
+         *
+         * One number, used twice. Kept as a single field rather than a
+         * positive and a negative height, because two of them is an
+         * invitation to set them differently - which is the mistake this
+         * replaces, and which would then be invisible until someone
+         * compared the two halves of an SFD.
+         */
+        ordinateHeightPx: 110,
 
         /* How far the x-axis runs past the body's far end. */
         axisExtensionPx: 46,
@@ -216,8 +268,13 @@
     /* The frame's extents, all in screen pixels from the zero line. */
     function analysisFrameExtents() {
         return {
-            top: -ANALYSIS_FRAME.positiveHeightPx,
-            bottom: ANALYSIS_FRAME.negativeHeightPx,
+            /*
+             * NEGATIVE `top`, positive `bottom`: these are screen
+             * coordinates, so up is negative. Both carry the SAME
+             * magnitude, and every caller adds them to the zero line.
+             */
+            top: -ANALYSIS_FRAME.ordinateHeightPx,
+            bottom: ANALYSIS_FRAME.ordinateHeightPx,
             right: ANALYSIS_FRAME.axisExtensionPx,
             arrowHead: ANALYSIS_FRAME.arrowHeadPx,
             labelGap: ANALYSIS_FRAME.labelGapPx,
@@ -243,20 +300,50 @@
         geometry,
         interaction
     ) {
-        if (
-            Array.isArray(geometry.segments) &&
-            geometry.segments.some(
-                segment =>
-                    String(segment?.equation ?? "").trim()
-                        .length > 0
-            )
-        ) {
-            return true;
+        const equations =
+            window.enggDiagramEquations;
+
+        /*
+         * WHATEVER THE PLOT IS STORED AS.
+         *
+         * This used to look for a typed equation on the old segment
+         * shape only. A plot stored as relations - including one holding
+         * nothing but a vertical line, which IS content - would read as
+         * empty here and lose its highlight while still showing a curve,
+         * so the two halves of the file disagreed about the same drawing.
+         */
+        if (equations) {
+            const expressions =
+                equations.readPlot(geometry);
+
+            const drawn = equations.sampleExpressions(
+                expressions
+            );
+
+            if (drawn.length) {
+                return true;
+            }
         }
 
-        /* A sketch: the student's own lines and arcs on the frame. */
-        if (geometry.sketchContent !== false) {
-            return false;
+        /*
+         * A SKETCH: THE STUDENT'S OWN LINES AND ARCS ON THE FRAME.
+         *
+         * A sketch draws nothing itself - the student puts the answer on
+         * the frame with the ordinary Line and Arc tools - so the only
+         * honest answer here is what those tools produced, and the only
+         * field that can carry it is `sketchContent`.
+         *
+         * THIS USED TO BE AN INVERTED TEST, and inverting it is exactly
+         * backwards. It read `geometry.sketchContent !== false` and
+         * returned FALSE - "no content" - whenever the field was absent,
+         * which is the case for a sketch that has just been created and
+         * for every sketch a student has drawn by hand, because nothing
+         * in the tool sets it. So a sketch never earned its highlight
+         * and a Plot could, which is not what either mode is for. Absent
+         * must mean "nothing yet"; only an explicit `true` counts.
+         */
+        if (geometry.sketchContent === true) {
+            return true;
         }
 
         /* A live preview of something not yet committed. */
@@ -807,7 +894,86 @@
      * left behind by a deleted feature is visible as a problem rather
      * than quietly asserting a value.
      */
-    function appendAnnotationEntity(svg, entity, state, toScreen, style) {
+    /*
+ * SHOW MAGNITUDES, DRAWN FROM THE FEATURE.
+ *
+ * Everything else here draws what the document happens to contain. A
+ * force's magnitude is not a separate thing on the sheet - it is a property
+ * OF the force - so there was nothing for the setting to switch on, and
+ * turning it on changed nothing.
+ *
+ * DERIVED, NOT STORED. This is called on every frame and produces the text
+      * from the feature's own geometry, so it cannot go stale when the magnitude
+      * is edited and cannot drift when the force moves. A stored copy would be a
+      * second number free to disagree with the first.
+      *
+      * BUT THE PLACEMENT IS STORED, because the student can MOVE it.
+      *
+      * It used to be argued that the box carries no document id, so a click on
+      * it resolves to the feature - "which is what clicking a force should
+      * do". That is right for a click on the ARROW and wrong for a click on
+      * the NUMBER: the arrow is the force, the number is a label the student
+      * placed and has every reason to want somewhere else, because
+      * `F = 100 N` printed across the arrowhead is unreadable.
+      *
+      * So the box is picked as the box, and moving it stores an OFFSET on the
+      * feature - not the value. The number is still derived, so it cannot go
+      * stale; only where it sits is remembered, which is exactly the part the
+      * student chose and the part the application has no opinion about.
+      *
+      * An offset of null means "wherever it naturally falls", which is where
+      * it sat before any of this and where it returns when the student moves
+      * it back.
+      *
+      * CALLED FROM BOTH EXITS. Statics features take an early return once their
+      * own symbol is drawn, so appending only at the end of the pass silently
+      * skipped every force, load, moment, support and connection - which is the
+      * entire set of features that has a magnitude.
+      */
+function appendDerivedMagnitude(svg, entity, state, toScreen, style) {
+    const model = window.enggAnnotationModel;
+
+    if (!model || entity.isPreview) {
+        return;
+    }
+
+    const derived = model.derivedAnnotation(entity, state);
+
+    if (!derived) {
+        return;
+    }
+
+    const group = createSvgElement("g");
+
+    /*
+     * A REAL ID, so the box is picked as the box.
+     *
+     * `derived-<feature>-<kind>` - stable across frames, so the same box is
+     * the same thing to a click every time, and distinct from the feature's
+     * own id so picking one never selects the other. The id is NOT in the
+     * document: it is computed, and a document feature is not created by
+     * looking at a force with magnitudes on.
+     *
+     * The group's own data-feature-id is what the hit test reads, and the
+     * text inside it has pointer-events disabled so the click lands on the
+     * group rather than on the glyph - a glyph is not a shape to aim at, and
+     * hit-testing text measures the letters rather than the box.
+     */
+    group.setAttribute(
+      "data-feature-id",
+      derived.id,
+    );
+
+    group.classList.add("drawing-derived-magnitude");
+
+    appendAnnotationEntity(group, derived, state, toScreen, style);
+
+    if (group.childNodes.length) {
+        svg.appendChild(group);
+    }
+}
+
+function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         const model = window.enggAnnotationModel;
 
         if (!model) {
@@ -904,6 +1070,599 @@
         svg.appendChild(textNode);
     }
 
+    /*
+     * ========================================================
+     * WHAT A PLOT'S EXPRESSIONS LOOK LIKE ON PAPER
+     * ========================================================
+     *
+     * The mapping from the stored relations to geometry on the sheet, in
+     * ONE place, so the canvas and the Plot Editor cannot disagree.
+     *
+     * The editor does not re-implement any of this. It asks for the marks
+     * for the expressions currently in the dialog and draws them with the
+     * same numbers the canvas will use, which is what makes the graph in
+     * the popup a live view of the feature rather than a lookalike that
+     * might be subtly different.
+     *
+     * EVERY MARK IS ENGINEERING, NOT SCREEN. Both endpoints are returned
+     * in world coordinates, and the caller projects them. Interpolating
+     * between two screen points and handing the result back to the
+     * projector applies the transform twice, which throws the curve off
+     * the sheet entirely - so exactly one projection happens, here,
+     * never on the result of another.
+     */
+    function analysisPlotMarks(geometry, expressions) {
+        const equations =
+            window.enggDiagramEquations;
+
+        /*
+         * WITHOUT A RANGE THERE IS NO WAY TO PLACE A STATION, so nothing
+         * is drawn rather than drawn against a guessed scale. A curve in
+         * the wrong place is worse than no curve, because it looks like an
+         * answer.
+         */
+        const localRange = geometry.localRange;
+
+        if (!equations || !localRange) {
+            return [];
+        }
+
+        const rangeWidth =
+            localRange.to - localRange.from;
+
+        if (!(rangeWidth > 0)) {
+            return [];
+        }
+
+        const entries = Array.isArray(expressions)
+            ? expressions
+            : equations.readPlot(geometry);
+
+        if (!entries.length) {
+            return [];
+        }
+
+        /*
+         * A FIXED SCALE IN ENGINEERING UNITS PER PIXEL OF FRAME HEIGHT,
+         * so a value of 10 means the same thing on every diagram and the
+         * student can read magnitudes off their own work. The frame's own
+         * pixel height comes from the bounding box rather than from the
+         * world, so the curve cannot zoom itself.
+         */
+        const unitHeight = rangeWidth * 0.16;
+
+        const peak =
+            equations.peakMagnitude(entries);
+
+        /*
+         * A diagram whose largest value is zero has no scale to work in, and
+         * scaling by zero would flatten a real curve onto the axis. The
+         * resolution is shared with the sketch path, so a set y-range means
+         * the same thing on a hand-drawn diagram as on a plotted one.
+         */
+        const { unitHeight: scale } =
+            analysisValueScale(
+                geometry,
+                rangeWidth,
+                peak
+            );
+
+        /*
+         * x is a FRACTION of the member's own length, so the curve stays
+         * locked to the body however the frame is moved, the member is
+         * rotated, or the view is zoomed.
+         */
+        const along = (x, value) => {
+            const t = (x - localRange.from) / rangeWidth;
+
+            return {
+                x:
+                    geometry.start.x +
+                    (geometry.end.x - geometry.start.x) * t,
+
+                /*
+                 * A POSITIVE VALUE GOES UP, so the offset is ADDED to the
+                 * world y.
+                 *
+                 * The world frame here is y-UP - the same sense the
+                 * diagram's own zero axis uses - so subtracting would push
+                 * a positive shear DOWN the sheet, under the axis, and read
+                 * as a negative reaction. The projection is what turns
+                 * this into screen coordinates; this is not a second
+                 * inversion of the same thing.
+                 */
+                y: geometry.start.y + value * scale
+            };
+        };
+
+        return equations
+            .sampleExpressions(entries)
+            .map(mark => {
+                /*
+                 * THE STUDENT'S OWN TEXT, carried with the mark.
+                 *
+                 * `sampleExpressions` returns geometry, not prose, so the
+                 * equation is looked up from the expression it came from.
+                 * Looked up rather than passed in, because a label assembled
+                 * by the sampler would be a second description of the same
+                 * relation and the two could drift.
+                 */
+                const source = entries.find(
+                    entry => entry.id === mark.id
+                );
+
+                if (mark.kind === "verticalLine") {
+                    /*
+                     * A VERTICAL LINE, FROM ITS OWN NUMBERS.
+                     *
+                     * There is no function here and none is invented: the
+                     * stored x and the stored y range ARE the line. It is
+                     * returned the same way a curve is - as engineering
+                     * coordinates with both ends known - because that is
+                     * what every renderer needs, and NOT because it has
+                     * been turned into one.
+                     */
+                    return {
+                        kind: "verticalLine",
+                        id: mark.id,
+                        from: along(mark.x, mark.from),
+                        to: along(mark.x, mark.to)
+                    };
+                }
+
+                return {
+                    kind: "curve",
+                    id: mark.id,
+                    equation: source?.expression,
+                    points: mark.points.map(point =>
+                        along(point.x, point.value)
+                    )
+                };
+            });
+    }
+
+    /*
+     * ========================================================
+     * HOW TALL ONE UNIT OF VALUE IS
+     * ========================================================
+     *
+     * The scale is normally DERIVED: whatever the diagram's largest value
+     * happens to be is fitted to the frame. That is right as a default -
+     * a student who has just entered one equation should see it fill the
+     * box rather than sitting as a flat line along the axis.
+     *
+     * A SET range overrides it, and it overrides it by CLIPPING rather than
+     * by replacing. That is the decision worth stating, because the
+     * alternative - draw to the user's range and let anything taller run off
+     * the top - is silent. A curve that leaves the frame is indistinguishable
+     * from a curve that stops there, and a student would read the second one
+     * as their own answer.
+     *
+     * So the frame is widened to hold the SET range, and a diagram that
+     * exceeds it is cut off at the edge - visibly, because it is clipped at
+     * the boundary of the frame rather than quietly trimmed. What is lost is
+     * the student's ability to see it, which is why the range is theirs to
+     * set and not ours to impose.
+     *
+     * NO RANGE, OR A BACKWARDS ONE, IS NOT A RANGE. A minimum above its
+     * maximum is a half-typed value, and half-typed values are not allowed
+     * to become a scale.
+     */
+    /*
+     * ========================================================
+     * TICKS AND THEIR NUMBERS
+     * ========================================================
+     *
+     * Opt-in, with the student's own spacing on each axis, because a ruler
+     * set to the wrong interval is worse than no ruler.
+     *
+     * THE NUMBERS ARE ENGINEERING, NOT FRAME POSITIONS. The x values come
+     * from the member's own range and the y values from the SAME
+     * `analysisValueScale` the curve is drawn with - so a value the student
+     * draws at 10 kN sits on the 10 mark, at any zoom, on any diagram.
+     * Read the scale anywhere else and the ticks would quietly disagree
+     * with the curve they are supposed to be measuring.
+     *
+     * A SPACING THAT PRODUCES AN UNREADABLE NUMBER OF TICKS IS IGNORED,
+     * not honoured. A student typing 0.001 on a 5 m beam asked for a
+     * thousand marks; drawing them would bury the diagram, and silently
+     * drawing some arbitrary subset would be worse. There is a cap, and
+     * exceeding it draws none - which is visibly wrong and therefore
+     * something the student will notice and fix.
+     */
+    const MAX_TICKS_PER_AXIS = 12;
+
+    function tickValues(from, to, spacing, cap) {
+        const span = to - from;
+
+        if (!(span > 0) || !(spacing > 0)) {
+            return [];
+        }
+
+        const count = Math.floor(span / spacing);
+
+        if (count < 1 || count > cap) {
+            return [];
+        }
+
+        const values = [];
+
+        for (let i = 0; i <= count; i++) {
+            values.push(from + i * spacing);
+        }
+
+        return values;
+    }
+
+    function numberText(value) {
+        if (!Number.isFinite(value)) {
+            return "";
+        }
+
+        return String(Math.round(value * 1000) / 1000);
+    }
+
+    function analysisValueScale(geometry, rangeWidth, peak) {
+        const set = geometry.yRange;
+
+        const from = Number(set?.from);
+        const to = Number(set?.to);
+
+        const usable =
+            set &&
+            Number.isFinite(from) &&
+            Number.isFinite(to) &&
+            from < to;
+
+        if (usable) {
+            /*
+             * The larger of the two spans wins: the student's range if it
+             * is the larger, their own diagram if it is. Either way the
+             * frame is big enough to show what it is supposed to show, and
+             * the same unit height applies to both - so a value reads the
+             * same across every diagram on the sheet.
+             */
+            const chosen = Math.max(
+                Math.abs(from),
+                Math.abs(to),
+                peak > 0 ? peak : 0
+            );
+
+            return {
+                unitHeight:
+                    chosen > 0
+                        ? (rangeWidth * 0.16) / chosen
+                        : 0,
+
+                from,
+                to,
+                set: true,
+            };
+        }
+
+        return {
+            unitHeight:
+                peak > 0
+                    ? (rangeWidth * 0.16) / peak
+                    : 0,
+
+            set: false,
+        };
+    }
+
+    /*
+     * DRAW THE STUDENT'S SKETCH
+     * ========================================================
+     *
+     * The hand-drawn half of an analysis diagram, and the twin of
+     * appendAnalysisPlot above.
+     *
+     * THE SAME PROJECTION, because the two must agree exactly. A student
+     * who sketches an SFD and then plots the same diagram should get the
+     * same shape in the same place - so both read x as a fraction of the
+     * member's own length and both use the same fixed units-per-frame-height.
+     * A sketch and a plot that sat on different scales would make the two
+     * modes look like two different quantities.
+     *
+     * WITH NO EXPRESSION THERE IS NO SCALE TO USE, so the frame's own height
+     * is the reference - the same `rangeWidth * 0.16` the plot path uses
+     * before it looks at a peak. A sketch has no equations to read a peak
+     * from, and inferring one from the drawing would make the drawing
+     * change size as it was drawn, which is the opposite of predictable.
+     */
+    function appendAnalysisSketch(
+        svg,
+        geometry,
+        toScreen,
+        tint
+    ) {
+        const elements = Array.isArray(geometry.sketchElements)
+            ? geometry.sketchElements
+            : [];
+
+        if (!elements.length) {
+            return;
+        }
+
+        const localRange = geometry.localRange;
+        const start = geometry.start;
+        const end = geometry.end;
+
+        if (!localRange || !start || !end) {
+            return;
+        }
+
+        const rangeWidth =
+            localRange.to - localRange.from;
+
+        if (!(rangeWidth > 0)) {
+            return;
+        }
+
+        const unitHeight = rangeWidth * 0.16;
+
+        /*
+         * A SKETCH HAS NO EQUATIONS, so there is no peak to derive a scale
+         * from. The frame's own reference is used instead - which is the same
+         * value the plot path falls back to - unless the student has set a
+         * y-range, in which case that governs here exactly as it does there.
+         */
+        let peak = 0;
+
+        elements.forEach(element => {
+            sketchPointsOf(element).forEach(point => {
+                if (Number.isFinite(point.y)) {
+                    peak = Math.max(peak, Math.abs(point.y));
+                }
+            });
+        });
+
+        const { unitHeight: scale } =
+            analysisValueScale(
+                geometry,
+                rangeWidth,
+                peak
+            );
+
+        /*
+         * IDENTICAL TO THE PLOT PATH. x is a fraction of the member's own
+         * length, so the sketch stays locked to the body however the frame
+         * is moved, the member is rotated or the view is zoomed. A positive
+         * value is ADDED to the world y, because this world frame is y-up.
+         *
+         * `scale`, not `unitHeight`: the two differ exactly when the student
+         * has set a y-range, and using the wrong one here would draw the
+         * sketch on one scale and the axes on another - a curve that no
+         * longer meets the axis it was drawn against.
+         */
+        const along = (x, value) => ({
+            x:
+                start.x +
+                (end.x - start.x) *
+                    ((x - localRange.from) / rangeWidth),
+
+            y: start.y + value * scale,
+        });
+
+        const strokeOptions = {
+            fill: "none",
+            stroke: tint,
+            "stroke-width": 1.8,
+            "stroke-linejoin": "round",
+            "stroke-linecap": "round",
+        };
+
+        elements.forEach(element => {
+            const points = sketchPointsOf(element);
+
+            if (points.length < 2) {
+                return;
+            }
+
+            const screen = points.map(
+                point => toScreen(along(point.x, point.y))
+            );
+
+            if (element.kind === "line") {
+                svg.appendChild(
+                    createSvgElement("line", {
+                        x1: screen[0].x,
+                        y1: screen[0].y,
+                        x2: screen[1].x,
+                        y2: screen[1].y,
+                        ...strokeOptions,
+                    })
+                );
+
+                return;
+            }
+
+            /*
+             * THE SAME QUADRATIC THE EDITOR DRAWS. If the sheet smoothed it
+             * differently from the dialog, the student would place a curve
+             * and get a different curve - so the rule is stated once here and
+             * once there rather than approximated twice.
+             */
+            const d = [
+                `M ${screen[0].x} ${screen[0].y}`,
+            ];
+
+            for (let i = 1; i < screen.length - 1; i++) {
+                const mid = {
+                    x: (screen[i].x + screen[i + 1].x) / 2,
+                    y: (screen[i].y + screen[i + 1].y) / 2,
+                };
+
+                d.push(
+                    `Q ${screen[i].x} ${screen[i].y} ${mid.x} ${mid.y}`
+                );
+            }
+
+            const last = screen[screen.length - 1];
+
+            d.push(`L ${last.x} ${last.y}`);
+
+            svg.appendChild(
+                createSvgElement("path", {
+                    d: d.join(" "),
+                    ...strokeOptions,
+                })
+            );
+        });
+    }
+
+    /*
+     * The points an element is drawn through. A LINE has two and a CURVE has
+     * as many as were clicked, and asking through one function means neither
+     * the editor nor this file has to know which kind it is holding.
+     */
+    function sketchPointsOf(element) {
+        if (!element) {
+            return [];
+        }
+
+        return element.kind === "line"
+            ? [element.start, element.end]
+            : Array.isArray(element.points)
+                ? element.points
+                : [];
+    }
+
+    /*
+     * DRAW THE STUDENT'S EXPRESSIONS.
+     *
+     * One stroke per mark, and they are NEVER joined. That is what
+     * preserves a discontinuity: two functions meeting at different values
+     * stay two strokes, because joining them would assert a value for the
+     * distance where the jump happens, and there is no such value. A
+     * single path has no way to say "do not connect these".
+     *
+     * A vertical line is a stroke of its own and is not connected to
+     * anything either side of it - which is the point of it. Drawing it as
+     * a steep but finite slope to meet its neighbours is the specific lie
+     * this whole relation type exists to avoid.
+     */
+    function appendAnalysisPlot(
+        svg,
+        geometry,
+        toScreen,
+        tint,
+        axisWidth
+    ) {
+        analysisPlotMarks(geometry).forEach(mark => {
+            /*
+             * THE TINT, NOT THE BODY STROKE.
+             *
+             * The curve is part of this diagram, so it is drawn in the
+             * diagram's own colour. Inheriting the entity style would put a
+             * shear curve in whatever colour the layer happened to be - and
+             * an SFD and a BMD are told apart by their colour as much as by
+             * their heading.
+             */
+            const strokeOptions = {
+                fill: "none",
+                stroke: tint,
+                "stroke-width": 1.8,
+                "stroke-linejoin": "round",
+                "stroke-linecap": "round"
+            };
+
+            const element =
+                mark.kind === "verticalLine"
+                    ? (() => {
+                        const a = toScreen(mark.from);
+                        const b = toScreen(mark.to);
+
+                        return createSvgElement("line", {
+                            x1: a.x,
+                            y1: a.y,
+                            x2: b.x,
+                            y2: b.y,
+                            ...strokeOptions
+                        });
+                    })()
+                    : (() => {
+                        const d = mark.points
+                            .map((point, index) => {
+                                const at = toScreen(point);
+
+                                return `${index ? "L" : "M"} ${at.x} ${at.y}`;
+                            })
+                            .join(" ");
+
+                        return d
+                            ? createSvgElement("path", {
+                                d,
+                                class:
+                                    "drawing-analysis-curve",
+                                ...strokeOptions
+                            })
+                            : null;
+                    })();
+
+            if (!element) {
+                return;
+            }
+
+            /*
+             * The curve is part of the diagram, not a separate thing to
+             * pick: a student selecting the SFD means the whole of it,
+             * curve and vertical jump included.
+             */
+            element.setAttribute("pointer-events", "none");
+
+            svg.appendChild(element);
+        });
+
+        /*
+         * ========================================================
+         * SHOW EQUATIONS
+         * ========================================================
+         *
+         * Off by default. A diagram with its equations written on it reads
+         * as a finished answer, and a working sheet is not that - it is a
+         * student thinking. This is a study aid they switch on deliberately,
+         * and it says what they wrote rather than what it means.
+         *
+         * LAID OVER THE MARKS, never beside them, because the marks are the
+         * diagram and moving them to make room for a label would change the
+         * answer to suit its annotation.
+         *
+         * NOT PICKABLE. A click on a label means the student means the
+         * diagram - that is what they are looking at - so it resolves to the
+         * feature rather than becoming a target of its own.
+         */
+        if (geometry.showEquations === true) {
+            equationLabels(geometry).forEach(
+                label => {
+                    const at = toScreen(label.at);
+
+                    const text =
+                        createSvgElement("text", {
+                            x: at.x,
+                            y: at.y - 6,
+                            class: "drawing-analysis-equation",
+                            "text-anchor": "middle",
+                            "font-family": "Arial, sans-serif",
+                            "font-size": 10,
+                            fill: tint,
+                            "stroke": "none"
+                        });
+
+                    text.textContent =
+                        label.text;
+
+                    text.setAttribute(
+                        "pointer-events",
+                        "none"
+                    );
+
+                    svg.appendChild(text);
+                }
+            );
+        }
+    }
+
     function appendEntity(
         svg,
         entity,
@@ -967,7 +1726,40 @@
             entity.type === "fixed-connection" ||
             entity.type === "slider-connection"
         ) {
-            const position = geometry.start || geometry.position;
+            /*
+                 * A FORCE AND A RESULTANT ARE DRAWN ALONG THEIR SPAN, NOT FROM
+                 * THEIR APPLICATION POINT.
+                 *
+                 * The anchor for everything else is the stored point. For these
+                 * two it is the OTHER end of the line from the arrowhead - which
+                 * makes the shaft the whole span and the head one end of it.
+                 *
+                 * Anchoring at `start` made a reversal appear to relocate the
+                 * arrow: the head moved to the far end of the span, so the line
+                 * it was drawn on grew from the application point across to
+                 * wherever the head had gone. A force drawn along 480->720 came
+                 * out along 240->720 - the same length, somewhere else - which
+                 * is the "the geometry flips" report.
+                 *
+                 * With the tail at the opposite end of the span, the line never
+                 * moves and only the arrowhead changes side. That is a
+                 * Distributed Load's convention, and the two should agree.
+                 */
+            const hasForceSpan =
+                (entity.type === "force" ||
+                    entity.type === "resultant") &&
+                Number.isFinite(geometry?.end?.x) &&
+                Number.isFinite(geometry?.end?.y) &&
+                Math.hypot(
+                    Number(geometry.end.x) -
+                        (geometry.start?.x ?? geometry.position?.x ?? 0),
+                    Number(geometry.end.y) -
+                        (geometry.start?.y ?? geometry.position?.y ?? 0),
+                ) > 1e-9;
+
+            const position = hasForceSpan
+                    ? enggLoadProfile.drawnForceTail(state, geometry)
+                    : geometry.start || geometry.position;
 
             if (
                 !position ||
@@ -977,6 +1769,27 @@
                 return;
             }
 
+            /*
+             * THE ARROW IS DRAWN FROM THE POINT THE FORCE ACTS AT, IN THE
+             * DIRECTION THE FORCE POINTS.
+             *
+             * Those are two questions and the drawing asks both. The anchor is
+             * the application point - where the force acts on the member. The
+             * direction is the stored vector, not the span.
+             *
+             * This branch used to derive the direction by measuring from the
+             * anchor to `end`, which is the SPAN rather than the sense. A
+             * reversed force was then drawn pointing exactly the same way as
+             * before, because the span had not moved: the model recorded the
+             * reversal correctly and the arrowhead never moved, which is the
+             * worst combination - every check of the stored value passed and
+             * the thing on the sheet was still wrong.
+             *
+             * Both halves of the arrow now come from `drawnForceEnd`, which
+             * reads the length and the direction out of the same place. The
+             * drawn arrow and the handle beside it are then the same point by
+             * construction rather than by two calculations agreeing.
+             */
             const anchor = toScreen(position);
             const stroke = style.stroke || "#000000";
 
@@ -1002,9 +1815,34 @@
                 if (geometry.horizontal || geometry.vertical) {
                     if (
                         geometry.original &&
-                        geometry.showOriginal !== false
+                        /*
+                         * ========================================================
+                         * THE COMPONENTS ARE THE FEATURE. THE ORIGINAL IS NOT.
+                         * ========================================================
+                         *
+                         * `geometry.original` is stored because the renderer and
+                         * the hit test have always read it, and because it is a
+                         * real reading of the source - but it must be ASKED
+                         * FOR.
+                         *
+                         * This test used to be `!== false`, which draws the
+                         * original whenever the field is absent - and the
+                         * field is absent on every object the tool has ever
+                         * created, because nothing wrote it. So the feature
+                         * drew the force AND its two components: the student
+                         * saw their own force twice, and Force Components
+                         * read as a replica of it with a triangle drawn over
+                         * the top.
+                         *
+                         * The default is therefore OFF, and only an explicit
+                         * `true` turns it on. That is the difference between
+                         * "a decomposition with the decomposed vector shown
+                         * for reference" - genuinely useful - and "the same
+                         * force again", which is not what this tool is for.
+                         */
+                        geometry.showOriginal === true
                     ) {
-                        appendAnalysisVector(
+                        appendVectorArrow(
                             svg,
                             toScreen(geometry.original.start),
                             toScreen(geometry.original.end),
@@ -1018,7 +1856,7 @@
                         geometry.horizontal &&
                         geometry.showX !== false
                     ) {
-                        appendAnalysisVector(
+                        appendVectorArrow(
                             svg,
                             toScreen(geometry.horizontal.start),
                             toScreen(geometry.horizontal.end),
@@ -1032,7 +1870,7 @@
                         geometry.vertical &&
                         geometry.showY !== false
                     ) {
-                        appendAnalysisVector(
+                        appendVectorArrow(
                             svg,
                             toScreen(geometry.vertical.start),
                             toScreen(geometry.vertical.end),
@@ -1042,6 +1880,7 @@
                         );
                     }
 
+                    appendDerivedMagnitude(svg, entity, state, toScreen, style);
                     parentSvg.appendChild(svg);
                     return;
                 }
@@ -1054,42 +1893,80 @@
                 /*
                  * THE SHARED VECTOR SCALE.
                  *
-                 * The arrow is drawn from its application point at the
-                 * length the shared Statics display scale asks for.
+                 * The arrow is drawn at the length the shared Statics
+                 * display scale asks for. The scale is applied to the
+                 * LENGTH, never to the stored magnitude - scaling the
+                 * magnitude would change the engineering value, and
+                 * scaling the application point would move where the force
+                 * acts. A Vector Scale is a drawing setting and nothing
+                 * else.
                  *
-                 * The application point is `anchor` and is passed through
-                 * untouched, which is what matters here: scaling the
-                 * LENGTH rather than the position means the force stays
-                 * acting exactly where it acts and only grows or shrinks
-                 * around it. Scaling the stored magnitude would move the
-                 * point the load is applied at and would change what the
-                 * diagram means.
+                 * BOTH ENDS GO THROUGH THE SAME PROJECTION.
                  *
-                 * The stored magnitude, unit and direction are not
-                 * touched by this at all - it is a drawing length, not an
-                 * engineering quantity, and the analysis never sees it.
+                 * The caller used to recover an angle from the two screen
+                 * points and hand that to a routine which rebuilt the tip,
+                 * with a sign flip in the reconstruction to match a sign
+                 * flip in the recovery. Both are gone: this passes the two
+                 * points themselves, and the shared arrow measures its own
+                 * direction from them. See appendVectorArrow.
                  */
                 if (geometry.end) {
-                    const end = toScreen(geometry.end);
-                    const dx = end.x - anchor.x;
-                    const dy = end.y - anchor.y;
-                    const angle = Math.atan2(-dy, dx) * 180 / Math.PI;
+                    /*
+                     * BOTH HALVES OF THE ARROW ARE ASKED FOR, NOT COMPUTED HERE.
+                     *
+                     * The length is how far this force is DRAWN and the
+                     * direction is which way it PUSHES, and `drawnForceEnd`
+                     * already knows both - the magnitude for the first, the
+                     * stored vector for the second. This branch was measuring
+                     * the length itself and deriving the direction from the
+                     * span, which made it answer the direction question with
+                     * the wrong fact: a reversed force was drawn pointing the
+                     * same way it always was, because the span had not moved.
+                     *
+                     * Asking for the tip instead means the drawn arrow and the
+                     * handle are the same point by construction - they used to
+                     * be two calculations that agreed until they did not.
+                     *
+                     * ONE PROJECTION. `drawnForceEnd` answers in world units
+                     * and this projects once, so the direction is derived
+                     * after the screen-Y flip rather than before it.
+                     *
+                     * There was a SECOND path here, for a force with no stored
+                     * end, which turned the angle into a direction and scaled
+                     * the magnitude itself. Two paths meant two answers: at 270
+                     * degrees they disagreed, and a force pointing down came
+                     * out pointing down and to the left.
+                     *
+                     * That path is gone rather than corrected, because every
+                     * force the application creates stores both ends -
+                     * `setForceVector` writes them together - so it described a
+                     * state that cannot occur while disagreeing with the real
+                     * one. A force drawn straight down is not a corner case;
+                     * it is the commonest load on a beam.
+                     */
+                    const tip = enggLoadProfile.drawnForceEnd(
+                        state,
+                        geometry
+                    );
+
+                    const drawnTip = toScreen(tip);
+
+                    const drawn = Math.hypot(
+                        drawnTip.x - anchor.x,
+                        drawnTip.y - anchor.y
+                    );
+
+                    const direction =
+                        forceDirectionOnScreen(
+                            drawnTip,
+                            anchor
+                        );
 
                     appendForceArrow(
                         svg,
                         anchor,
-                        angle,
-                        Math.hypot(dx, dy) * vectorScaleOf(state),
-                        stroke,
-                        style
-                    );
-                } else {
-                    appendForceArrow(
-                        svg,
-                        anchor,
-                        Number(geometry.angle) || 0,
-                        Math.abs(Number(geometry.magnitude) || 0) *
-                            vectorScaleOf(state),
+                        direction,
+                        drawn,
                         stroke,
                         style
                     );
@@ -1260,6 +2137,7 @@
                 return;
             }
 
+            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -1294,6 +2172,7 @@
                 geometry.arcRadius
             );
 
+            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -1313,13 +2192,66 @@
          * That is what keeps a dimension honest after the geometry
          * moves, without this file knowing anything about beams.
          */
+        /*
+         * SHOW DIMENSIONS.
+         *
+         * Hides the dimensions the STUDENT PLACED, by not drawing them.
+         * It does not create them: a dimension nobody asked for is not a
+         * dimension the drawing has, and generating one per line would be
+         * the tool doing the exercise. An absent setting reads as on, so a
+         * saved sheet drawn before the toggle existed opens unchanged.
+         *
+         * HIDDEN BY NOT DRAWING rather than by deleting, so turning the
+         * toggle back restores every dimension exactly as it was - including
+         * its measured value, which is recomputed from the geometry rather
+         * than frozen, so nothing can come back stale.
+         */
         if (entity.type === "dimension") {
+            if (
+                state.display?.showDimensions === false
+            ) {
+                return;
+            }
+
             appendDimensionEntity(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
 
+        /*
+         * SHOW MAGNITUDES.
+         *
+         * A generated value that is switched off is not drawn at all -
+         * not drawn with its text emptied. An annotation with no text would
+         * still contribute its leader line, so the drawing would keep a
+         * line running to a blank spot where the value used to be, which
+         * reads as something missing rather than something switched off.
+         *
+         * A note the student WROTE is unaffected: `isVisible` says so, and
+         * says so in the annotation model rather than here, so the rule is
+         * one answer rather than two places that have to agree about which
+         * annotations are the student's own.
+         *
+         * THE MODEL IS LOOKED UP RATHER THAN ASSUMED. It is absent in some
+         * loads of this file - the module-load check runs without it - so a
+         * missing model has to mean "draw everything", which is what an
+         * older behaviour did. Throwing here would take the whole drawing
+         * down over a preference.
+         */
         if (entity.type === "annotation") {
+            const annotations =
+                window.enggAnnotationModel;
+
+            if (
+                annotations &&
+                !annotations.isVisible(
+                    entity,
+                    state
+                )
+            ) {
+                return;
+            }
+
             appendAnnotationEntity(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
@@ -1362,6 +2294,7 @@
                 geometry.arcRadius
             );
 
+            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -1443,6 +2376,37 @@
             } else if (
                 entity.type === "analysis-diagram"
             ) {
+                /*
+                 * A DIAGRAM WHOSE SOURCE IS GONE IS NOT DRAWN.
+                 *
+                 * This block draws from the diagram's OWN stored start/end,
+                 * which is what lets a diagram stand alone with no beam
+                 * under it - a blank axis to work against is a legitimate
+                 * thing to want, and the fallback path below is for it.
+                 *
+                 * But the same freedom meant that deleting the beam left
+                 * the diagram perfectly intact on the sheet: frame, zero
+                 * axis, and the green SFD curve, all still drawn, all
+                 * referring to a member that was no longer there. That is
+                 * the "a green outline is left behind" report - it was
+                 * never a renderer leaking nodes, it was a live feature
+                 * still being asked to draw.
+                 *
+                 * `unresolved` is set by the dependency pass when the
+                 * parent has gone, and the same flag is what the
+                 * components and resultant branches already honour. So
+                 * this is that convention applied to the one feature type
+                 * that was missing it - not a new rule.
+                 *
+                 * A diagram with NO source at all is untouched: it never
+                 * claimed a parent, so there is nothing to have lost.
+                 */
+                const orphaned =
+                    entity.engineering?.unresolved === true;
+
+                if (orphaned) {
+                    return;
+                }
                 /*
                  * AN ANALYSIS TEMPLATE.
                  *
@@ -1697,22 +2661,46 @@
                 });
 
                 /*
-                 * WHAT THE TWO AXES MEASURE.
+                 * ========================================================
+                 * WHAT THE TWO AXES MEASURE
+                 * ========================================================
                  *
-                 * A diagram whose axes are unlabelled asks the student
-                 * to plot a value on it without saying which value, and
-                 * the axis is the only thing on the sheet
-                 * distinguishing an SFD from
-                 * a BMD. So each axis is named,
-                 * with its unit, in the place a reader looks for it:
-                 * the vertical one turned up the left-hand end of the
-                 * axis, the horizontal one along the bottom.
+                 * A diagram whose axes are unlabelled asks the student to
+                 * plot a value on it without saying which value, and the
+                 * axis is the only thing on the sheet distinguishing an SFD
+                 * from a BMD. So each axis is named, with its unit, in the
+                 * place a reader looks for it: the vertical one turned up
+                 * the left-hand end of the axis, the horizontal one along
+                 * the bottom.
                  *
-                 * THEY ARE NAMES, NOT VALUES. No magnitude, no sign
-                 * and no scale are printed, because those are the
-                 * solution and the student is the one who works them
-                 * out. A tick or a number here would be the tool
-                 * answering the exercise.
+                 * ========================================================
+                 * TICKS, AND WHY THEY WERE NOT HERE BEFORE
+                 * ========================================================
+                 *
+                 * This used to read:
+                 *
+                 *   THEY ARE NAMES, NOT VALUES. No magnitude, no sign and no
+                 *   scale are printed, because those are the solution and
+                 *   the student is the one who works them out. A tick or a
+                 *   number here would be the tool answering the exercise.
+                 *
+                 * That was a considered position, not an oversight -
+                 * `tools/check-features-panel.js` actively failed the build
+                 * if the axes carried a scale. It has been DELIBERATELY
+                 * REVERSED, because a student reading magnitudes off a
+                 * gridded axis is doing the exercise, not having it done
+                 * for them.
+                 *
+                 * The distinction that makes this a support rather than an
+                 * answer: a tick scale tells a student WHERE a value falls.
+                 * It does not say what their value IS. The curve is still
+                 * theirs to draw, and nothing here computes a shear, a
+                 * moment or a reaction - the axis is a ruler, not a result.
+                 *
+                 * The scale is opt-in (`showTicks`) and the spacing is the
+                 * student's, because a ruler set to the wrong interval is
+                 * worse than no ruler: it invites reading a magnitude off a
+                 * grid that does not match the answer they are checking.
                  */
                 const axes =
                     ANALYSIS_DIAGRAM_AXES[
@@ -1727,18 +2715,30 @@
                         Math.min(from.x, to.x);
 
                     /*
-                     * THE VERTICAL AXIS RUNS BOTH WAYS.
+                     * ========================================================
+                     * THE Y-AXIS SPANS THE WHOLE GRAPH
+                     * ========================================================
                      *
-                     * It used to be drawn from the zero line upwards
-                     * only, which left a negative shear or moment with
-                     * nowhere to go - the very quantities these diagrams
-                     * exist to show are the ones that change sign. So it
-                     * extends below the baseline as well, by the shared
-                     * frame's negative height.
+                     * From the TOP of the plot region to the BOTTOM of it -
+                     * `frame.top` to `frame.bottom` - and from nothing else.
                      *
-                     * The arrow is still on the POSITIVE end only: a
-                     * two-headed vertical axis would say the ordinate has
-                     * two positive directions.
+                     * It is a property of the GRAPH FRAME, not of what has
+                     * been drawn in it. Every version of this that measured
+                     * the axis from the content - from the body's height,
+                     * from the plotted curve's extent - made the axis
+                     * describe the answer rather than the coordinate system
+                     * the answer is read against. A student checking
+                     * whether a jump is the right size was reading it off an
+                     * axis that had been resized by the jump.
+                     *
+                     * So it is drawn from the same two numbers the plot-area
+                     * highlight and the plot mapping are drawn from, and it
+                     * is the same length whether the graph is empty, has a
+                     * sketch on it, or is full of a Plot's expressions.
+                     *
+                     * THE ARROW IS ON THE POSITIVE END ONLY. A two-headed
+                     * vertical axis would say the ordinate has two positive
+                     * directions, which is not what it means.
                      */
                     const arrowTop =
                         axisTop + frame.top;
@@ -1857,22 +2857,260 @@
                         axes.x + " (" + axes.xUnit + ")";
 
                     svg.appendChild(xName);
+
+                    /*
+                     * ========================================================
+                     * THE TICKS THEMSELVES
+                     * ========================================================
+                     *
+                     * Drawn last, over the marks but under nothing - they are
+                     * reference, so they go down before the student's curve
+                     * goes on top.
+                     *
+                     * The ordinate numbers are produced by walking BACK
+                     * from zero through the same unit height the curve is
+                     * drawn with. Computing them any other way - scaling the
+                     * frame, or reusing the plot editor's screen box - would
+                     * put the marks at values the curve does not have, and a
+                     * student reading 10 off a tick that is not at 10 is
+                     * worse off than one with no ticks at all.
+                     */
+                    if (geometry.showTicks === true) {
+                        const range = geometry.localRange;
+
+                        const xSpacing = Number(
+                            geometry.xTickSpacing
+                        );
+
+                        const ySpacing = Number(
+                            geometry.yTickSpacing
+                        );
+
+                        if (range) {
+                            const rangeWidth =
+                                range.to - range.from;
+
+                            /*
+                             * The ordinate's scale, resolved the same way
+                             * for the ticks as for the curve.
+                             */
+                            const equations =
+                                window.enggDiagramEquations;
+
+                            let peak = 0;
+
+                            if (equations) {
+                                peak = equations.peakMagnitude(
+                                    equations.readPlot(geometry)
+                                );
+                            }
+
+                            const { unitHeight } =
+                                analysisValueScale(
+                                    geometry,
+                                    rangeWidth,
+                                    peak
+                                );
+
+                            /*
+                             * THE PLOT REGION'S TOP AND BOTTOM.
+                             *
+                             * `axisTop` above is the SCREEN y of the axis line
+                             * itself; these are the edges of the frame it
+                             * sits in. Ticks are placed against the FRAME,
+                             * because a tick outside the frame is a mark on
+                             * nothing.
+                             */
+                            const tickTop =
+                                axisTop + frame.top;
+
+                            const tickBottom =
+                                axisTop + frame.bottom;
+
+                            /*
+                             * X TICKS, at stations along the member.
+                             */
+                            tickValues(
+                                range.from,
+                                range.to,
+                                xSpacing,
+                                MAX_TICKS_PER_AXIS
+                            ).forEach(station => {
+                                const t =
+                                    (station - range.from) /
+                                    rangeWidth;
+
+                                const at = toScreen({
+                                    x:
+                                        from.x +
+                                        (to.x - from.x) * t,
+                                    y: from.y,
+                                });
+
+                                const mark =
+                                    createSvgElement("line", {
+                                        x1: at.x,
+                                        y1: at.y - 3,
+                                        x2: at.x,
+                                        y2: at.y + 3,
+                                        stroke,
+                                        "stroke-width": 0.9,
+                                        "stroke-opacity": 0.4
+                                    });
+
+                                mark.setAttribute(
+                                    "pointer-events",
+                                    "none"
+                                );
+
+                                svg.appendChild(mark);
+
+                                const label =
+                                    createSvgElement("text", {
+                                        x: at.x,
+                                        y: at.y + 11,
+                                        "font-size": 7,
+                                        fill: stroke,
+                                        "fill-opacity": 0.7,
+                                        "text-anchor": "middle"
+                                    });
+
+                                label.textContent =
+                                    numberText(station);
+
+                                label.setAttribute(
+                                    "pointer-events",
+                                    "none"
+                                );
+
+                                svg.appendChild(label);
+                            });
+
+                            /*
+                             * Y TICKS, at real VALUES.
+                             *
+                             * From zero outwards, so the sequence is the
+                             * one a student reads: 0, then the spacing, then
+                             * twice it. Every tick carries its sign, because
+                             * a diagram has a positive and a negative side
+                             * and an unlabelled one is a diagram half of
+                             * which cannot be read.
+                             */
+                            /*
+                             * Y TICKS, at real VALUES.
+                             *
+                             * From zero outwards, so the sequence is the one
+                             * a student reads: 0, the spacing, twice it. Each
+                             * carries its sign, because a diagram has a
+                             * positive and a negative side and an unlabelled
+                             * one is a diagram half of which cannot be read.
+                             */
+                            if (unitHeight && ySpacing > 0) {
+                                const reachable =
+                                    (tickBottom -
+                                        tickTop) /
+                                    unitHeight;
+
+                                [
+                                    1, -1,
+                                ].forEach(sign => {
+                                    for (
+                                        let step = 1;
+                                        step * ySpacing <=
+                                                reachable &&
+                                            step <
+                                                MAX_TICKS_PER_AXIS;
+                                        step++
+                                    ) {
+                                        const value =
+                                            sign *
+                                            step *
+                                            ySpacing;
+
+                                        const at = toScreen(
+                                                {
+                                                    x: from.x,
+                                                    y:
+                                                        from.y +
+                                                        value *
+                                                            unitHeight,
+                                                }
+                                            );
+
+                                        const mark =
+                                            createSvgElement(
+                                                "line",
+                                                {
+                                                    x1:
+                                                        axisLeft -
+                                                        3,
+                                                    y1: at.y,
+                                                    x2:
+                                                        axisLeft +
+                                                        3,
+                                                    y2: at.y,
+                                                    stroke,
+                                                    "stroke-width":
+                                                        0.9,
+                                                    "stroke-opacity":
+                                                        0.4
+                                                }
+                                            );
+
+                                        mark.setAttribute(
+                                            "pointer-events",
+                                            "none"
+                                        );
+
+                                        svg.appendChild(mark);
+
+                                        const label =
+                                            createSvgElement(
+                                                "text",
+                                                {
+                                                    x:
+                                                        axisLeft -
+                                                        5,
+                                                    y: at.y + 2.5,
+                                                    "font-size": 7,
+                                                    fill: stroke,
+                                                    "fill-opacity":
+                                                        0.7,
+                                                    "text-anchor":
+                                                        "end"
+                                                }
+                                            );
+
+                                        label.textContent =
+                                            numberText(value);
+
+                                        label.setAttribute(
+                                            "pointer-events",
+                                            "none"
+                                        );
+
+                                        svg.appendChild(label);
+                                    }
+                                });
+                            }
+                        }
+                    }
                 }
 
                 /*
                  * ========================================================
-                 * PLOT MODE: THE STUDENT'S OWN EQUATION, DRAWN
+                 * PLOT MODE: THE STUDENT'S OWN EXPRESSIONS, DRAWN
                  * ========================================================
                  *
                  * Only a Plot carries a curve. A Sketch deliberately
                  * does not: the student draws the answer by hand with
-                 * the ordinary Line tools, and this tool supplying it
+                 * the ordinary Line and Arc tools, and this tool supplying it
                  * would be solving the exercise rather than supporting
                  * it.
                  *
-                 * THE CURVE IS DERIVED FROM THE EQUATION EVERY FRAME.
+                 * THE CURVE IS DERIVED FROM THE EXPRESSION EVERY FRAME.
                  * The sample points are not stored on the feature - the
-                 * segments and their equations are - so editing a range
+                 * expressions and their ranges are - so editing a range
                  * or correcting a sign re-derives the shape instead of
                  * dragging vertices around. That is what keeps the
                  * feature data authoritative rather than the drawing.
@@ -1885,181 +3123,54 @@
                  * equation returns. NEITHER IS READ FROM THE RENDERER,
                  * so the curve is the same curve at any zoom and the
                  * vector scale cannot touch it.
+                 *
+                 * WHATEVER KIND OF RELATION IT IS. A vertical line is
+                 * drawn from its own stored position and range, and is
+                 * never nudged into looking like a function - see
+                 * appendAnalysisPlot.
                  */
-                if (
-                    geometry.mode === "plot" &&
-                    Array.isArray(geometry.segments) &&
-                    geometry.segments.length
-                ) {
-                    const equations =
-                        window.enggDiagramEquations;
+                if (geometry.mode === "plot") {
+                    appendAnalysisPlot(
+                        svg,
+                        geometry,
+                        toScreen,
+                        tint,
+                        scaledStrokeWidth(
+                            Number(style.lineWidth) || 0.5
+                        )
+                    );
+                }
 
-                    /*
-                     * WITHOUT A RANGE THERE IS NO WAY TO PLACE A
-                     * STATION, so nothing is drawn rather than drawn
-                     * against a guessed scale. A curve in the wrong
-                     * place is worse than no curve, because it looks
-                     * like an answer.
-                     */
-                    const localRange =
-                        geometry.localRange;
-
-                    if (equations && localRange) {
-                        const rangeWidth =
-                            localRange.to -
-                            localRange.from;
-
-                        if (rangeWidth > 0) {
-                            /*
-                             * A FIXED SCALE IN ENGINEERING UNITS PER
-                             * PIXEL OF FRAME HEIGHT, so a value of 10
-                             * means the same thing on every diagram and
-                             * the student can read magnitudes off
-                             * their own work. The frame's own pixel
-                             * height comes from the bounding box rather
-                             * than from the world, so the curve cannot
-                             * zoom itself.
-                             */
-                            const unitHeight =
-                                rangeWidth *
-                                0.16;
-
-                            const peak =
-                                equations.peakMagnitude(
-                                    geometry.segments
-                                );
-
-                            /*
-                             * A diagram whose largest value is zero
-                             * has no scale to work in, and scaling by
-                             * zero would flatten a real curve onto the
-                             * axis.
-                             */
-                            const scale =
-                                peak > 0
-                                    ? unitHeight / peak
-                                    : 0;
-
-                            equations.sampleSegments(
-                                geometry.segments
-                            ).forEach(points => {
-                                const d = points
-                                    .map((point, index) => {
-                                        /*
-                                         * MAPPED IN THE WORLD FRAME,
-                                         * THEN TRANSFORMED ONCE.
-                                         *
-                                         * `from` and `to` are SCREEN
-                                         * points - they came out of
-                                         * toScreen. Interpolating
-                                         * between them and handing the
-                                         * result back to toScreen
-                                         * applies the transform twice,
-                                         * which threw the curve off
-                                         * the sheet entirely. So the
-                                         * frame is rebuilt here from the
-                                         * world axis, and exactly one
-                                         * toScreen call is made per
-                                         * point.
-                                         */
-                                        const t =
-                                            (point.x -
-                                                localRange.from) /
-                                            rangeWidth;
-
-                                        /*
-                                         * x is a FRACTION of the
-                                         * member's own length, so the
-                                         * curve stays locked to the
-                                         * body however the frame is
-                                         * moved, the member is
-                                         * rotated, or the view is
-                                         * zoomed.
-                                         */
-                                        const along = {
-                                            x:
-                                                geometry.start.x +
-                                                (geometry.end.x -
-                                                    geometry.start.x) *
-                                                    t,
-
-                                            /*
-                                             * A POSITIVE VALUE GOES
-                                             * UP, so the offset is
-                                             * ADDED to the world y.
-                                             *
-                                             * The world frame here is
-                                             * y-UP - the same sense the
-                                             * diagram's own zero axis
-                                             * uses - so subtracting
-                                             * would push a positive
-                                             * shear DOWN the sheet,
-                                             * under the axis, and read
-                                             * as a negative reaction.
-                                             * toScreen is what turns
-                                             * this into screen
-                                             * coordinates; this is not
-                                             * a second inversion of the
-                                             * same thing.
-                                             */
-                                            y:
-                                                geometry.start.y +
-                                                point.value * scale
-                                        };
-
-                                        const at =
-                                            toScreen(along);
-
-                                        return `${index ? "L" : "M"} ${at.x} ${at.y}`;
-                                    })
-                                    .join(" ");
-
-                                if (!d) {
-                                    return;
-                                }
-
-                                const path =
-                                    createSvgElement("path", {
-                                        d,
-                                        fill: "none",
-
-                                        /*
-                                         * THE TINT, NOT THE BODY STROKE.
-                                         *
-                                         * The curve is part of this
-                                         * diagram, so it is drawn in
-                                         * the diagram's own colour.
-                                         * Inheriting the entity style
-                                         * would put a shear curve in
-                                         * whatever colour the layer
-                                         * happened to be - and an SFD
-                                         * and a BMD are told apart by
-                                         * their colour as much as by
-                                         * their heading.
-                                         */
-                                        stroke: tint,
-                                        "stroke-width": 1.8,
-                                        "stroke-linejoin":
-                                            "round",
-                                        "stroke-linecap":
-                                            "round"
-                                    });
-
-                                /*
-                                 * The curve is part of the diagram, not
-                                 * a separate thing to pick: a student
-                                 * selecting the SFD means the whole of
-                                 * it, curve included.
-                                 */
-                                path.setAttribute(
-                                    "pointer-events",
-                                    "none"
-                                );
-
-                                svg.appendChild(path);
-                            });
-                        }
-                    }
+                /*
+                 * ========================================================
+                 * A SKETCH, DRAWN ON THE SHEET
+                 * ========================================================
+                 *
+                 * The hand-drawn half of an analysis diagram. Its elements
+                 * are ENGINEERING points - x being the body's longitudinal
+                 * station and y the value on the vertical axis - and they are
+                 * projected through the same `toScreen` as everything else,
+                 * so a sketch lines up with the axis it was drawn against.
+                 *
+                 * DRAWN HERE, NOT AS FEATURES. An element is not a Line in
+                 * the document: it belongs to the diagram, moves with it and
+                 * is deleted with it. As a document feature a student could
+                 * select it on its own, drag it off the diagram it belongs
+                 * to, and delete it while the diagram remained - none of
+                 * which is something a part of a diagram should be able to
+                 * do.
+                 *
+                 * The same colour as the plotted alternative, because it IS
+                 * the same thing: the student's answer for this diagram, in
+                 * whichever of the two modes they chose to give it.
+                 */
+                if (geometry.mode === "sketch") {
+                    appendAnalysisSketch(
+                        svg,
+                        geometry,
+                        toScreen,
+                        tint
+                    );
                 }
             } else if (entity.type === "truss") {
                 /*
@@ -2482,24 +3593,62 @@
                      * to the opposite side of the body on reversal, and
                      * the outline would no longer enclose its arrows.
                      */
-                    ...samples.map(sample => {
-                        const drawn = forceEndpoints(
-                            toScreen(sample.base),
-                            direction,
-                            distributedLoadArrowLength(
-                                sample.magnitude,
-                                scale,
-                                vectorScaleOf(state)
-                            ),
-                            normal
-                        );
+                    /*
+                 * The envelope follows the very tips that were just
+                 * drawn, using the same body-normal endpoints the arrows
+                 * used. Deriving it from the force direction instead would
+                 * swing the whole profile to the opposite side of the body
+                 * on reversal, and the outline would no longer enclose its
+                 * arrows.
+                 *
+                 * ========================================================
+                 * ALWAYS THE FAR END, NEVER THE HEAD'S END
+                 * ========================================================
+                 *
+                 * This used to read
+                 *
+                 *     const tip = reversed
+                 *         ? drawn.application
+                 *         : drawn.far;
+                 *
+                 * which is the arrowhead's rule applied to the outline.
+                 * It is the wrong rule, and it made a reversed load lose
+                 * its outline entirely: every sample's envelope point
+                 * became its own application point, all of which lie ON
+                 * the body, so the envelope collapsed onto the centreline
+                 * and the polygon degenerated to the loaded region with no
+                 * height at all.
+                 *
+                 * THE TWO QUESTIONS ARE DIFFERENT, AND MUST NOT SHARE AN
+                 * ANSWER.
+                 *
+                 *   Which end carries the HEAD?   `reversed` decides it.
+                 *   Which end is the ARROW'S FAR END?   Nothing decides it -
+                 *                                            it is a
+                 *                                            geometric fact.
+                 *
+                 * Reversing changes the first and cannot change the second.
+                 * A load pointing up and the same load pointing down draw
+                 * the same envelope over the same region; only the heads
+                 * sit on the other end. Reading `reversed` here is what
+                 * made the outline depend on the arrowhead's placement,
+                 * which is a property of the arrow rather than of the
+                 * region it belongs to.
+                 */
+                ...samples.map(sample => {
+                    const drawn = forceEndpoints(
+                        toScreen(sample.base),
+                        direction,
+                        distributedLoadArrowLength(
+                            sample.magnitude,
+                            scale,
+                            vectorScaleOf(state)
+                        ),
+                        normal
+                    );
 
-                        const tip = reversed
-                            ? drawn.application
-                            : drawn.far;
-
-                        return `${tip.x},${tip.y}`;
-                    }),
+                    return `${drawn.far.x},${drawn.far.y}`;
+                }),
 
                     /*
                      * Closed back along the body, so the outline
@@ -2546,6 +3695,7 @@
                 );
             }
 
+            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -2778,6 +3928,7 @@
                 );
             }
 
+            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -3304,6 +4455,20 @@
             );
         }
 
+        /*
+         * SHOW MAGNITUDES, DRAWN FROM THE FEATURE.
+         *
+         * Everything above draws what the document happens to contain. A
+         * force's magnitude is not a separate thing on the sheet - it is a
+         * property OF the force - so there was nothing for the setting to
+         * switch on. It is drawn here instead, from the feature itself, so
+         * it cannot disagree with the force it belongs to.
+         *
+         * NOT STORED, and NOT SELECTABLE: this is the feature's own value
+         * rendered, not a second object. It has no id in the document, so
+         * clicking it selects the force, which is what clicking a force
+         * should do.
+         */
         if (svg.childNodes.length) {
             parentSvg.appendChild(svg);
         }
@@ -3344,102 +4509,144 @@
     }
 
     /*
-     * How a force's arrow is drawn.
+     * ========================================================
+     * A DIRECTION, IN SCREEN SPACE
+     * ========================================================
      *
-     * LENGTH. The drawn length IS the magnitude. The arrow runs
-     * from its application point to the point the geometry says
-     * the force reaches, which is the point the user placed with
-     * the cursor, so moving the cursor farther genuinely lengthens
-     * the vector. There is no maximum and no minimum: a force is
-     * not a symbol with a fixed size, it is a vector, and a
-     * viewer has to be able to trust that a longer arrow means a
-     * larger force.
+     * TWO WAYS TO KNOW WHICH WAY A VECTOR POINTS, BOTH HANDLED HERE.
      *
-     * The one thing that is NOT clamped is the user visible length
-     * in world units. Whether the result is on screen at all is a
-     * matter of the viewport, which is what zooming and Fit are
-     * for, and the camera must not be allowed to rewrite the
-     * geometry to make that easier.
+     * A force is stored either as two endpoints with the head on one of
+     * them, or as a magnitude and an angle. Both are ordinary, and both
+     * reach the same shared arrow - so the difference is settled in one
+     * place rather than at each call site, where getting it wrong draws a
+     * force pointing the wrong way with no error to notice.
      *
-     * WIDTH AND HEAD. The shaft's stroke width and the head's size
-     * both come from the feature's own appearance, so the Line
-     * Width and Line Type chosen in the Features panel are what is
-     * actually drawn. The head scales with the shaft rather than
-     * sitting at a fixed size, because a head sized for a hairline
-     * on a thick shaft swallows the shaft, and a head sized for a
-     * thick shaft on a hairline is invisible.
+     * FROM TWO POINTS: measure the difference. There is no sign to get
+     * wrong here, which is the reason this is the preferred form wherever
+     * it is available.
+     *
+     * FROM AN ANGLE: the angle is an ENGINEERING one - measured from the
+     * positive x axis, anticlockwise, in a world whose y grows upward. It
+     * is turned into a WORLD point one unit away from the world
+     * application point and then PROJECTED, rather than being converted by
+     * hand.
+     *
+     * THE WORLD POINT HAS TO BE A WORLD POINT.
+     *
+     * Adding a world-space offset to an already-projected point mixes the
+     * two frames: the offset gets scaled and inverted a second time, which
+     * turned a force pointing straight up into one pointing up-and-to-the-
+     * right by whatever amount the projection happened to add. The offset
+     * is therefore measured from the world application point, and only the
+     * result is projected - so the inversion happens exactly once, inside
+     * the one function that owns it.
      */
-    function forceArrowMetrics(
-        magnitude,
-        style
+    function forceDirectionOnScreen(
+        head,
+        tail
     ) {
-        const width =
-            /*
-             * The SAME on-screen weight a Line of this
-             * configured width would get.
-             *
-             * It used to be `Number(style?.lineWidth)`, the raw
-             * millimetre value, taken straight from the style and
-             * used as if it were already pixels. It is not: the
-             * drawing renders in pixels, and every other feature
-             * converts through scaledStrokeWidth. So a force at the
-             * sheet's 0.5 drew its shaft at half a pixel while a
-             * Line at the same 0.5 drew at 1.2 - the force came out
-             * THINNER than ordinary geometry, which is the opposite
-             * of what a symbol is for, and the two could not be
-             * compared because neither was wrong.
-             *
-             * Going through the shared scale is what makes "the
-             * force shaft is as thick as the line" true on screen
-             * rather than only in the settings.
-             */
-            scaledStrokeWidth(
-                Number(style?.lineWidth) || 0.5
-            );
+        const dx = head.x - tail.x;
+        const dy = head.y - tail.y;
 
-        return {
-            /*
-             * The head is a multiple of the shaft width, so the
-             * two always look like parts of the same line: a
-             * heavier force gets a heavier head without the
-             * relationship being a fixed pixel constant.
-             */
-            head: Math.max(
-                3.5,
-                Math.min(
-                    14,
-                    width * 4.5
-                )
-            ),
+        const length = Math.hypot(dx, dy);
 
-            width
-        };
+        if (!(length > 0)) {
+            /*
+             * A zero-length vector has no direction. Rather than invent
+             * one, this returns "no direction" and the arrow is not drawn:
+             * a force of magnitude zero is nothing to see, and a default
+             * arrow pointing right would be a claim about it.
+             */
+            return null;
+        }
+
+        return { x: dx / length, y: dy / length };
+    }
+
+    function toScreenUnitDirection(
+        toScreen,
+        worldAnchor,
+        geometry
+    ) {
+        const angle = Number(geometry.angle);
+
+        if (!Number.isFinite(angle)) {
+            return null;
+        }
+
+        const radians = angle * Math.PI / 180;
+
+        /*
+         * ONE UNIT OF THE WORLD VECTOR, projected by the same transform as
+         * every other point. The direction that comes back is in screen
+         * units per world unit of the vector, which is the only sense in
+         * which a direction exists on the sheet.
+         */
+        return forceDirectionOnScreen(
+            toScreen({
+                x: worldAnchor.x + Math.cos(radians),
+                y: worldAnchor.y + Math.sin(radians)
+            }),
+            toScreen(worldAnchor)
+        );
     }
 
     /*
-     * ONE VECTOR OF AN ANALYSIS PICTURE.
+     * ========================================================
+     * ONE VECTOR ARROW, IN SCREEN SPACE
+     * ========================================================
      *
-     * Used for a Force Components' three vectors and for a Resultant,
-     * so the same arrow, the same head and the same line weight are
-     * used everywhere an analysis draws a vector. They are readings of
-     * the same kind of thing - a force, or a sum of forces - and two
-     * slightly different arrows would suggest a difference in
-     * meaning that does not exist.
+     * The single place a Statics vector becomes ink. A Point Force, a
+     * Resultant, each of a Force Components' three vectors, and a
+     * Distributed Load's arrows all come through here, so an arrowhead is
+     * computed one way for all of them.
      *
-     * A construction line between the component ends is drawn the same
-     * way but without a head, which is how a drafting sheet shows a
-     * line that is there for reference rather than for force.
+     * WHY IT TAKES TWO POINTS AND NOT AN ANGLE
+     * ----------------------------------------
+     * The previous version of this took an `angleDegrees` and a
+     * `length`, and reconstructed the tip as
+     *
+     *     y: anchor.y - Math.sin(radians) * length
+     *
+     * That leading minus is the bug. `anchor` is already a SCREEN point,
+     * and screen y grows DOWNWARD, so subtracting the vertical component
+     * sent every force drawn through this path to the wrong side of its
+     * application point: a force pointing up was drawn pointing down.
+     *
+     * The caller at the time made it look right by handing in a negated
+     * angle (`Math.atan2(-dy, dx)`), so the two sign errors cancelled and
+     * the picture happened to be correct - which is exactly why it survived.
+     * Two wrongs in one place is not a working arrangement: it cannot be
+     * changed, reused for a new vector type, or reasoned about without
+     * working out which of the two signs is wrong for a given quadrant.
+     *
+     * The fix is not to correct the sign but to remove the need for one.
+     * A caller that already HAS both ends - which is every vector in this
+     * module, since engineering geometry is stored as a tail and a head -
+     * hands both over, and the arrowhead direction is measured from them:
+     *
+     *     angle = atan2(headScreen.y - tailScreen.y,
+     *                   headScreen.x - tailScreen.x)
+     *
+     * ONE conversion, in ONE place: world to screen, at the boundary,
+     * through `toScreen`. The engineering vector keeps its own signs, and
+     * nothing downstream has to know that the sheet is drawn upside down
+     * relative to the axes.
+     *
+     * The two points are the whole truth about a vector, so a magnitude of
+     * zero is now visible as two coincident points rather than having to
+     * be inferred from an angle of 0 and a length of 0.
      */
-    function appendAnalysisVector(
+    function appendVectorArrow(
         svg,
-        from,
-        to,
+        tail,
+        head,
         stroke,
         style,
         kind = "solid"
     ) {
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
+        const dx = head.x - tail.x;
+        const dy = head.y - tail.y;
 
         const length = Math.hypot(dx, dy);
 
@@ -3451,10 +4658,10 @@
 
         svg.appendChild(
             createSvgElement("line", {
-                x1: from.x,
-                y1: from.y,
-                x2: to.x,
-                y2: to.y,
+                x1: tail.x,
+                y1: tail.y,
+                x2: head.x,
+                y2: head.y,
                 stroke,
                 "stroke-width":
                     scaledStrokeWidth(
@@ -3481,7 +4688,7 @@
          */
         appendArrowHead(
             svg,
-            to,
+            head,
             Math.atan2(dy, dx),
             stroke,
             arrowHeadSize(
@@ -3494,62 +4701,166 @@
      * The Analysis tool icons' geometry lives in the same file as the
      * drawing, so an icon and the thing it draws cannot drift apart.
      */
+    /*
+     * ========================================================
+     * A POINT FORCE, AS A VECTOR
+     * ========================================================
+     *
+     * A FORCE IS A VECTOR, so it is drawn by the shared arrow rather than
+     * by a routine of its own. This only decides where the two ends are.
+     *
+     * A force is stored as a fixed pair of endpoints with the arrowhead
+     * on one of them, so both ends are known in engineering coordinates and
+     * both go through the same projection. There is no angle to recover and
+     * no length to rebuild, which is what removes the sign error this used
+     * to carry: see appendVectorArrow above.
+     */
     function appendForceArrow(
         svg,
         anchor,
-        angleDegrees,
-        magnitude,
+        direction,
+        length,
         stroke,
         style
     ) {
-        const metrics =
-            forceArrowMetrics(
-                magnitude,
-                style
-            );
-
         /*
-         * The vector, drawn at its true length. The magnitude
-         * arrives in world units and is used as the length, so the
-         * arrow is a faithful picture of the stored force rather
-         * than a symbol of it.
+         * No direction means nothing to draw, which is what a zero-length
+         * vector means and is the only honest reading of it.
          */
-        const length =
-            Math.abs(
-                Number(magnitude) || 0
-            );
+        if (!direction) {
+            return;
+        }
 
-        const radians =
-            angleDegrees * Math.PI / 180;
-
-        const tip = {
-            x: anchor.x + Math.cos(radians) * length,
-            y: anchor.y - Math.sin(radians) * length
-        };
-
-        svg.appendChild(
-            createSvgElement("line", {
-                x1: anchor.x,
-                y1: anchor.y,
-                x2: tip.x,
-                y2: tip.y,
-                stroke,
-                "stroke-width": metrics.width,
-                "stroke-linecap": "round"
-            })
-        );
-
-        appendArrowHead(
+        appendVectorArrow(
             svg,
-            tip,
-            radians,
+            anchor,
+            {
+                x: anchor.x + direction.x * length,
+                y: anchor.y + direction.y * length
+            },
             stroke,
-            metrics.head
+            style
         );
     }
 
     /*
-     * A filled arrow head pointing along the given angle.
+     * HOW WIDE AN ARROWHEAD OPENS.
+     *
+     * The half-angle at the tip, in radians. 0.4 is about 23 degrees each
+     * side, which is a long thin head that stays legible on a 0.5 mm shaft
+     * without swallowing it.
+     *
+     * NAMED rather than written as a literal at the two places that need
+     * it, because the previous code had 0.4 twice - once per base corner -
+     * and two copies of a shape parameter is two chances for them to
+     * disagree about how big a head is.
+     */
+    const ARROW_HEAD_SPREAD = 0.4;
+
+    /*
+     * THE TWO BASE CORNERS OF AN ARROWHEAD, one either side of the shaft.
+     *
+     * Returned rather than appended so that every head on the sheet - the
+     * shared vector arrow, the distributed loads' arrows - is built from
+     * the same two points. There were three head builders before this, each
+     * with its own copy of the shape, and one of them had a sign wrong in a
+     * way that was invisible on the axes and wrong on the diagonals. A
+     * shape that has been got wrong once should not be reachable twice.
+     *
+     * BUILT FROM THE AXIS, not by rotating a polar angle. Going backwards
+     * from the tip by `theta +/- spread` only produces a symmetric head if
+     * both the cosine and the sine are negated; rotating one way and adding
+     * the other walks both corners off to the same side.
+     */
+    function arrowHeadCorners(
+        tip,
+        radians,
+        head
+    ) {
+        /* The unit axis, pointing the way the arrow points. On screen, so
+         * y grows downward and no further inversion belongs here. */
+        const axis = {
+            x: Math.cos(radians),
+            y: Math.sin(radians)
+        };
+
+        /* ACROSS the axis, at right angles. */
+        const across = {
+            x: -axis.y,
+            y: axis.x
+        };
+
+        const back =
+            head * Math.cos(ARROW_HEAD_SPREAD);
+
+        const halfWidth =
+            head * Math.sin(ARROW_HEAD_SPREAD);
+
+        return [
+            {
+                x:
+                    tip.x -
+                    axis.x * back +
+                    across.x * halfWidth,
+                y:
+                    tip.y -
+                    axis.y * back +
+                    across.y * halfWidth
+            },
+            {
+                x:
+                    tip.x -
+                    axis.x * back -
+                    across.x * halfWidth,
+                y:
+                    tip.y -
+                    axis.y * back -
+                    across.y * halfWidth
+            }
+        ];
+    }
+
+    /*
+     * ========================================================
+     * A FILLED ARROW HEAD POINTING ALONG A SCREEN ANGLE
+     * ========================================================
+     *
+     * Three points: the tip, and the two base corners `headSize` back from
+     * it, one either side of the shaft's axis.
+     *
+     * ========================================================
+     * THE BASE CORNERS WERE ON THE WRONG SIDE OF THE AXIS
+     * ========================================================
+     *
+     * They were placed at
+     *
+     *     tip.x - head * cos(radians -/+ 0.4)
+     *     tip.y + head * sin(radians -/+ 0.4)
+     *
+     * Note the signs. The x term subtracts and the y term ADDS. For a
+     * triangle that is symmetric about the axis, the y term has to
+     * subtract too: rotating backwards from the tip by `theta - 0.4` and by
+     * `theta + 0.4` walks the axis in opposite directions, and only the
+     * cos/sin pair with the SAME sign on both components puts the corners
+     * on opposite sides.
+     *
+     * WITH `+ sin` THE TWO CORNERS LAND ON THE SAME SIDE, and how badly it
+     * goes wrong depends on the direction:
+     *
+     *     angle 0    (horizontal)   looks correct - cos and sin are
+     *                               symmetric about 0, so the flip is
+     *                               invisible
+     *     angle 90   (vertical)     looks correct - sin is symmetric about
+     *                               pi/2
+     *     angle 45, 135, -45       WRONG - both corners on one side, and
+     *                               the head reads as a fin rather than
+     *                               an arrow
+     *
+     * So the bug was invisible on exactly the two axes and broken on the
+     * diagonals - which is why it survived being written down as correct,
+     * and why every test that used a horizontal or vertical force passed.
+     * A test that checks where the TIP is cannot see it at all: the tip
+     * was always right.
      */
     function appendArrowHead(
         svg,
@@ -3558,12 +4869,19 @@
         stroke,
         head
     ) {
+        const [left, right] =
+            arrowHeadCorners(
+                tip,
+                radians,
+                head
+            );
+
         svg.appendChild(
             createSvgElement("polygon", {
                 points: [
                     `${tip.x},${tip.y}`,
-                    `${tip.x - head * Math.cos(radians - 0.4)},${tip.y + head * Math.sin(radians - 0.4)}`,
-                    `${tip.x - head * Math.cos(radians + 0.4)},${tip.y + head * Math.sin(radians + 0.4)}`
+                    `${left.x},${left.y}`,
+                    `${right.x},${right.y}`
                 ].join(" "),
                 fill: stroke,
                 stroke: "none"
@@ -3851,6 +5169,11 @@
      * It is built from the screen-space direction the arrow was
      * drawn along, so the head is always square to its own shaft
      * no matter which way the load points.
+     *
+     * IT IS THE SAME HEAD AS EVERY OTHER ARROW, from the same corner
+     * builder, with the load's own size. Only the size differs: a load's
+     * head is sized from its shaft width and its arrow length, which are
+     * things a load has and a plain vector does not.
      */
     function distributedLoadArrowHead(
         tip,
@@ -3870,10 +5193,18 @@
                 strokeWidth
             );
 
+        const corners =
+            arrowHeadCorners(
+                tip,
+                radians,
+                head
+            );
+
         return [
             `${tip.x},${tip.y}`,
-            `${tip.x - head * Math.cos(radians - 0.4)},${tip.y - head * Math.sin(radians - 0.4)}`,
-            `${tip.x - head * Math.cos(radians + 0.4)},${tip.y - head * Math.sin(radians + 0.4)}`
+            ...corners.map(
+                corner => `${corner.x},${corner.y}`
+            )
         ].join(" ");
     }
 
@@ -5405,6 +6736,78 @@
          * were shown, and the value they confirm is the value they
          * saw only because both come from the same measurement.
          */
+        /*
+         * THE FIRST REFERENCE, WHILE THE TOOL WAITS.
+         *
+         * A chosen point must be visibly held, so the student can see
+         * which reference is already in and that the tool is waiting
+         * rather than idle. It is a small marker at the resolved model
+         * point, drawn in the tool's own colour, and it disappears the
+         * moment the reference is committed or cancelled.
+         */
+        const heldFirst =
+            state.interaction
+                .dimensionStage === "first"
+                ? state.interaction
+                      .dimensionFirstRef
+                : null;
+
+        if (heldFirst) {
+            const heldObject = (
+                state.objects || []
+            ).find(
+                object =>
+                    object.id === heldFirst.featureId
+            );
+
+            const heldPoint =
+                window.enggMeasurement?.resolveAnchor?.(
+                    heldObject,
+                    heldFirst.anchor
+                );
+
+            if (heldPoint) {
+                const screenPoint =
+                    enggDrawingState
+                        .engineeringToScreen(
+                            heldPoint,
+                            bounds,
+                            state
+                        );
+
+                const marker =
+                    createSvgElement("circle");
+
+                marker.setAttribute(
+                    "cx",
+                    screenPoint.x
+                );
+                marker.setAttribute(
+                    "cy",
+                    screenPoint.y
+                );
+                marker.setAttribute("r", "4");
+                marker.setAttribute(
+                    "fill",
+                    "#1f5c38"
+                );
+                marker.setAttribute(
+                    "stroke",
+                    "#ffffff"
+                );
+                marker.setAttribute(
+                    "stroke-width",
+                    "1.5"
+                );
+
+                marker.classList.add(
+                    "drawing-dimension-reference"
+                );
+
+                svg.appendChild(marker);
+            }
+        }
+
         const armed =
             state.interaction
                 .dimensionRefs;
@@ -6284,7 +7687,20 @@
         "beam",
         "truss",
         "cable",
-        "shaft"
+        "shaft",
+
+        /*
+         * An analysis diagram is here for the same reason as the rest.
+         *
+         * Without it, moving a graph drew NOTHING at the drag-to position
+         * - no frame, no axis, no curve - so the student saw the graph
+         * refuse to move until they released, then jump. It was listed as
+         * absent because a diagram is not a two-point span like a beam, and
+         * this list started out as spans only; the ones added since (loads,
+         * moments, supports) are all things with their own drawing routine
+         * that appendEntity handles just as well.
+         */
+        "analysis-diagram"
     ];
 
     /*
@@ -6459,7 +7875,197 @@
         renderSelectionHandles(svg, state, bounds);
     }
 
+    /*
+     * ========================================================
+     * THE EQUATION BESIDE EACH MARK
+     * ========================================================
+     *
+     * Optional, and off by default: a diagram with its equations written on
+     * it reads as a finished answer, which is not what a working sheet
+     * looks like. It is a study aid - the student checking their own work -
+     * so they turn it on when they want it.
+     *
+     * THE LABEL IS BESIDE THE MIDDLE OF ITS OWN MARK, never in a fixed
+     * corner. Three regions of one SFD all need a label, and stacking them
+     * at the same place would put two equations on top of each other and
+     * leave a third describing nothing.
+     *
+     * IT IS THE STUDENT'S OWN TEXT, printed as typed. A vertical relation
+     * has no equation to write, so it says `x = 4` rather than being given
+     * an invented `V(x)` - there is no function there, and saying so would
+     * be the lie this relation type exists to avoid.
+     */
+    function equationLabels(geometry) {
+        /*
+         * `window`, not `root`. This file is a plain IIFE with no `root`
+         * parameter - every other module here takes one - so `root` is
+         * simply undefined and reading through it throws the moment the
+         * first label is asked for.
+         */
+        const equations = window.enggDiagramEquations;
+
+        if (!equations) {
+            return [];
+        }
+
+        const quantity =
+            equations.quantityFor(geometry.diagramType);
+
+        return analysisPlotMarks(geometry)
+            .map(mark => {
+                let text;
+
+                if (mark.kind === "verticalLine") {
+                    const station = analysisValueAt(geometry, mark.from);
+
+                    text = station
+                        ? `x = ${numberText(station.x)}`
+                        : null;
+                } else {
+                    text = mark.equation
+                        ? `${quantity} = ${mark.equation}`
+                        : null;
+                }
+
+                if (!text) {
+                    return null;
+                }
+
+                /*
+                 * WHERE THE LABEL GOES.
+                 *
+                 * A curve is labelled beside the middle of its own points;
+                 * a vertical relation has no points, so it is labelled at
+                 * the middle of the line itself - its own `from`/`to`, and
+                 * the point partway between them.
+                 *
+                 * Guarding on `points` alone would silently drop every
+                 * vertical relation's label, which is the one kind of label
+                 * that most needs to be there: it is the discontinuity, and
+                 * the discontinuity is what the student is checking for.
+                 */
+                const middle = mark.points?.length
+                    ? mark.points[
+                          Math.floor(mark.points.length / 2)
+                      ]
+                    : {
+                          x: (mark.from.x + mark.to.x) / 2,
+                          y: (mark.from.y + mark.to.y) / 2,
+                      };
+
+                return {
+                    id: mark.id,
+                    text,
+                    at: middle,
+                };
+            })
+            .filter(Boolean);
+    }
+
+    /*
+     * ========================================================
+     * READING A CURSOR IN THE GRAPH'S OWN UNITS
+     * ========================================================
+     *
+     * The status readout reports world coordinates, because that is what the
+     * rest of the sheet is drawn in. But a student sketching a shear diagram
+     * does not want the world y of a pixel - they want to know what VALUE
+     * they are at, and how far along the member they are.
+     *
+     * So this converts one to the other, and it lives beside the projection
+     * rather than in the caller. `analysisPlotMarks` already does the forward
+     * direction; a second implementation of the inverse somewhere else is how
+     * the two come to disagree, and a cursor readout that disagrees with the
+     * graph beside it is worse than no readout at all.
+     *
+     * The same scale is used in both directions - fitted to the diagram's
+     * peak, or to the student's set range - so the number this reports is
+     * the number the curve is drawn at.
+     */
+    function analysisValueAt(geometry, worldPoint) {
+        const localRange = geometry.localRange;
+
+        if (!localRange || !geometry.start || !geometry.end) {
+            return null;
+        }
+
+        const rangeWidth = localRange.to - localRange.from;
+
+        if (!(rangeWidth > 0)) {
+            return null;
+        }
+
+        /*
+         * The peak is taken from whatever the diagram currently holds, so
+         * the readout and the drawing move together as expressions are
+         * edited. It is the same value the marks were built with.
+         */
+        const equations = window.enggDiagramEquations;
+
+        let peak = 0;
+
+        if (geometry.mode === "plot" && equations) {
+            peak = equations.peakMagnitude(
+                equations.readPlot(geometry)
+            );
+        } else if (geometry.mode === "sketch") {
+            (geometry.sketchElements || []).forEach(element => {
+                sketchPointsOf(element).forEach(point => {
+                    if (Number.isFinite(point.y)) {
+                        peak = Math.max(
+                            peak,
+                            Math.abs(point.y)
+                        );
+                    }
+                });
+            });
+        }
+
+        const { unitHeight } = analysisValueScale(
+            geometry,
+            rangeWidth,
+            peak
+        );
+
+        if (!unitHeight) {
+            return null;
+        }
+
+        const axisLength =
+            geometry.end.x - geometry.start.x;
+
+        if (!axisLength) {
+            return null;
+        }
+
+        const t =
+            (worldPoint.x - geometry.start.x) / axisLength;
+
+        return {
+            x: localRange.from + t * rangeWidth,
+            y: (worldPoint.y - geometry.start.y) / unitHeight,
+        };
+    }
+
     window.enggDrawingRenderer = {
-        renderDrawing
+        renderDrawing,
+
+        /*
+         * THE ANALYSIS FRAME'S PUBLIC PARTS.
+         *
+         * Exposed so the Plot Editor draws its graph through the same
+         * constants the canvas does. The editor is a second view of the
+         * feature, not a second implementation of it, and the two drifting
+         * apart - a different axis length here, a different scale there -
+         * would mean the graph the student edited against is not the graph
+         * they get.
+         */
+        ANALYSIS_FRAME,
+        ANALYSIS_DIAGRAM_TINTS,
+        ANALYSIS_DIAGRAM_AXES,
+        analysisFrameExtents,
+        analysisPlotMarks,
+        analysisValueAt,
+        equationLabels
     };
 })();

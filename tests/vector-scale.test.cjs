@@ -67,15 +67,28 @@ check(
 );
 
 check(
-    "the offered scales are the decades, smallest first",
-    values.length === 7 &&
-        values.every(
-            (value, index) =>
-                index === 0 || value > values[index - 1]
-        ) &&
+    "the offered scales include the decades about 1x, smallest first",
+    values.every(
+        (value, index) =>
+            index === 0 || value > values[index - 1]
+    ) &&
         [0.001, 0.01, 0.1, 1, 10, 100, 1000].every(v =>
             values.includes(v)
         ),
+    `values: ${values.join(", ")}`
+);
+
+/*
+ * AND THE PRACTICAL MULTIPLIERS the specification names.
+ *
+ * The decades span the orders of magnitude an engineering sheet needs, but
+ * a student wanting an arrow a little bigger reaches for 2x, not 10x. Both
+ * sets are offered, deduplicated and ascending, so the control is the same
+ * small-to-large list with every named value present.
+ */
+check(
+    "and the specification's practical multipliers are present too",
+    [0.25, 0.5, 1, 2, 4].every(v => values.includes(v)),
     `values: ${values.join(", ")}`
 );
 

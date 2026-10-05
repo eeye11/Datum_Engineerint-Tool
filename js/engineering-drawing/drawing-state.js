@@ -70,6 +70,30 @@
         return {
             version: 1,
             units: "mm",
+
+            /*
+             * THE DOCUMENT'S LENGTH CALIBRATION, DECLARED UP FRONT.
+             *
+             * `null` means UNCALIBRATED: the geometry is real, but nothing has
+             * said how long any of it is, so a dimension has no honest number
+             * to print. That is a real state rather than a missing field -
+             * `undefined` meant the document could not tell "never calibrated"
+             * from "calibration lost", which is how a saved drawing silently
+             * came back uncalibrated.
+             *
+             * It belongs HERE, on the document, because it is one fact about
+             * the whole drawing. A scale stored per feature would be a second
+             * source of truth for every object that had one, free to disagree
+             * with its neighbours, and a beam measured in millimetres beside
+             * its own load measured in something else.
+             *
+             * Declared here it is also part of the document SHAPE, so the
+             * snapshot and the serializer below carry it without either of
+             * them having to remember to - which is exactly how it went
+             * missing before.
+             */
+            scale: null,
+
             objects: [],
             camera: {
                 zoom: 1,
@@ -98,12 +122,52 @@
              * 100 N force drawn at 4x is still 100 N, and the analysis
              * that reads it never sees this value at all.
              */
+            /*
+             * ========================================================
+             * THE THREE DISPLAY SETTINGS
+             * ========================================================
+             *
+             * Workspace settings, not sheet settings and not feature
+             * settings: they are how the drawing is READ rather than what
+             * is on it, which is why they sit beside Grid and Snap rather
+             * than in any feature's panel.
+             *
+             * Each is DEFAULTED ON here, and an absent field is read the
+             * same way by the annotation model. That matters for saved
+             * drawings: a file written before these existed has no field at
+             * all, and the conservative reading of "nobody said otherwise"
+             * has to be the behaviour it always had, or opening an old
+             * sheet would silently strip every unit off it.
+             */
+            display: {
+                showUnits: true,
+                showMagnitudes: true,
+                showDimensions: true
+            },
             statics: {
                 vectorScale: 1
             },
             objectSnap: {
                 enabled: true,
-                tolerancePx: 10,
+
+                /*
+                 * NO STORED TOLERANCE.
+                 *
+                 * This used to carry `tolerancePx: 10`, which quietly
+                 * overrode the snap engine's own constant - `getTolerancePx`
+                 * prefers a configured value over its floor, so the number
+                 * that was actually in force was neither the one in the
+                 * engine nor the one a reader of the engine would expect,
+                 * and changing the engine's constant changed nothing at all.
+                 * That is how a snap tolerance can be narrowed in a comment
+                 * and stay exactly as sticky in the product.
+                 *
+                 * So the tolerance lives in ONE place - the snap engine -
+                 * and the state says only whether snapping is on. A
+                 * tolerance a user can set is a separate feature; until there
+                 * is one, a second copy of the number here is a second
+                 * source of truth about how far the cursor has to be.
+                 */
 
                 /*
                  * The catch band for horizontal and vertical
@@ -123,11 +187,11 @@
                  * truss member or a loaded span to a joint it is
                  * meant to line up with.
                  *
-                 * The snap engine already treats alignment as the
-                 * wider of the two concerns; this only states it
-                 * as a number so the two can never drift apart.
+                 * Left unset for the same reason as the point
+                 * tolerance above: the engine states both figures
+                 * itself, so that narrowing one cannot silently
+                 * drag the other with it.
                  */
-                inferenceTolerancePx: 24
             },
             styleDefaults: {
                 stroke: "#000000",
@@ -136,7 +200,24 @@
                 lineType: "solid",
                 opacity: 1
             },
-            activeTool: null,
+            /*
+             * SELECT IS THE DEFAULT, and was `null`.
+             *
+             * With nothing active, every click fell through the tool
+             * handlers to the selection code - so clicking DID select, but
+             * by absence rather than by choice. That is not the same thing,
+             * and the difference shows in three places: nothing in the
+             * toolbar showed which tool was live, so a student who had never
+             * touched the toolbar had no way to tell they were in a tool;
+             * `activateTool` would not see "select" already active and so
+             * could not take the "re-clicking cancels it" path; and any
+             * status text that read the active tool had nothing to report.
+             *
+             * Naming it makes the default state an ordinary one - the same
+             * state reached by clicking the Select button - rather than a
+             * special case that behaves like it.
+             */
+            activeTool: "select",
             interaction: {
                 preview: null,
                 phase: "idle",
@@ -200,7 +281,27 @@
             history: {
                 past: [],
                 future: []
-            }
+            },
+
+            /*
+             * HOW A HISTORY ENTRY REACHES THE SHEET COLLECTION.
+             *
+             * The collection is not on the state, and cannot be: the editor
+             * is the LIVE COPY of the active sheet and the collection sits
+             * beside it in the controller. So the controller hands in three
+             * functions and the history uses them.
+             *
+             *   capture  a copy of the whole collection, for the snapshot
+             *   restore  put a captured collection back
+             *   adopt    re-read the restored active sheet's viewport and
+             *            settings into the editor
+             *
+             * Absent means the document has no collection, which is the
+             * case for everything that is not the full editor - the
+             * module-load check, the pure geometry tests - and undo then
+             * behaves exactly as it always did.
+             */
+            historySinks: null
         };
     }
 
@@ -213,6 +314,78 @@
             opacity: 1,
             ...overrides
         };
+    }
+
+    /*
+     * ========================================================
+     * A SUPPORT'S ATTACHMENT IS WHERE IT WAS PUT
+     * ========================================================
+     *
+     * The four support factories all seeded
+     *
+     *     attachment: seedSupportAttachment(position)
+     *
+     * which reads as "at the very start of the member". That is not a
+     * default the student can see or correct - it is a second position,
+     * and the renderer PREFERS it over the `position` they clicked at:
+     *
+     *     const attachmentPoint = frame
+     *         ? attachmentPoint(frame, geometry.attachment)
+     *         : null;
+     *
+     * so every support was drawn at the body's start whatever the cursor
+     * was over. That is the "supports jump to the end" report. It was not
+     * the placement code and not the snap - both used the cursor's point
+     * correctly. The click was recorded, then discarded in favour of a
+     * constant written at construction time.
+     *
+     * THE ATTACHMENT IS SEEDED FROM THE POSITION PASSED IN, and from
+     * nothing else. `position` is where the tool put it, so an attachment
+     * that says otherwise is the tool disagreeing with itself.
+     *
+     * `attachmentFor` is not callable from here - it needs the body frame,
+     * which only the renderer has at this point - so the attachment is
+     * written as a distance along the member, which `attachmentFraction`
+     * converts. A support created from a click therefore resolves to the
+     * point that was clicked, and one created by the panel at a named
+     * position resolves to that position.
+     *
+     * A SUPPORT WITH NO POSITION AT ALL still starts at zero, because
+     * there is nothing else it could mean.
+     */
+    function seedSupportAttachment(
+        position,
+        attachment = {}
+    ) {
+        if (!position) {
+            return attachment;
+        }
+
+        /*
+         * A caller that has already worked out the attachment - the
+         * placement path does, from the body frame - is left alone. This is
+         * a default for the ones that have not, not an overwrite.
+         */
+        if (
+            attachment.unit === "fraction" &&
+            Number.isFinite(Number(attachment.fraction))
+        ) {
+            return attachment;
+        }
+
+        const along = Number(position.distance);
+
+        if (Number.isFinite(along)) {
+            return { distance: along };
+        }
+
+        const x = Number(position.x);
+
+        if (Number.isFinite(x)) {
+            return { distance: x };
+        }
+
+        return attachment;
     }
 
     function createGeometryObject(type, geometry, options = {}) {
@@ -630,9 +803,7 @@
                     position,
                     orientation: 0,
                     flipped: false,
-                    attachment: {
-                        distance: 0
-                    }
+                    attachment: seedSupportAttachment(position)
                 },
                 options
             ),
@@ -644,9 +815,7 @@
                     position,
                     orientation: 0,
                     flipped: false,
-                    attachment: {
-                        distance: 0
-                    }
+                    attachment: seedSupportAttachment(position)
                 },
                 options
             ),
@@ -658,9 +827,7 @@
                     position,
                     orientation: 0,
                     flipped: false,
-                    attachment: {
-                        distance: 0
-                    }
+                    attachment: seedSupportAttachment(position)
                 },
                 options
             ),
@@ -672,9 +839,7 @@
                     position,
                     orientation: 0,
                     flipped: false,
-                    attachment: {
-                        distance: 0
-                    }
+                    attachment: seedSupportAttachment(position)
                 },
                 options
             ),
@@ -1441,6 +1606,222 @@
             );
     }
 
+    /*
+     * ========================================================
+     * DELETING SOMETHING DELETES WHAT DEPENDS ON IT
+     * ========================================================
+     *
+     * The parent relationship is not a tree the Feature Tree draws and
+     * nothing more - it is a statement that the child has no meaning
+     * without the parent. A support with no member is not a support, it is
+     * an arrowhead in empty space; a diagram with no span has no x-axis to
+     * put an x (m) label on.
+     *
+     * So deleting a Beam removes its supports, loads, moments, connections
+     * and diagrams, and deleting a support removes whatever it in turn
+     * carried. What was left standing before was the reason a deleted
+     * diagram kept drawing its axes: not a node the renderer failed to
+     * clear, but a FEATURE that was still in the document with nothing
+     * behind it.
+     *
+     * ONE PASS, BOTTOM-UP, AND NOT A LOOP.
+     *
+     * The descendants are collected first and the list is filtered once.
+     * Iterating until nothing changed would be simpler to write and would
+     * hang on a file whose parentId fields had somehow formed a cycle -
+     * which is the sort of corruption a partially-written save produces,
+     * and the one moment where hanging is least acceptable. Collecting
+     * cannot loop at all.
+     *
+     * THE SELECTION AND THE HOVER CLEAR TOO.
+     *
+     * Leaving a deleted child's id in `selectedObjectIds` produces a
+     * selection pointing at nothing, which the panel then renders as an
+     * empty property page and the next click has to dig out of.
+     */
+    function removeObjectsAndDescendants(
+        state,
+        ids
+    ) {
+        const roots = ids instanceof Set
+            ? [...ids]
+            : Array.isArray(ids)
+                ? [...ids]
+                : ids
+                    ? [ids]
+                    : [];
+
+        if (!roots.length) {
+            return [];
+        }
+
+        /*
+         * A parent index, so "who depends on this" is one lookup rather
+         * than a scan per level. Rebuilt from the CURRENT list only, so a
+         * parentId naming a feature that is not there simply matches
+         * nothing and the child is treated as a root - which is what keeps
+         * an older file with a dangling reference readable instead of
+         * silently deleting half the sheet.
+         */
+        const childrenOf = new Map();
+
+        state.objects.forEach(object => {
+            if (!object.parentId) {
+                return;
+            }
+
+            const siblings =
+                childrenOf.get(object.parentId) || [];
+
+            siblings.push(object.id);
+
+            childrenOf.set(
+                object.parentId,
+                siblings
+            );
+        });
+
+        const doomed = new Set(roots);
+        const queue = [...roots];
+
+        while (queue.length) {
+            const id = queue.pop();
+
+            (childrenOf.get(id) || []).forEach(childId => {
+                /*
+                 * Only ever enqueued ONCE. `doomed` is the visited set as
+                 * well as the removal set, so a cycle terminates here
+                 * rather than running forever.
+                 */
+                if (doomed.has(childId)) {
+                    return;
+                }
+
+                doomed.add(childId);
+                queue.push(childId);
+            });
+        }
+
+        state.objects = state.objects.filter(
+            object => !doomed.has(object.id)
+        );
+
+        state.selection.selectedObjectIds =
+            state.selection.selectedObjectIds.filter(
+                id => !doomed.has(id)
+            );
+
+        if (Array.isArray(state.selection.boxSelectionIds)) {
+            state.selection.boxSelectionIds =
+                state.selection.boxSelectionIds.filter(
+                    id => !doomed.has(id)
+                );
+        }
+
+        if (
+            doomed.has(state.selection.hoveredObjectId)
+        ) {
+            state.selection.hoveredObjectId = null;
+        }
+
+        resetScaleIfSheetIsEmpty(state);
+
+        return [...doomed];
+    }
+
+    /*
+     * ========================================================
+     * AN EMPTY SHEET HAS NO SCALE
+     * ========================================================
+     *
+     * A sheet's scale is the relationship between ITS geometry and
+     * real lengths, so when the last of that geometry is gone the
+     * relationship has nothing left to relate. Keeping it would mean a
+     * new beam drawn on the emptied sheet was silently measured with a
+     * calibration established by geometry that no longer exists - the
+     * student would be told a length nobody could account for.
+     *
+     * So the scale is dropped automatically, with no command for the
+     * student to find, and the sheet's next first length establishes a
+     * new one. That is the same rule the first length used to follow,
+     * applied from the other end.
+     *
+     * ONLY THE ACTIVE SHEET IS CONSIDERED. The scale belongs to a
+     * sheet, so emptying this one says nothing about any other: a
+     * second sheet with its own calibration keeps it.
+     *
+     * WHAT COUNTS AS GEOMETRY
+     * -----------------------
+     * Things a student DREW: the bodies, the shapes, the construction
+     * geometry, the reference geometry. Not the things that merely
+     * describe what was drawn.
+     *
+     * A dimension, a moment, a load or an analysis diagram is a
+     * reading of some geometry, and deleting that geometry already
+     * takes it with it - the deletion above removes descendants, and
+     * these are exactly the kind of dependent that has a parent. If
+     * they were counted here, a sheet holding a lone orphaned
+     * annotation would keep a calibration alive with no drawing
+     * behind it, and the sheet would never reset.
+     */
+    const SCALE_HOLDING_TYPES = new Set([
+        "line",
+        "polyline",
+        "triangle",
+        "polygon",
+        "circle",
+        "arc",
+        "rectangle",
+        "beam",
+        "truss",
+        "cable",
+        "shaft",
+        "rigid-body",
+        "particle",
+        "reference-line",
+        "reference-point",
+        "coordinate-system",
+        "point",
+        "force",
+        "load",
+        "varying-load",
+        "moment",
+        "couple",
+        "connection",
+        "support",
+        "resultant",
+        "force-components"
+    ]);
+
+    function resetScaleIfSheetIsEmpty(state) {
+        if (!state.scale) {
+            return false;
+        }
+
+        const holdsGeometry =
+            (state.objects || []).some(object =>
+                SCALE_HOLDING_TYPES.has(object.type)
+            );
+
+        if (holdsGeometry) {
+            return false;
+        }
+
+        /*
+         * Left in the HISTORY SNAPSHOT rather than applied here.
+         *
+         * This function runs while the edit is being made, but Undo
+         * works from snapshots taken before each change - and those
+         * already carry the scale. So resetting here makes the current
+         * state correct, and Undo restores the snapshot that had the
+         * scale in it, which is the same reasoning that lets Undo put
+         * a calibration back after it was withdrawn.
+         */
+        state.scale = null;
+
+        return true;
+    }
+
     function selectObjects(state, objectIds) {
         state.selection.selectedObjectIds = [
             ...new Set(objectIds)
@@ -1459,8 +1840,69 @@
         return JSON.parse(JSON.stringify(objects));
     }
 
-    function snapshotDrawing(state) {
-        return cloneObjects(state.objects);
+    /*
+     * ========================================================
+     * THE SNAPSHOT EVERY EDIT TAKES
+     * ========================================================
+     *
+     * A DOCUMENT snapshot - the objects AND the sheet collection - rather
+     * than a list of objects.
+     *
+     * It used to be a plain list. That made undo work perfectly for
+     * drawing edits and silently do nothing for everything else about the
+     * document, which is most of it: the editor is the LIVE COPY of the
+     * active sheet, and a snapshot of one sheet's objects cannot express a
+     * sheet being added, renamed, reordered or deleted, nor a change to
+     * another sheet's features, nor the document's units.
+     *
+     * CHANGED HERE RATHER THAN AT FORTY-EIGHT CALL SITES.
+     *
+     * Every mutation in the application takes its "before" snapshot with
+     * this one call, and every one of them commits through the same
+     * commit. Making the snapshot a document snapshot therefore fixes all
+     * of them at once - including the sheet operations that were never
+     * going to be covered by a per-call-site change - and leaves one place
+     * where "what an undo step restores" is decided.
+     *
+     * THE SHAPE IS ACCEPTED BOTH WAYS on restore, so an entry from before
+     * this change - a bare list - still restores rather than throwing.
+     */
+    /*
+     * ========================================================
+     * THE DEPENDENCIES MUST UPDATE WHILE THE STUDENT TYPES
+     * ========================================================
+     *
+     * `commitDrawingChange` is where every analysis object is refreshed -
+     * a Components pair and a Resultant included - because it is the one
+     * place every committed edit passes through.
+     *
+     * The panel's typing handler used to call it on `change`, which is
+     * when a field loses focus. So a student typing a new magnitude into a
+     * force's panel watched the arrow move and the decomposition beside it
+     * stay at the old value until they clicked somewhere else. The
+     * feature bar and the drawing disagreed for as long as they kept
+     * typing, which is exactly as long as it takes to think something is
+     * broken.
+     *
+     * So the refresh is asked for DIRECTLY here, on every keystroke. The
+     * commit still happens on blur, which is where the history entry
+     * belongs - one entry for the whole edit rather than one per
+     * character - and because `commitDrawingChange` refreshes again before
+     * it snapshots, the undo entry is still consistent.
+     *
+     * NOTHING IS RECORDED FOR THE TYPING. A refresh is a derived value
+     * catching up with the authoritative one, which is a consequence of an
+     * edit and not an edit of its own; recording it would fill the undo
+     * stack with one entry per keystroke.
+     */
+    function refreshDerivedFeatures(state) {
+        refreshAnalysisObjects(state);
+
+        return state;
+    }
+
+        function snapshotDrawing(state) {
+        return snapshotDocument(state);
     }
 
     /*
@@ -1610,6 +2052,188 @@
         return state;
     }
 
+    /*
+     * ========================================================
+     * WHAT A HISTORY ENTRY ACTUALLY IS
+     * ========================================================
+     *
+     * A DOCUMENT SNAPSHOT, not a list of objects.
+     *
+     * It used to be `state.objects` and nothing else, which made undo
+     * work perfectly for drawing edits and silently do nothing for
+     * everything else about the document - and most of everything else is
+     * not on the current sheet.
+     *
+     * The application holds a COLLECTION of sheets, each with its own
+     * features, its own viewport and its own history; the editor shows one
+     * of them. A snapshot of the active sheet's objects therefore cannot
+     * express:
+     *
+     *   - a sheet being added, removed, renamed or reordered,
+     *   - a change to ANOTHER sheet's features,
+     *   - a change to the document's units or scale.
+     *
+     * So the collection goes into the snapshot too. `sheets` is whatever
+     * the caller supplies through `state.historySinks` - the editor is the
+     * live copy of the active sheet, and the sheet collection lives
+     * alongside it, so it cannot be reached from here without being handed
+     * in. A document with no collection simply has none in its snapshots,
+     * which is exactly what it was doing before and still works.
+     *
+     * THIS IS ONE ENTRY PER USER ACTION, still. Adding the collection does
+     * not add entries: it makes the ONE entry each action already makes
+     * complete, so Undo puts the whole document back rather than only the
+     * part of it that happened to be on screen.
+     */
+    function setHistorySinks(state, sinks) {
+        state.historySinks = sinks || null;
+
+        return state;
+    }
+
+    /*
+     * THE ENTRY IS AN ARRAY WITH THE COLLECTION ON IT.
+     *
+     * An array, carrying `sheets` as a property, rather than an object
+     * with `objects` on it. That looks odd and is deliberate: every one of
+     * the forty-odd call sites passes the result straight back to
+     * `commitDrawingChange`, and a change in shape would break all of them
+     * at once for no gain. An array also compares and serialises the way
+     * the code has always expected, so nothing downstream can tell the
+     * difference.
+     */
+    function snapshotDocument(state) {
+        const entry = cloneObjects(state.objects);
+
+        const sinks = state.historySinks;
+
+        if (sinks && typeof sinks.capture === "function") {
+            /*
+             * THE COLLECTION IS A BONUS, NOT A REQUIREMENT.
+             *
+             * The objects are what Undo is fundamentally about, and they
+             * are captured before the sink is even asked. So a sink that
+             * throws - a renamed function, a missing sheet module - must
+             * cost the sheet history and nothing else.
+             *
+             * This is not a hypothetical guard. The first version of this
+             * called three functions that did not exist, and because a
+             * snapshot is taken on the click that PLACES every feature,
+             * the throw happened on every tool in the application: nothing
+             * could be drawn at all. A history improvement took out the
+             * whole editor.
+             */
+            try {
+                entry.sheets = sinks.capture();
+            } catch (error) {
+                entry.sheets = null;
+            }
+        }
+
+        /*
+         * ========================================================
+         * THE ENTRY HAS TO BE AN OBJECT, NOT AN ARRAY WITH A PROPERTY
+         * ========================================================
+         *
+         * The entry used to be the cloned array itself, carrying the
+         * collection as a property hung off it - which looks like a way of
+         * changing nothing about a shape forty-eight call sites depend on,
+         * and is exactly that until anything SERIALISES it.
+         *
+         * `commitDrawingChange` stores the snapshot with
+         * `cloneObjects`, which is `JSON.parse(JSON.stringify(...))`, and
+         * JSON serialises an array's ELEMENTS and nothing else. Every other
+         * property on that array is silently dropped. So `sheets` was
+         * attached, passed through the commit, and deleted - and Undo
+         * restored the objects perfectly while the collection was quietly
+         * never there.
+         *
+         * The shape is changed HERE rather than at the call sites, and the
+         * restore accepts both: an entry written now is an object with
+         * `objects` on it, and one from before this change is a bare array.
+         * That means an existing history stack - a drawing reopened from a
+         * file, a session still open - keeps undoing.
+         */
+        return {
+            version: 1,
+            objects: entry,
+            sheets: entry.sheets ?? null,
+
+            /*
+             * THE CALIBRATION TRAVELS WITH THE OBJECTS.
+             *
+             * A length only means something because of the scale, so a
+             * snapshot that restored the geometry but not the scale restored
+             * a drawing whose every dimension was wrong by a factor nobody
+             * could see - Undo of anything that followed a calibration gave
+             * back the numbers but not their meaning.
+             *
+             * `null` is the honest answer for a document that has never been
+             * calibrated, and it is distinct from a missing field for the same
+             * reason it is in the document: "never calibrated" and "calibration
+             * lost" must not look alike.
+             */
+            scale: state.scale
+                ? JSON.parse(JSON.stringify(state.scale))
+                : null
+        };
+    }
+
+    function restoreDocumentSnapshot(state, entry) {
+        /*
+         * THE COLLECTION FIRST.
+         *
+         * Sheets are restored before objects because restoring a sheet can
+         * make one active, and making one active writes the editor's
+         * current objects into it - which would stamp the outgoing sheet
+         * with the incoming sheet's features.
+         */
+        const sinks = state.historySinks;
+
+        if (
+            entry &&
+            entry.sheets &&
+            sinks &&
+            typeof sinks.restore === "function"
+        ) {
+            try {
+                sinks.restore(entry.sheets);
+            } catch (error) {
+                /* See snapshotDocument: a sink cannot break Undo. */
+            }
+        }
+
+        restoreObjects(state, entry.objects || entry);
+
+        /*
+         * ...AND THE SCALE WITH IT, and from the entry rather than from
+         * whatever the document happens to hold now. The snapshot is the
+         * whole state at one moment, and restoring only part of it is how a
+         * drawing ends up self-inconsistent: real geometry paired with
+         * somebody else's scale.
+         */
+        if (entry && Object.prototype.hasOwnProperty.call(entry, "scale")) {
+            state.scale = entry.scale
+                ? JSON.parse(JSON.stringify(entry.scale))
+                : null;
+        }
+        /*
+         * A RESTORED SHEET'S VIEWPORT AND SETTINGS.
+         *
+         * The objects are the sheet's content, but the editor's zoom, pan,
+         * grid and snapping came from it too, and restoring only the objects
+         * leaves the sheet looking at the drawing through the previous
+         * sheet's camera.
+         */
+        if (sinks && typeof sinks.adopt === "function") {
+            try {
+                sinks.adopt(state);
+            } catch (error) {
+                /* See snapshotDocument: a sink cannot break Undo. */
+            }
+        }
+    }
+
     function canUndo(state) {
         return state.history.past.length > 0;
     }
@@ -1624,10 +2248,10 @@
         }
 
         state.history.future.push(
-            snapshotDrawing(state)
+            snapshotDocument(state)
         );
 
-        restoreObjects(
+        restoreDocumentSnapshot(
             state,
             state.history.past.pop()
         );
@@ -1641,10 +2265,10 @@
         }
 
         state.history.past.push(
-            snapshotDrawing(state)
+            snapshotDocument(state)
         );
 
-        restoreObjects(
+        restoreDocumentSnapshot(
             state,
             state.history.future.pop()
         );
@@ -1732,6 +2356,65 @@
         state.interaction.dimensionTargets = null;
         state.interaction.dimensionRefs = null;
         state.interaction.dimensionPlacement = null;
+
+        /*
+         * THE SMART DIMENSION STATE MACHINE.
+         *
+         * `dimensionStage` records where in the workflow the tool is -
+         * collecting references, or placing the annotation - and the
+         * reference fields hold everything chosen so far.
+         *
+         * `dimensionPickedRefs` is the ACCUMULATED selection. It is
+         * cleared here for the same reason as everything beside it and
+         * with the same consequence if it were not: the tool now
+         * collects references until Enter, so this array is the whole
+         * of what the student has chosen, and a stale entry would
+         * silently measure the next dimension against geometry from
+         * the last one.
+         */
+        state.interaction.dimensionStage = null;
+        state.interaction.dimensionFirstRef = null;
+        state.interaction.dimensionFirstPoint = null;
+        state.interaction.dimensionSecondRef = null;
+        state.interaction.dimensionPickedRefs = null;
+        state.interaction.dimensionChoice = null;
+        state.interaction.dimensionCandidates = null;
+        /*
+         * THE ANALYSIS AXIS BEING POSITIONED.
+         *
+         * The same reasoning as the dimension above, and the same omission
+         * once caused it. `renderPreview` draws this as a complete
+         * analysis-diagram in the diagram's own colour - the SFD's is
+         * #1f5c38 - so a placement left behind is a green graph that stays
+         * on the sheet after the real one has been created, moved or
+         * deleted. Nothing else removed it: the field was set on every
+         * pointermove during placement and belonged to no clear path, so
+         * it survived the phase change that ended the placement.
+         *
+         * It is temporary in exactly the sense the rest of this function
+         * means - it exists only while the axis is being dragged - so it
+         * goes here with everything else.
+         */
+        state.interaction.analysisPlacement = null;
+
+        /*
+         * THE MOMENT'S TWO TEMPORARY FIGURES.
+         *
+         * `placementY` is where the student's pointer put the moment
+         * during the radius phase, and `radiusPx` is the arc radius they
+         * chose in the following phase. Both are read to build the moment
+         * and then mean nothing to anyone - but neither was ever reset,
+         * so they survived into the next tool.
+         *
+         * `placementY` is the sharper of the two: it is written on every
+         * pointermove in the placement phase and read back by the preview,
+         * so a stale value silently repositions the NEXT preview that
+         * consults it. It is the same shape of fault as the analysis
+         * placement preview that left a green graph on the sheet, and it
+         * was found by scanning for the class rather than the instance.
+         */
+        state.interaction.placementY = null;
+        state.interaction.radiusPx = null;
         state.interaction.annotationKind = null;
         state.interaction.annotationKinds = null;
         state.interaction.annotationTarget = null;
@@ -1768,6 +2451,36 @@
          * constructions, and clearing one must never leave the
          * other half-built.
          */
+        state.interaction.loadStart = null;
+        state.interaction.loadEnd = null;
+        state.interaction.loadDirection = null;
+        state.interaction.loadMagnitude = 0;
+
+        /*
+         * ========================================================
+         * THE DISTRIBUTED LOAD'S FIVE STEPS
+         * ========================================================
+         *
+         * One field per thing the student has to decide, so each can be
+         * cleared, inspected and tested on its own.
+         *
+         * `loadSourceId` is the BODY, and it is the only thing the first
+         * click establishes. It used to be handed the body's own endpoints
+         * at the same time, which is why a load appeared across the whole
+         * member the instant it was clicked - the span had already been
+         * decided by someone else.
+         *
+         * `loadStart` and `loadEnd` are null until the student puts them
+         * there, and they are BODY-LOCAL engineering positions rather than
+         * world points, so the loaded interval survives the body moving and
+         * being resized.
+         *
+         * `loadDirection` is null until the last step, and it is a real
+         * vector rather than an angle or a flag - the renderer, the analysis
+         * and Switch Direction all read this one field, so they cannot
+         * disagree about which way the load points.
+         */
+        state.interaction.loadSourceId = null;
         state.interaction.loadStart = null;
         state.interaction.loadEnd = null;
         state.interaction.loadDirection = null;
@@ -1979,6 +2692,26 @@
             {
                 version: state.version,
                 units: state.units,
+
+                /*
+                 * THE CALIBRATION IS PART OF THE DOCUMENT.
+                 *
+                 * It is what makes a length mean anything, so a drawing saved
+                 * without it reopened with every dimension wrong - the numbers
+                 * were still right, they were just no longer in the units they
+                 * claimed. The whole shape travels together for that reason.
+                 */
+                scale: state.scale
+                    ? {
+                          ...state.scale,
+                          reference: state.scale.reference
+                              ? {
+                                    ...state.scale.reference
+                                }
+                              : undefined
+                      }
+                    : null,
+
                 camera: {
                     ...state.camera
                 },
@@ -2033,13 +2766,18 @@
         geometryFactories,
         addObject,
         removeObject,
+        removeObjectsAndDescendants,
+        resetScaleIfSheetIsEmpty,
         selectObjects,
         selectObject,
         clearSelection,
+        setHistorySinks,
+        snapshotDocument,
         snapshotDrawing,
         commitDrawingChange,
         setAnalysisDependencyRegistry,
         refreshAnalysisObjects,
+        refreshDerivedFeatures,
         resolveAnalysisAfterDeletion,
         canUndo,
         canRedo,

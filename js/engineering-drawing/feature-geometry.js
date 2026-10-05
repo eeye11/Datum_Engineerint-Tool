@@ -706,31 +706,52 @@
              * a diagram sit under its beam and still follow the beam
              * when the beam is resized.
              *
-             * The offset is COMPOSED rather than replaced, so dragging
-             * twice moves twice - the student sees the diagram follow
-             * their hand each time rather than snapping back to the
-             * source on the first drag of a second one.
+             * THE OFFSET IS SET, NOT COMPOSED.
+             *
+             * The delta reaching here is the distance from where the drag
+             * BEGAN, not the distance since the last pointermove, so this
+             * function is a set rather than a nudge - and the offset has to
+             * be set to that total rather than added to what is already
+             * there.
+             *
+             * It used to compose, so three moves of ten units recorded
+             * thirty on the first, sixty on the second and ninety on the
+             * third: the diagram overtook the cursor by a growing margin and
+             * was the feature everybody reported as flying off. Two drags of
+             * the same distance also produced two different results, which
+             * is the same fault seen from the other side.
              */
-            const existing =
-                g.placementOffset || {
-                    x: 0,
-                    y: 0
-                };
-
             g.placementOffset = {
-                x: existing.x + deltaX,
-                y: existing.y + deltaY
+                x: deltaX,
+                y: deltaY
             };
 
             /*
-             * The geometry is translated as well, so the drawing moves
-             * with the hand IMMEDIATELY rather than waiting for the
-             * commit that triggers the refresh. The two agree, because
-             * the refresh re-derives these same coordinates from this
-             * same offset.
+             * THE INK IS TRANSLATED TOO, so the object follows the hand on
+             * this frame rather than waiting for the commit that triggers
+             * the refresh.
+             *
+             * THIS IS NOT A SECOND TRANSLATION. `translateObject` is called
+             * once per move for a given feature, and this IS that call's
+             * translation. The double-translation fault was in the OFFSET
+             * being composed while the ink was separately translated, so the
+             * recorded offset grew faster than the drawing moved and the two
+             * disagreed - visible as the object snapping back on refresh.
+             * Setting the offset to the same delta that moves the ink is
+             * what keeps them equal.
+             *
+             * `definingPoints` TAKES THE GEOMETRY AND THE TYPE, and this used
+             * to be handed the OBJECT - so the type arrived as undefined,
+             * none of the feature-specific branches matched, and the points
+             * it did walk were not the analysis object's own. The offset was
+             * recorded and the ink never moved, so a drag showed the drawing
+             * standing still and then jumping on the commit that refreshed
+             * it. Passing the two arguments it is declared to take is what
+             * makes it move with the hand.
              */
             definingPoints(
-                object
+                object.geometry,
+                object.type
             ).forEach(
                 point => {
                     point.x += deltaX;
@@ -798,30 +819,30 @@
             }
 
             /*
-             * Where the drag would put the attachment, measured ALONG the
-             * body and clamped to it.
+             * WHERE THE DRAG WOULD PUT THE ATTACHMENT, MEASURED ON THE MEMBER.
+             *
+             * The projection is onto the centreline and NOT onto the drawn position,
+             * so a support dragged from the symbol rather than from the centreline still
+             * lands on the member: the grab point is offset from the body, and using it
+             * directly would shift every drop by that offset.
+             *
+             * AND THE DELTA IS FROM THE START OF THE DRAG, not from the last pointermove
+             * - which is the same rule the rest of the move obeys, and the reason this
+             * used to walk away from the cursor. The old code asked where the attachment
+             * was NOW and added the whole distance travelled so far, so every move put
+             * it further along than the pointer had gone and the support ran off to the
+             * end of the member.
              */
-            const target = {
-                x: attachment.x + deltaX,
-                y: attachment.y + deltaY
-            };
-
-            const distance = Math.min(
-                frame.length,
-                Math.max(
-                    0,
-                    frames.positionOn(
-                        frame,
-                        target
-                    )
+            const moved = frames.pointAt(
+                frame,
+                Math.min(
+                    frame.length,
+                    Math.max(0, frames.positionOn(frame, {
+                        x: attachment.x + deltaX,
+                        y: attachment.y + deltaY
+                    }))
                 )
             );
-
-            const moved =
-                frames.pointAt(
-                    frame,
-                    distance
-                );
 
             const placement =
                 frames.supportPlacement(

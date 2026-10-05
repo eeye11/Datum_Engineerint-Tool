@@ -111,10 +111,28 @@ check(
   dimensionModel.measurementFor(built, scene).value,
   100
 );
+/*
+ * THE UNIT IS PART OF THE VALUE.
+ *
+ * This expected a bare "100.00", on the reasoning that the figure and its
+ * unit were separate concerns. But a dimension with no unit is ambiguous with
+ * every other quantity of the same magnitude on the sheet, and the unit is
+ * not a decoration over the number - it is what makes the number mean one
+ * particular thing. "100 mm" and "100 N" are different claims, and printing
+ * only the figure asks the reader to guess which one is on the sheet.
+ */
 check(
-  "and reads out in real units",
+  "and reads out with its unit, always",
   dimensionModel.formatMeasurement(built, scene),
-  "100.00"
+  "100.00 mm"
+);
+
+check(
+  "and never as a bare figure",
+  String(dimensionModel.formatMeasurement(built, scene))
+    .trim()
+    .match(/^[\d.]+$/),
+  null,
 );
 
 console.log("\nIt follows the geometry it refers to");
@@ -172,7 +190,7 @@ check(
 check(
   "and says what that feature says",
   annotationModel.textFor(label, labelled),
-  "F = 250.0 N\nθ = -90°"
+  "F = 250.0 N"
 );
 
 console.log("\nAnd keeps updating from it");
@@ -180,7 +198,7 @@ force.geometry.magnitude = 300;
 check(
   "a changed force changes the label",
   annotationModel.textFor(label, labelled),
-  "F = 300.0 N\nθ = -90°"
+  "F = 300.0 N"
 );
 
 console.log("\nZoom is a view, not a measurement");

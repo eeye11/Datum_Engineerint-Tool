@@ -109,15 +109,47 @@
       label: "Radius",
       unit: true,
 
-      /* The R prefix is part of the measurement, not decoration. */
-      prefix: "R ",
+      /*
+       * The R prefix is part of the measurement, not decoration.
+       *
+       * Written hard against the number - "R25 mm" - because that is how an
+       * engineering drawing states a radius, and the space this used to carry
+       * ("R 25 mm") reads as a separate word rather than as the symbol that
+       * gives the number its meaning.
+       */
+      prefix: "R",
       graphic: "radial"
     },
     diameter: {
       label: "Diameter",
       unit: true,
-      prefix: "Ø ",
+
+      /*
+       * "Ø50 mm", not "Ø 50 mm": the diameter symbol qualifies the number
+       * and is set against it, exactly as R is for a radius.
+       */
+      prefix: "Ø",
       graphic: "radial"
+    },
+
+    /*
+     * A PERPENDICULAR DISTANCE FROM A POINT TO A LINE.
+     *
+     * A type of its own rather than a flavour of "aligned", because the two
+     * measure different things. An aligned dimension is the straight distance
+     * between its two points; a point-to-line dimension is the perpendicular
+     * distance from the point to the line's INFINITE direction, which is
+     * shorter whenever the foot of the perpendicular falls outside the line's
+     * drawn extent - and is the number a reader checking clearance expects.
+     *
+     * Its references are three: the point, then the line's two ends. The two
+     * ends are kept so the value follows the line when it moves or rotates,
+     * which is the same associativity every other measurement has.
+     */
+    "point-line": {
+      label: "Distance",
+      unit: true,
+      graphic: "linear"
     },
     "arc-length": {
       label: "Arc length",
@@ -228,6 +260,37 @@
       return null;
     }
 
+    /*
+     * A POINT ON AN ENTITY IS A PARAMETRISED ANCHOR.
+     *
+     * "pointOnEntity@0.37" names a position 37% of the way along a
+     * straight feature. It is resolved from the feature's CURRENT ends
+     * every time, so a dimension that references a point in the middle of
+     * a beam follows the beam when it moves, rotates or changes length - a
+     * stored coordinate would not.
+     *
+     * It is handled before the capabilities lookup because no capability
+     * can enumerate every fraction, and it only applies to features that
+     * actually have a span.
+     */
+    const onEntity = parsePointOnEntity(
+      anchorName
+    );
+
+    if (onEntity !== null) {
+      const span = twoPointSpan(object);
+
+      if (!span) {
+        return null;
+      }
+
+      return lerpPoint(
+        span.start,
+        span.end,
+        onEntity
+      );
+    }
+
     const capabilities =
       capabilitiesFor(object.type);
 
@@ -285,6 +348,29 @@
     }
 
     return { x: point.x, y: point.y };
+  }
+
+  /*
+   * The fraction encoded in a point-on-entity anchor, or null.
+   *
+   * The format is deliberately plain text so it survives a save and a
+   * reload without a parser of its own: a reference is written as JSON,
+   * and a name like "pointOnEntity@0.5" reads back as the same string.
+   */
+  function parsePointOnEntity(anchorName) {
+    if (!anchorName.startsWith("pointOnEntity@")) {
+      return null;
+    }
+
+    const fraction = Number(
+      anchorName.slice("pointOnEntity@".length)
+    );
+
+    if (!Number.isFinite(fraction)) {
+      return null;
+    }
+
+    return Math.min(1, Math.max(0, fraction));
   }
 
   /*
@@ -364,6 +450,20 @@
     }
 
     return { start, end };
+  }
+
+  /*
+   * A point a fraction of the way along a span.
+   *
+   * Derived points (midpoint, quarters) are stated as fractions rather than
+   * as stored geometry, so they stay correct when the endpoints move. A
+   * stored midpoint would drift out of step with the line it describes.
+   */
+  function lerpPoint(start, end, t) {
+    return normalisePoint({
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    });
   }
 
   /*
@@ -529,13 +629,31 @@
               ? spanDimensionTypes(span)
               : ["linear"];
           },
-          anchorNames: () => ["start", "end"],
+          /*
+           * Midpoint and quarter points are anchors in their own right.
+           *
+           * Without them a "point to midpoint" reference has no NAME to store:
+           * the snap layer publishes a midpoint fine, but a line only declared
+           * `start` and `end`, so the reference could not be resolved and the
+           * dimension had to refuse. Declaring them here lets the reference
+           * persist and survive parent transforms, which is what the same
+           * points get when they are the line's own ends.
+           */
+          anchorNames: () => ["start", "end", "midpoint", "quarter1", "quarter3"],
           anchors: (object) => {
             const span = twoPointSpan(object);
 
-            return span
-              ? { start: span.start, end: span.end }
-              : null;
+            if (!span) {
+              return null;
+            }
+
+            return {
+              start: span.start,
+              end: span.end,
+              midpoint: lerpPoint(span.start, span.end, 0.5),
+              quarter1: lerpPoint(span.start, span.end, 0.25),
+              quarter3: lerpPoint(span.start, span.end, 0.75),
+            };
           },
         });
       }
@@ -666,7 +784,23 @@
                     "topRight",
                     "bottomRight",
                     "bottomLeft",
-                    "center"
+                    "center",
+
+                    /*
+                     * AND EACH EDGE AS A SEGMENT.
+                     *
+                     * A rectangle is one authoritative feature - it is not
+                     * decomposed into four Line features - but its four edges
+                     * are real straight references, so selecting one behaves
+                     * like selecting a line: it dimensions that edge's length,
+                     * and two edges can give an angle where they meet.
+                     *
+                     * The corners remain valid snap references throughout; the
+                     * segments are an addition, not a replacement.
+                     */
+                    ...segmentAnchorNames(
+                      rectangleEdgePoints(object)
+                    )
                   ],
           anchors: (object) => {
             const g = object.geometry || {};
@@ -722,6 +856,17 @@
             if (corners.length) {
               resolved.center = center;
             }
+
+            /*
+             * The edges, as segments. Added after the corners so the named
+             * corners keep their names and only the segment points are new.
+             */
+            Object.assign(
+              resolved,
+              segmentAnchors(
+                rectangleEdgePoints(object)
+              ) || {}
+            );
 
             return Object.keys(resolved).length
               ? resolved
@@ -803,22 +948,24 @@
         "vertical",
         "coordinate"
       ],
-      anchorNames: () => ["start", "end"],
-      anchors: (object) => {
-        const points =
-          (object.geometry?.points || [])
-            .map(normalisePoint)
-            .filter(Boolean);
-
-        if (points.length < 2) {
-          return null;
-        }
-
-        return {
-          start: points[0],
-          end: points[points.length - 1]
-        };
-      }
+      /*
+       * EACH SEGMENT IS A REFERENCE IN ITS OWN RIGHT.
+       *
+       * A polyline is not one straight body - it is a chain of them - so the
+       * only honest linear references are its individual segments. The whole
+       * polyline's first-to-last span is deliberately NOT offered as a length:
+       * a student who clicked a segment meant that segment, and a dimension
+       * across the whole chain would state the distance between two points that
+       * are not the ones they picked.
+       *
+       * Every segment publishes its two ends and its midpoint, so an endpoint,
+       * a midpoint and a point-on-segment are all available to the snap system
+       * and to a dimension - which is what §15 of the specification asks for.
+       */
+      anchorNames: (object) =>
+        segmentAnchorNames(polylinePoints(object)),
+      anchors: (object) =>
+        segmentAnchors(polylinePoints(object))
     });
 
     register("triangle", {
@@ -869,6 +1016,90 @@
     } catch (error) {
       return [];
     }
+  }
+
+  /*
+   * ========================================================
+   * SEGMENTS OF A COMPOSITE FEATURE
+   * ========================================================
+   *
+   * A polyline is a chain of straight segments and a rectangle is four of them.
+   * Neither is decomposed into Line features - the composite stays one
+   * authoritative feature - but each of its segments is a real straight
+   * reference, and Smart Dimension has to be able to take one.
+   *
+   * So each segment publishes three named anchors, derived from the feature's
+   * current points every time:
+   *
+   *     segment{i}Start   segment{i}End   segment{i}Mid
+   *
+   * A dimension that references `segment2Start` follows the polyline when it
+   * moves, because the anchor is resolved from the live geometry rather than
+   * being a stored coordinate. Naming a segment this way is what lets one
+   * segment be dimensioned without dimensioning the whole chain.
+   */
+
+  function polylinePoints(object) {
+    return (object?.geometry?.points || [])
+      .map(normalisePoint)
+      .filter(Boolean);
+  }
+
+  /*
+   * A rectangle's four corners, CLOSED - the last point repeats the first, so
+   * the four edges are between consecutive points and the fourth returns to the
+   * start. Without the closure a rectangle would expose only three of its four
+   * edges, and the edge a student happened to click could be the missing one.
+   */
+  function rectangleEdgePoints(object) {
+    const corners =
+      root.enggFeatureGeometry?.rectangleCorners?.(
+        object?.geometry || {}
+      ) || [];
+
+    const points = corners.map(normalisePoint).filter(Boolean);
+
+    if (points.length >= 3) {
+      points.push({ ...points[0] });
+    }
+
+    return points;
+  }
+
+  function segmentAnchorNames(points) {
+    if (!points || points.length < 2) {
+      return [];
+    }
+
+    const names = [];
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+      names.push(`segment${index}Start`);
+      names.push(`segment${index}End`);
+      names.push(`segment${index}Mid`);
+    }
+
+    return names;
+  }
+
+  function segmentAnchors(points) {
+    if (!points || points.length < 2) {
+      return null;
+    }
+
+    const resolved = {};
+
+    for (let index = 0; index < points.length - 1; index += 1) {
+      resolved[`segment${index}Start`] = points[index];
+      resolved[`segment${index}End`] = points[index + 1];
+      resolved[`segment${index}Mid`] = lerpPoint(
+        points[index],
+        points[index + 1],
+        0.5
+      );
+    }
+
+    return resolved;
   }
 
   /*
@@ -1143,8 +1374,158 @@
     return ["linear"];
   }
 
-  root.enggMeasurement = {
-    DIMENSION_TYPES,
+  /*
+     * ========================================================
+     * WHICH ANCHOR IS THIS POINT?
+     * ========================================================
+     *
+     * The bridge between a snap and a dimension reference.
+     *
+     * A snap says what KIND of point it hit - `endpoint`, `midpoint`,
+     * `center`, `quarter-1`. A dimension reference says which anchor NAME of
+     * which feature - `start`, `end`, `center`. Those are different
+     * vocabularies and nothing converted between them, so a click on a real
+     * endpoint had no name to store and could not become a reference at all.
+     *
+     * The kind alone is not enough to choose the name, either: `endpoint`
+     * matches BOTH ends of a line, and only one of them is the point the
+     * cursor was actually over. So the kind is used as a filter and the
+     * position decides within it - the anchor nearest the clicked point is
+     * the one that was meant.
+     *
+     * That is the same nearest-anchor rule the point-on-entity snapping
+     * already applies when it publishes a candidate, so the reference that
+     * gets stored is the point the student saw snap.
+     *
+     * Returns null when nothing matches, which the caller turns into a clear
+     * message rather than a dimension against an arbitrary anchor.
+     */
+    function anchorNameAtPoint(
+      object,
+      point,
+      kind = null
+    ) {
+      const anchors = anchorsFor(object);
+
+      if (!anchors.length) {
+        return null;
+      }
+
+      const target = normalisePoint(point);
+
+      if (!target) {
+        return null;
+      }
+
+      /*
+       * A KIND WE RECOGNISE BUT CANNOT SATISFY IS A REAL "NO".
+       *
+       * Falling back to the nearest anchor of any kind here was worse than
+       * useless: a midpoint snap on a line publishes no midpoint anchor, so the
+       * nearest one won - and it returned `start`, silently turning
+       * `endpoint to midpoint` into `endpoint to endpoint` again, which is the
+       * exact fault this conversion exists to fix. The dimension would have
+       * been created, looked right, and measured the wrong distance.
+       *
+       * So a kind we understand and cannot match returns null, and the caller
+       * says so. Refusing is visible; measuring the wrong thing is not.
+       *
+       * A kind we do NOT understand - a future snap type, say - still falls
+       * back, because we have no basis to claim it cannot be satisfied.
+       */
+      const known =
+        kind === "endpoint" ||
+        kind === "center" ||
+        kind === "centre" ||
+        kind === "midpoint" ||
+        kind === "middle";
+
+      /*
+       * A FEATURE WITH ONE ANCHOR IS THAT ANCHOR.
+       *
+       * A particle has a single point called `position`; so do a moment and a
+       * support. Snapping to any kind of point on one of them lands on the same
+       * place, because there is nowhere else to land - so the kind is not a
+       * filter here. Without this, every one of those features refused every
+       * snap kind, and could not be dimensioned by clicking it at all.
+       */
+      const sole =
+        anchors.length === 1
+          ? anchors
+          : null;
+
+      const named =
+        sole ||
+        (kind
+          ? anchors.filter((entry) =>
+              anchorKindMatches(entry.name, kind)
+            )
+          : []);
+
+      if (kind && known && !named.length) {
+        return null;
+      }
+
+      const pool = named.length
+        ? named
+        : anchors;
+
+      let best = null;
+      let bestDistance = Infinity;
+
+      for (const entry of pool) {
+        const candidate = normalisePoint(entry.point);
+
+        if (!candidate) {
+          continue;
+        }
+
+        const distance =
+          Math.hypot(
+            candidate.x - target.x,
+            candidate.y - target.y
+          );
+
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = entry.name;
+        }
+      }
+
+      return best;
+    }
+
+    /*
+     * Does an anchor NAME answer to this snap KIND?
+     *
+     * The two vocabularies only partly overlap, so this is a deliberate
+     * mapping rather than a string compare: `east`/`west` are endpoints of a
+     * rectangle in this system's vocabulary, and `centre` and `center` are
+     * the same word spelled both ways.
+     */
+    function anchorKindMatches(name, kind) {
+      const n = String(name || "").toLowerCase();
+      const k = String(kind || "").toLowerCase();
+
+      if (k === "endpoint") {
+        return ["start", "end", "east", "west", "a", "b"].includes(n);
+      }
+
+      if (k === "center" || k === "centre") {
+        return n === "center" || n === "centre";
+      }
+
+      if (k === "midpoint" || k === "middle") {
+        return n === "midpoint" || n === "middle";
+      }
+
+      return n === k;
+    }
+
+    root.enggMeasurement = {
+      anchorKindMatches,
+      anchorNameAtPoint,
+      DIMENSION_TYPES,
     anchorOptions,
     anchorResolves,
     anchorsFor,
