@@ -47,5 +47,17 @@ import "./editor/toolbar.js";
 import "./solution/written-references.js";
 import "./solution/writing-tab.js";
 import { installAutomationHooks } from "./app/automation-hooks.js";
+import { createDatumApi } from "./api/datum-api.js";
+import { installEmbedBridge } from "./api/embed-bridge.js";
 
 installAutomationHooks();
+
+/*
+ * The integration API (docs/INTEGRATION.md): window.datum for scripts in
+ * this page, and the postMessage bridge for a page that embeds this one
+ * (active only when the embedding origin is named in the URL).
+ */
+const datum = createDatumApi();
+
+window.datum = datum;
+installEmbedBridge(datum);

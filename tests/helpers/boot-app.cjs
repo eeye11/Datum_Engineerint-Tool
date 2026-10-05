@@ -61,4 +61,20 @@ function bootApp() {
   return booted;
 }
 
-module.exports = { bootApp, projectRoot };
+/*
+ * Resolves once the page has finished loading. Parts of the application
+ * (the written solution) attach on DOMContentLoaded, as they do in a
+ * browser, so a test of them waits for it.
+ */
+function whenReady() {
+  const { document } = bootApp();
+  return new Promise((resolve) => {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+    } else {
+      resolve();
+    }
+  });
+}
+
+module.exports = { bootApp, projectRoot, whenReady };

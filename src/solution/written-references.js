@@ -35,6 +35,7 @@
  */
 import { enggDrawingSheets } from "../editor/index.js";
 import enggDrawingReference from "../references/drawing-reference.js";
+import { emitDatumEvent } from "../api/events.js";
 
 const DEFAULT_WIDTH = 760;
 const DEFAULT_HEIGHT = 460;
@@ -476,7 +477,10 @@ function attach() {
     }
   );
 
-  code.addEventListener("input", refreshAll);
+  code.addEventListener("input", () => {
+    refreshAll();
+    emitDatumEvent("solutionchange");
+  });
 
   /*
    * The drawing side tells us when something changed that a figure

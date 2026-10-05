@@ -16,6 +16,7 @@ import { renderProperties } from "./feature-panel.js";
 import { activeSheet, loadSheetIntoEditor, notifyReferences, refreshSheetTabs, sheetById, syncActiveSheet, syncWorkspaceSettingToggles } from "./sheet-controller.js";
 import { setToolMessage } from "./toolbar-render.js";
 import { renderedBounds } from "./viewport.js";
+import { emitDatumEvent } from "../api/events.js";
 
 /*
  * File commands operate on the whole drawing, reusing
@@ -160,6 +161,8 @@ export function markDocumentDirty() {
      * dirty flag is.
      */
     notifyReferences();
+
+    emitDatumEvent("documentchange");
 }
 
 /*
@@ -744,7 +747,7 @@ function suggestedFileName() {
  * its real parameters, and the Feature Tree, Features panel, snapping
  * and manipulation all work on it without any special handling.
  */
-function loadDrawing(
+export function loadDrawing(
     payload,
     fileName
 ) {
