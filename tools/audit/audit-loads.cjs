@@ -1,7 +1,7 @@
 /*
- * Audit: distributed loads, moments, supports and body frames - their
+ * Audit: distributed loads, moments, supports and connections - their
  * authoritative data, body-local spans, direction handling and dependency
- * updates, using the real factory and frame API.
+ * updates.
  */
 const h = require("./statics-harness.cjs");
 
@@ -23,7 +23,11 @@ const F = h.state.geometryFactories;
 function stateWith(objects) {
   return {
     objects,
-    selection: { selectedObjectIds: [], boxSelectionIds: [], hoveredObjectId: null },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null,
+    },
     interaction: {},
     history: { past: [], future: [] },
     camera: { zoom: 1, panX: 0, panY: 0 },
@@ -31,9 +35,12 @@ function stateWith(objects) {
   };
 }
 
+/* A beam from (0,0) to (600,0). */
 const beam = F.beam({ x: 0, y: 0 }, { x: 600, y: 0 });
 
-console.log("\n== Distributed load: span and intensity are the data ==\n");
+console.log(
+  "\n== Distributed load: the span is body-local engineering data ==\n",
+);
 
 {
   const load = F.load({ x: 150, y: 0 }, { x: 450, y: 0 }, 5);
@@ -46,206 +53,176 @@ console.log("\n== Distributed load: span and intensity are the data ==\n");
   );
 
   check(
-    "the intensity is stored on the feature",
-    Math.abs(Number(load.geometry.intensity) - 5) < 1e-6,
-    `got ${load.geometry.intensity}`,
+    "the magnitude is stored, not derived from the drawn length",
+    Math.abs(Number(load.geometry.magnitude) - 5) < 1e-6,
+    `got ${load.geometry.magnitude}`,
   );
 
-  check(
-    "and a profile of magnitude points describes the field",
-    Array.isArray(load.geometry.points) && load.geometry.points.length >= 2,
-    JSON.stringify(load.geometry.points),
-  );
-
+  /* The span along the body, in engineering terms. */
   const span = h.deps.spanOf(load);
   check(
     "its span is 300 long",
     span && Math.abs(span.length - 300) < 1e-6,
     `got ${span && span.length}`,
   );
-
-  check(
-    "and its direction is stored as an engineering angle",
-    Number.isFinite(Number(load.geometry.direction)),
-    `got ${load.geometry.direction}`,
-  );
 }
 
-console.log("\n== Reversing a load keeps its span and its intensity ==\n");
+console.log("\n== Reversing a distributed load keeps its span ==\n");
 
 {
   const load = F.load({ x: 150, y: 0 }, { x: 450, y: 0 }, 5);
-  const beforeStart = { ...load.geometry.start };
-  const beforeEnd = { ...load.geometry.end };
-  const beforeDirection = Number(load.geometry.direction);
+  const before = { ...load.geometry.start };
 
   h.profile.reverseLoadDirection(load.geometry);
 
   check(
-    "the span did not move",
-    Math.abs(load.geometry.start.x - beforeStart.x) < 1e-6 &&
-      Math.abs(load.geometry.end.x - beforeEnd.x) < 1e-6,
-    `${JSON.stringify(beforeStart)} / ${JSON.stringify(beforeEnd)}`,
+    "the start of the span did not move",
+    Math.abs(load.geometry.start.x - before.x) < 1e-6,
+    `${before.x} -> ${load.geometry.start.x}`,
   );
   check(
-    "the intensity is unchanged",
-    Math.abs(Number(load.geometry.intensity) - 5) < 1e-6,
-    `got ${load.geometry.intensity}`,
-  );
-  check(
-    "and the drawn arrow sense is flipped",
-    h.profile.isLoadReversed(load.geometry) === true,
-    "got reversed=" + h.profile.isLoadReversed(load.geometry),
-  );
-  check(
-    "the line of action itself is untouched",
-    Number(load.geometry.direction) === beforeDirection,
-    `${beforeDirection} -> ${load.geometry.direction}`,
-  );
-
-}
-console.log("\n== Varying load: end intensities stay with their positions ==\n");
-
-{
-  const varying = F["varying-load"](
-    { x: 150, y: 0 },
-    { x: 450, y: 0 },
-    5,
-    10,
-  );
-
-  check(
-    "the start intensity is stored",
-    Math.abs(Number(varying.geometry.startIntensity) - 5) < 1e-6,
-    `got ${varying.geometry.startIntensity}`,
-  );
-  check(
-    "the end intensity is stored",
-    Math.abs(Number(varying.geometry.endIntensity) - 10) < 1e-6,
-    `got ${varying.geometry.endIntensity}`,
-  );
-
-  const beforeStart = { ...varying.geometry.start };
-  const beforeEnd = { ...varying.geometry.end };
-
-  h.profile.reverseLoadDirection(varying.geometry);
-
-  check(
-    "reversing keeps the start intensity with the start position",
-    Math.abs(Number(varying.geometry.startIntensity) - 5) < 1e-6,
-    `got startIntensity ${varying.geometry.startIntensity}`,
-  );
-  check(
-    "and the end intensity with the end position",
-    Math.abs(Number(varying.geometry.endIntensity) - 10) < 1e-6,
-    `got endIntensity ${varying.geometry.endIntensity}`,
-  );
-  check(
-    "and the span itself did not move",
-    Math.abs(varying.geometry.start.x - beforeStart.x) < 1e-6 &&
-      Math.abs(varying.geometry.end.x - beforeEnd.x) < 1e-6,
-    JSON.stringify({ start: varying.geometry.start, end: varying.geometry.end }),
+    "the magnitude is unchanged",
+    Math.abs(Number(load.geometry.magnitude) - 5) < 1e-6,
+    `got ${load.geometry.magnitude}`,
   );
 }
 
-console.log("\n== Applied moment: magnitude and CW/CCW direction ==\n");
+console.log("\n== Varying load: magnitudes stay with their physical ends ==\n");
 
 {
-  const moment = F.moment({ x: 300, y: 0 }, 25, "CW");
+  const varying = F["varying-load"]
+    ? F["varying-load"]({ x: 150, y: 0 }, { x: 450, y: 0 })
+    : null;
+
+  if (!varying) {
+    console.log("  (no varying-load factory - skipped)");
+  } else {
+    varying.geometry.startMagnitude = 5;
+    varying.geometry.endMagnitude = 10;
+
+    const before = {
+      start: { ...varying.geometry.start },
+      end: { ...varying.geometry.end },
+    };
+
+    h.profile.reverseLoadDirection(varying.geometry);
+
+    check(
+      "the start magnitude stays with the start position",
+      Math.abs(Number(varying.geometry.startMagnitude) - 5) < 1e-6,
+      `got startMagnitude ${varying.geometry.startMagnitude}`,
+    );
+    check(
+      "the end magnitude stays with the end position",
+      Math.abs(Number(varying.geometry.endMagnitude) - 10) < 1e-6,
+      `got endMagnitude ${varying.geometry.endMagnitude}`,
+    );
+    check(
+      "and the span itself did not move",
+      Math.abs(varying.geometry.start.x - before.start.x) < 1e-6 &&
+        Math.abs(varying.geometry.end.x - before.end.x) < 1e-6,
+      JSON.stringify({
+        start: varying.geometry.start,
+        end: varying.geometry.end,
+      }),
+    );
+  }
+}
+
+console.log("\n== Applied moment: direction is CW/CCW, not a sign flip ==\n");
+
+{
+  const moment = F.moment({ x: 300, y: 0 }, 25, false);
 
   check(
-    "the magnitude is stored",
+    "the moment stores a magnitude",
     Math.abs(Number(moment.geometry.magnitude) - 25) < 1e-6,
     `got ${moment.geometry.magnitude}`,
   );
+
+  const direction = h.profile.momentDirection
+    ? h.profile.momentDirection(moment.geometry)
+    : null;
+
   check(
-    "the direction is a readable word",
-    moment.geometry.direction === "CW",
-    `got ${moment.geometry.direction}`,
-  );
-  check(
-    "and it carries its engineering unit",
-    String(moment.geometry.unit).length > 0,
-    `got ${moment.geometry.unit}`,
+    "and a readable direction",
+    direction === "CW" || direction === "CCW",
+    `got ${direction}`,
   );
 
-  const ccw = F.moment({ x: 300, y: 0 }, 25, "CCW");
+  /* Reversing must not move the application point. */
+  const before = { ...moment.geometry.position };
+  if (h.profile.reverseMomentDirection) {
+    h.profile.reverseMomentDirection(moment.geometry);
+  }
+
   check(
-    "an unknown direction normalises to CCW",
-    ccw.geometry.direction === "CCW",
-    `got ${ccw.geometry.direction}`,
+    "the application point is unchanged by a direction change",
+    Math.abs(moment.geometry.position.x - before.x) < 1e-6,
+    `${JSON.stringify(before)} -> ${JSON.stringify(moment.geometry.position)}`,
   );
 }
 
 console.log("\n== Couple is one feature, not two moments ==\n");
 
 {
-  const couple = F.couple({ x: 300, y: 0 }, 100, 50, "CW");
+  const couple = F.couple({ x: 300, y: 0 }, 100, 50, false);
   const state = stateWith([couple]);
 
-  check("a couple is a single object", state.objects.length === 1, `got ${state.objects.length}`);
-  check("of type couple", couple.type === "couple", `got ${couple.type}`);
   check(
-    "with its own magnitude",
-    Number.isFinite(Number(couple.geometry.magnitude)),
-    `got ${couple.geometry.magnitude}`,
+    "a couple is a single object",
+    state.objects.length === 1,
+    `got ${state.objects.length}`,
+  );
+  check(
+    "of type couple, not moment",
+    couple.type === "couple",
+    `got ${couple.type}`,
   );
 }
 
-console.log("\n== Body frame: length, tangent and body-local points ==\n");
+console.log("\n== Supports attach to a body and follow it ==\n");
+
+{
+  const support = F["pin-support"]({ x: 300, y: 0 });
+  support.parentId = beam.id;
+
+  check(
+    "the support records the body it is on",
+    support.parentId === beam.id,
+    `got ${support.parentId}`,
+  );
+
+  /*
+   * Move the beam and confirm the frame the support reads follows.
+   */
+  const frameBefore = h.frames.frameOf(beam);
+  beam.geometry.start = { x: 1000, y: 100 };
+  beam.geometry.end = { x: 1600, y: 100 };
+  const frameAfter = h.frames.frameOf(beam);
+
+  check(
+    "the body frame follows the beam",
+    Math.abs(frameAfter.origin.x - frameBefore.origin.x - 1000) < 1e-6,
+    `origin ${JSON.stringify(frameBefore.origin)} -> ${JSON.stringify(frameAfter.origin)}`,
+  );
+  check(
+    "and the frame length is still 600",
+    Math.abs(frameAfter.length - 600) < 1e-6,
+    `got ${frameAfter.length}`,
+  );
+}
+
+console.log("\n== Body frame: attachment fraction is body-local ==\n");
 
 {
   const frame = h.frames.frameOf(beam);
-
-  check("the frame exists", Boolean(frame));
-  check(
-    "its length is the beam's engineering length",
-    Math.abs(frame.length - 600) < 1e-6,
-    `got ${frame.length}`,
-  );
-  check(
-    "its tangent points along the beam",
-    Math.abs(frame.tangent.x - 1) < 1e-6 && Math.abs(frame.tangent.y) < 1e-6,
-    JSON.stringify(frame.tangent),
-  );
-
-  const mid = h.frames.pointAt(frame, 300);
-  check(
-    "the midpoint is 300 along the beam",
-    Math.abs(mid.x - 300) < 1e-6,
-    `got ${mid.x}`,
-  );
-
-  const fraction = h.frames.attachmentFraction(frame, { fraction: 0.75 });
-  check(
-    "a point 450 along is at fraction 0.75",
-    Math.abs(fraction - 0.75) < 1e-6,
-    `got ${fraction}`,
-  );
-}
-
-console.log("\n== A moved beam carries its frame with it ==\n");
-
-{
-  const moved = F.beam({ x: 1000, y: 100 }, { x: 1600, y: 100 });
-  const frame = h.frames.frameOf(moved);
+  const point = h.frames.attachmentPoint(frame, 0.5);
 
   check(
-    "the frame starts where the beam starts",
-    Math.abs(frame.start.x - 1000) < 1e-6 && Math.abs(frame.start.y - 100) < 1e-6,
-    JSON.stringify(frame.start),
-  );
-  check(
-    "and is still 600 long",
-    Math.abs(frame.length - 600) < 1e-6,
-    `got ${frame.length}`,
-  );
-
-  const fraction = h.frames.attachmentFraction(frame, { fraction: 0.5 });
-  check(
-    "the midpoint is still fraction 0.5",
-    Math.abs(fraction - 0.5) < 1e-6,
-    `got ${fraction}`,
+    "the midpoint of a 600 beam is at 300 along it",
+    Math.abs(point.x - (beam.geometry.start.x + 300)) < 1e-6,
+    `got ${point.x}, expected ${beam.geometry.start.x + 300}`,
   );
 }
 

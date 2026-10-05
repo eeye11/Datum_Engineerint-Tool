@@ -1,7 +1,3 @@
-
-const path = require("path");
-
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * POINT-ON-ENTITY ANCHORS
@@ -20,7 +16,6 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
  * that it moves with the geometry - which is the whole reason it is a
  * fraction rather than a stored coordinate.
  */
-
 global.window = {
   enggDrawingState: {
     polygonVertices(geometry) {
@@ -56,8 +51,8 @@ global.window = {
   },
 };
 
-require(modulePath("dimensions.js"));
-require(modulePath("measurement-core.js"));
+require("../js/engineering-drawing/dimensions.js");
+require("../js/engineering-drawing/measurement-core.js");
 
 const m = global.window.enggMeasurement;
 
@@ -65,8 +60,7 @@ let pass = 0;
 let fail = 0;
 
 const check = (name, actual, expected) => {
-  const ok =
-    JSON.stringify(actual) === JSON.stringify(expected);
+  const ok = JSON.stringify(actual) === JSON.stringify(expected);
 
   if (ok) {
     pass += 1;
@@ -107,17 +101,15 @@ check(
   { x: 50, y: 0 },
 );
 
-check(
-  "the ends are reachable",
-  m.resolveAnchor(beam, "pointOnEntity@0"),
-  { x: 0, y: 0 },
-);
+check("the ends are reachable", m.resolveAnchor(beam, "pointOnEntity@0"), {
+  x: 0,
+  y: 0,
+});
 
-check(
-  "and so is the far end",
-  m.resolveAnchor(beam, "pointOnEntity@1"),
-  { x: 200, y: 0 },
-);
+check("and so is the far end", m.resolveAnchor(beam, "pointOnEntity@1"), {
+  x: 200,
+  y: 0,
+});
 
 console.log("\n  The reference follows the geometry\n");
 
@@ -142,7 +134,11 @@ console.log("\n  It is refused where there is no span\n");
 check(
   "a feature with no span has no point-on-entity",
   m.resolveAnchor(
-    { id: "c", type: "circle", geometry: { center: { x: 0, y: 0 }, radius: 5 } },
+    {
+      id: "c",
+      type: "circle",
+      geometry: { center: { x: 0, y: 0 }, radius: 5 },
+    },
     "pointOnEntity@0.5",
   ),
   null,
