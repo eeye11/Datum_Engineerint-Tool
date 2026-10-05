@@ -19,14 +19,12 @@
  * functions call which - not of any single value - and the failure mode is
  * silent: the file still saves, it just saves the wrong thing.
  */
-
 const fs = require("fs");
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
-const dir = path.join(__dirname, "..");
-const code = fs.readFileSync(locate("drawing.js"), "utf8");
-const saveCode = fs.readFileSync(locate("file-save.js"), "utf8");
+const dir = path.join(__dirname, "..", "js", "engineering-drawing");
+const code = fs.readFileSync(path.join(dir, "drawing.js"), "utf8");
+const saveCode = fs.readFileSync(path.join(dir, "file-save.js"), "utf8");
 
 let pass = 0;
 let fail = 0;
@@ -60,7 +58,10 @@ const saveDrawingAs = section(
   "function suggestedFileName(",
 );
 
-check("the save functions were found", saveDrawing.length > 0 && saveDrawingAs.length > 0);
+check(
+  "the save functions were found",
+  saveDrawing.length > 0 && saveDrawingAs.length > 0,
+);
 
 check(
   "Save does not commit a drawing change",
@@ -76,7 +77,9 @@ check(
 
 check(
   "neither save function pushes history directly",
-  !/history\.past|history\.push|snapshotDrawing/.test(saveDrawing + saveDrawingAs),
+  !/history\.past|history\.push|snapshotDrawing/.test(
+    saveDrawing + saveDrawingAs,
+  ),
   "history is being written by a save",
 );
 
