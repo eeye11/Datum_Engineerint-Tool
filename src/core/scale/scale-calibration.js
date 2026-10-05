@@ -36,81 +36,78 @@
  *
  * The dialog is cancellable, Escape-aware, and leaves nothing behind.
  */
-(function (root) {
-    "use strict";
+/*
+ * The units the document's unit system already understands.
+ *
+ * Read from the scale module rather than restated, so adding a unit
+ * there adds it here. The list is the set of units a real-world
+ * LENGTH may be given in - a load or a force would not be a
+ * calibration of the drawing's scale.
+ */
+const CALIBRATION_UNITS = [
+    { value: "mm", label: "Millimetres (mm)" },
+    { value: "cm", label: "Centimetres (cm)" },
+    { value: "m", label: "Metres (m)" },
+    { value: "in", label: "Inches (in)" },
+    { value: "ft", label: "Feet (ft)" }
+];
 
-    /*
-     * The units the document's unit system already understands.
-     *
-     * Read from the scale module rather than restated, so adding a unit
-     * there adds it here. The list is the set of units a real-world
-     * LENGTH may be given in - a load or a force would not be a
-     * calibration of the drawing's scale.
-     */
-    const CALIBRATION_UNITS = [
-        { value: "mm", label: "Millimetres (mm)" },
-        { value: "cm", label: "Centimetres (cm)" },
-        { value: "m", label: "Metres (m)" },
-        { value: "in", label: "Inches (in)" },
-        { value: "ft", label: "Feet (ft)" }
-    ];
+let openDialog = null;
+let closeCurrent = null;
 
-    let openDialog = null;
-    let closeCurrent = null;
+/*
+ * The drawing length, shown to the student.
+ *
+ * Deliberately NOT an input. It is a fact about the drawing, not a
+ * quantity the student is being asked to supply, and letting it be
+ * edited would mean a mistyped digit silently rescales everything
+ * that follows. It is stated so the real distance means something:
+ * "125 mm" is only meaningful as "that 42.37".
+ */
+function drawingLengthText(
+    measuredUnits
+) {
+    return (
+        Number(measuredUnits).toFixed(2) +
+        " drawing units"
+    );
+}
 
-    /*
-     * The drawing length, shown to the student.
-     *
-     * Deliberately NOT an input. It is a fact about the drawing, not a
-     * quantity the student is being asked to supply, and letting it be
-     * edited would mean a mistyped digit silently rescales everything
-     * that follows. It is stated so the real distance means something:
-     * "125 mm" is only meaningful as "that 42.37".
-     */
-    function drawingLengthText(
-        measuredUnits
-    ) {
-        return (
-            Number(measuredUnits).toFixed(2) +
-            " drawing units"
-        );
-    }
+function build(options) {
+    const measuredUnits = Number(
+        options.measuredUnits
+    );
 
-    function build(options) {
-        const measuredUnits = Number(
-            options.measuredUnits
-        );
+    const dialog = document.createElement("div");
 
-        const dialog = document.createElement("div");
+    dialog.className =
+        "drawing-scale-dialog";
 
-        dialog.className =
-            "drawing-scale-dialog";
+    dialog.setAttribute(
+        "role",
+        "dialog"
+    );
 
-        dialog.setAttribute(
-            "role",
-            "dialog"
-        );
+    dialog.setAttribute(
+        "aria-modal",
+        "true"
+    );
 
-        dialog.setAttribute(
-            "aria-modal",
-            "true"
-        );
+    dialog.setAttribute(
+        "aria-label",
+        "Set Drawing Scale"
+    );
 
-        dialog.setAttribute(
-            "aria-label",
-            "Set Drawing Scale"
-        );
-
-        const unitOptions = CALIBRATION_UNITS.map(
-            (unit) =>
-                `<option value="${unit.value}"${
+    const unitOptions = CALIBRATION_UNITS.map(
+        (unit) =>
+            `<option value="${unit.value}"${
                     unit.value === (options.unit || "mm")
                         ? " selected"
                         : ""
                 }>${unit.label}</option>`
-        ).join("");
+    ).join("");
 
-        dialog.innerHTML = `
+    dialog.innerHTML = `
             <div class="drawing-scale-dialog-title">
                 Set Drawing Scale
             </div>
@@ -160,232 +157,229 @@
             </div>
         `;
 
-        document.body.appendChild(
-            dialog
-        );
+    document.body.appendChild(
+        dialog
+    );
 
-        return dialog;
+    return dialog;
+}
+
+/*
+ * Open the calibration dialog.
+ *
+ * `onConfirm(realValue, unit)` is called only with a value that
+ * could actually establish a scale. `onCancel` is called for every
+ * other way out - the button, Escape, or losing the dialog - so the
+ * caller has one place to put its "nothing was created" handling.
+ */
+function open(options = {}) {
+    close();
+
+    const measuredUnits = Number(
+        options.measuredUnits
+    );
+
+    if (!Number.isFinite(measuredUnits) || measuredUnits <= 0) {
+        /*
+         * With nothing measured there is nothing to calibrate
+         * against. Cancelling is the honest outcome - inventing a
+         * scale from an unmeasurable feature would be worse than
+         * asking again.
+         */
+        options.onCancel?.();
+        return null;
     }
 
-    /*
-     * Open the calibration dialog.
-     *
-     * `onConfirm(realValue, unit)` is called only with a value that
-     * could actually establish a scale. `onCancel` is called for every
-     * other way out - the button, Escape, or losing the dialog - so the
-     * caller has one place to put its "nothing was created" handling.
-     */
-    function open(options = {}) {
+    const dialog = build({
+        measuredUnits,
+        unit: options.unit,
+        realValue: options.realValue
+    });
+
+    openDialog = dialog;
+
+    const input = dialog.querySelector(
+        "#scaleRealDistance"
+    );
+
+    const select = dialog.querySelector(
+        "#scaleUnit"
+    );
+
+    const closeIt = () => {
         close();
+        options.onCancel?.();
+    };
 
-        const measuredUnits = Number(
-            options.measuredUnits
-        );
+    closeCurrent = closeIt;
 
-        if (!Number.isFinite(measuredUnits) || measuredUnits <= 0) {
-            /*
-             * With nothing measured there is nothing to calibrate
-             * against. Cancelling is the honest outcome - inventing a
-             * scale from an unmeasurable feature would be worse than
-             * asking again.
-             */
-            options.onCancel?.();
-            return null;
-        }
+    const confirm = () => {
+        const realValue =
+            Number(input.value);
 
-        const dialog = build({
-            measuredUnits,
-            unit: options.unit,
-            realValue: options.realValue
-        });
-
-        openDialog = dialog;
-
-        const input = dialog.querySelector(
-            "#scaleRealDistance"
-        );
-
-        const select = dialog.querySelector(
-            "#scaleUnit"
-        );
-
-        const closeIt = () => {
-            close();
-            options.onCancel?.();
-        };
-
-        closeCurrent = closeIt;
-
-        const confirm = () => {
-            const realValue =
-                Number(input.value);
-
-            const unit = select.value;
-
-            /*
-             * A non-positive or unparsable distance cannot make a
-             * scale, and accepting one would produce a document whose
-             * every dimension is wrong. The field is corrected and the
-             * dialog stays open, so the student sees why.
-             */
-            if (
-                !Number.isFinite(realValue) ||
-                realValue <= 0
-            ) {
-                input.value = "";
-                input.focus();
-                input.select();
-
-                dialog.querySelector(
-                    "[data-scale-error]"
-                )?.remove();
-
-                const note = document.createElement(
-                    "p"
-                );
-
-                note.className =
-                    "drawing-scale-dialog-error";
-
-                note.setAttribute(
-                    "data-scale-error",
-                    ""
-                );
-
-                note.textContent =
-                    "Enter the real distance as a number greater than zero.";
-
-                dialog.querySelector(
-                    ".drawing-scale-dialog-actions"
-                ).before(note);
-
-                return;
-            }
-
-            close();
-
-            options.onConfirm?.(
-                realValue,
-                unit
-            );
-        };
-
-        dialog
-            .querySelector(
-                "[data-scale-confirm]"
-            )
-            .addEventListener(
-                "click",
-                confirm
-            );
-
-        dialog
-            .querySelector(
-                "[data-scale-cancel]"
-            )
-            .addEventListener(
-                "click",
-                closeIt
-            );
-
-        input.addEventListener(
-            "keydown",
-            (event) => {
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    confirm();
-                }
-            }
-        );
-
-        select.addEventListener(
-            "keydown",
-            (event) => {
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    confirm();
-                }
-            }
-        );
+        const unit = select.value;
 
         /*
-         * Escape closes without setting a scale, which is the same as
-         * cancelling and must leave the document exactly as it was.
+         * A non-positive or unparsable distance cannot make a
+         * scale, and accepting one would produce a document whose
+         * every dimension is wrong. The field is corrected and the
+         * dialog stays open, so the student sees why.
          */
-        input.addEventListener(
-            "keydown",
-            (event) => {
-                if (event.key === "Escape") {
-                    event.preventDefault();
-                    closeIt();
-                }
-            }
-        );
+        if (
+            !Number.isFinite(realValue) ||
+            realValue <= 0
+        ) {
+            input.value = "";
+            input.focus();
+            input.select();
 
-        select.addEventListener(
-            "keydown",
-            (event) => {
-                if (event.key === "Escape") {
-                    event.preventDefault();
-                    closeIt();
-                }
-            }
-        );
+            dialog.querySelector(
+                "[data-scale-error]"
+            )?.remove();
 
-        input.focus();
-        input.select();
+            const note = document.createElement(
+                "p"
+            );
 
-        return dialog;
-    }
+            note.className =
+                "drawing-scale-dialog-error";
 
-    /*
-     * Close the dialog without invoking any callback.
-     *
-     * Used by `open` itself to clear a previous dialog, and by the
-     * Escape handler in the editor when the caller wants silence rather
-     * than a cancel notification.
-     */
-    function close() {
-        if (openDialog) {
-            openDialog.remove();
-            openDialog = null;
+            note.setAttribute(
+                "data-scale-error",
+                ""
+            );
+
+            note.textContent =
+                "Enter the real distance as a number greater than zero.";
+
+            dialog.querySelector(
+                ".drawing-scale-dialog-actions"
+            ).before(note);
+
+            return;
         }
 
-        closeCurrent = null;
-    }
+        close();
 
-    function isOpen() {
-        return openDialog !== null;
-    }
-
-    /*
-     * Escape routed from the document level.
-     *
-     * The dialog handles Escape from its own inputs, but a click can
-     * land elsewhere in the document, and a modal that can be stranded
-     * open behind an unfocused field is a trap.
-     */
-    function handleEscape() {
-        if (!openDialog) {
-            return false;
-        }
-
-        const closeIt = closeCurrent;
-
-        closeIt?.();
-
-        return true;
-    }
-
-    root.enggScaleCalibration = {
-        CALIBRATION_UNITS,
-        close,
-        handleEscape,
-        isOpen,
-        open
+        options.onConfirm?.(
+            realValue,
+            unit
+        );
     };
-})(
-    typeof window !== "undefined"
-        ? window
-        : globalThis
-);
+
+    dialog
+        .querySelector(
+            "[data-scale-confirm]"
+        )
+        .addEventListener(
+            "click",
+            confirm
+        );
+
+    dialog
+        .querySelector(
+            "[data-scale-cancel]"
+        )
+        .addEventListener(
+            "click",
+            closeIt
+        );
+
+    input.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                confirm();
+            }
+        }
+    );
+
+    select.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                confirm();
+            }
+        }
+    );
+
+    /*
+     * Escape closes without setting a scale, which is the same as
+     * cancelling and must leave the document exactly as it was.
+     */
+    input.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeIt();
+            }
+        }
+    );
+
+    select.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeIt();
+            }
+        }
+    );
+
+    input.focus();
+    input.select();
+
+    return dialog;
+}
+
+/*
+ * Close the dialog without invoking any callback.
+ *
+ * Used by `open` itself to clear a previous dialog, and by the
+ * Escape handler in the editor when the caller wants silence rather
+ * than a cancel notification.
+ */
+function close() {
+    if (openDialog) {
+        openDialog.remove();
+        openDialog = null;
+    }
+
+    closeCurrent = null;
+}
+
+function isOpen() {
+    return openDialog !== null;
+}
+
+/*
+ * Escape routed from the document level.
+ *
+ * The dialog handles Escape from its own inputs, but a click can
+ * land elsewhere in the document, and a modal that can be stranded
+ * open behind an unfocused field is a trap.
+ */
+function handleEscape() {
+    if (!openDialog) {
+        return false;
+    }
+
+    const closeIt = closeCurrent;
+
+    closeIt?.();
+
+    return true;
+}
+
+const enggScaleCalibration = {
+    CALIBRATION_UNITS,
+    close,
+    handleEscape,
+    isOpen,
+    open
+};
+
+export default enggScaleCalibration;

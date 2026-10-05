@@ -1,5 +1,15 @@
 /* SVG renderer for the engineering drawing workspace. */
-(function () {
+import enggBodyFrames from "../core/geometry/body-frames.js";
+import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
+import { coordinateSystemArms, rigidBodyHandles, trussJoints } from "../core/geometry/feature-handles.js";
+import enggMeasurement from "../core/geometry/measurement-core.js";
+import enggDrawingState from "../core/model/drawing-state.js";
+import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggDimensionModel from "../features/dimensions/dimension-model.js";
+
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
     function createSvgElement(type, attributes = {}) {
@@ -301,7 +311,7 @@
         interaction
     ) {
         const equations =
-            window.enggDiagramEquations;
+            enggDiagramEquations;
 
         /*
          * WHATEVER THE PLOT IS STORED AS.
@@ -678,7 +688,7 @@
      * their own.
      */
     function appendDimensionEntity(svg, entity, state, toScreen, style) {
-        const model = window.enggDimensionModel;
+        const model = enggDimensionModel;
 
         if (!model) {
             return;
@@ -931,7 +941,7 @@
       * entire set of features that has a magnitude.
       */
 function appendDerivedMagnitude(svg, entity, state, toScreen, style) {
-    const model = window.enggAnnotationModel;
+    const model = enggAnnotationModel;
 
     if (!model || entity.isPreview) {
         return;
@@ -974,7 +984,7 @@ function appendDerivedMagnitude(svg, entity, state, toScreen, style) {
 }
 
 function appendAnnotationEntity(svg, entity, state, toScreen, style) {
-        const model = window.enggAnnotationModel;
+        const model = enggAnnotationModel;
 
         if (!model) {
             return;
@@ -1093,7 +1103,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
      */
     function analysisPlotMarks(geometry, expressions) {
         const equations =
-            window.enggDiagramEquations;
+            enggDiagramEquations;
 
         /*
          * WITHOUT A RANGE THERE IS NO WAY TO PLACE A STATION, so nothing
@@ -2240,7 +2250,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          */
         if (entity.type === "annotation") {
             const annotations =
-                window.enggAnnotationModel;
+                enggAnnotationModel;
 
             if (
                 annotations &&
@@ -2895,7 +2905,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                              * for the ticks as for the curve.
                              */
                             const equations =
-                                window.enggDiagramEquations;
+                                enggDiagramEquations;
 
                             let peak = 0;
 
@@ -5246,7 +5256,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         arcRadius
     ) {
         const rotational =
-            window.enggDrawingRotationalArrow;
+            enggDrawingRotationalArrow;
 
         if (!rotational) {
             return;
@@ -6761,7 +6771,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             );
 
             const heldPoint =
-                window.enggMeasurement?.resolveAnchor?.(
+                enggMeasurement?.resolveAnchor?.(
                     heldObject,
                     heldFirst.anchor
                 );
@@ -6926,7 +6936,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
                 const shown =
                     sourceObject &&
-                    window.enggAnnotationModel.textFor(
+                    enggAnnotationModel.textFor(
                         probe,
                         state
                     );
@@ -7902,7 +7912,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          * simply undefined and reading through it throws the moment the
          * first label is asked for.
          */
-        const equations = window.enggDiagramEquations;
+        const equations = enggDiagramEquations;
 
         if (!equations) {
             return [];
@@ -8000,7 +8010,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          * the readout and the drawing move together as expressions are
          * edited. It is the same value the marks were built with.
          */
-        const equations = window.enggDiagramEquations;
+        const equations = enggDiagramEquations;
 
         let peak = 0;
 
@@ -8047,7 +8057,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         };
     }
 
-    window.enggDrawingRenderer = {
+    const enggDrawingRenderer = {
         renderDrawing,
 
         /*
@@ -8068,4 +8078,5 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         analysisValueAt,
         equationLabels
     };
-})();
+
+export default enggDrawingRenderer;

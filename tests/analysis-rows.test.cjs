@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ANALYSIS ROWS OF THE MAPPING TABLE.
  *
@@ -50,13 +50,13 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = { crypto: { randomUUID: () => "analysis-uuid" } };
 
-require(modulePath("dimensions.js"));
-require(modulePath("measurement-core.js"));
-require(modulePath("feature-geometry.js"));
-require(modulePath("smart-dimension.js"));
-require(modulePath("dimension-model.js"));
-require(modulePath("annotation-model.js"));
-require(modulePath("drawing-state.js"));
+loadModule("dimensions.js");
+loadModule("measurement-core.js");
+loadModule("feature-geometry.js");
+loadModule("smart-dimension.js");
+loadModule("dimension-model.js");
+loadModule("annotation-model.js");
+loadModule("drawing-state.js");
 
 const factories = global.window.enggDrawingState.geometryFactories;
 const annotationModel = global.window.enggAnnotationModel;

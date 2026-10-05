@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * A FORCE'S ARROWHEAD, AGAINST ITS STORED SPAN.
  *
@@ -29,7 +29,7 @@ global.window = {
   }
 };
 
-require(modulePath("load-profile.js"));
+loadModule("load-profile.js");
 
 const profile = global.window.enggLoadProfile;
 

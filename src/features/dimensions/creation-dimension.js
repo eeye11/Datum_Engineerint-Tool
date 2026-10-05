@@ -70,195 +70,194 @@
  * share the unit list and the quantity formatter and nothing
  * else, which is the right amount of sharing.
  */
-(function (root) {
-  "use strict";
+import enggQuantities from "../../core/units/quantities.js";
 
-  /*
-   * The units a length may be GIVEN in, read from the one length
-   * definition the document already has rather than restated here.
-   * Adding a unit to quantities.js adds it to this popup, and to
-   * every other reader of the same list.
-   *
-   * These are the choices offered, not the unit in force: the
-   * document decides what the field starts on, and the student may
-   * pick any of them before committing.
-   */
-  function lengthUnits() {
-    const quantities = root.enggQuantities;
+/*
+ * The units a length may be GIVEN in, read from the one length
+ * definition the document already has rather than restated here.
+ * Adding a unit to quantities.js adds it to this popup, and to
+ * every other reader of the same list.
+ *
+ * These are the choices offered, not the unit in force: the
+ * document decides what the field starts on, and the student may
+ * pick any of them before committing.
+ */
+function lengthUnits() {
+  const quantities = enggQuantities;
 
-    const units = quantities?.LENGTH_UNITS || { mm: { label: "mm" } };
+  const units = quantities?.LENGTH_UNITS || { mm: { label: "mm" } };
 
-    return Object.keys(units).map((value) => ({
-      value,
-      label: units[value]?.label || value
-    }));
+  return Object.keys(units).map((value) => ({
+    value,
+    label: units[value]?.label || value
+  }));
+}
+
+/*
+ * The unit a field should open on.
+ *
+ * A field's own suggestion carries the unit it was suggested in,
+ * so that suggestion and unit always agree. Falling back to the
+ * document's unit - and then to millimetres - means the control
+ * is never empty or meaningless.
+ */
+function unitForField(field, fallback) {
+  if (field?.unit && enggQuantities?.LENGTH_UNITS?.[field.unit]) {
+    return field.unit;
   }
 
-  /*
-   * The unit a field should open on.
-   *
-   * A field's own suggestion carries the unit it was suggested in,
-   * so that suggestion and unit always agree. Falling back to the
-   * document's unit - and then to millimetres - means the control
-   * is never empty or meaningless.
-   */
-  function unitForField(field, fallback) {
-    if (field?.unit && root.enggQuantities?.LENGTH_UNITS?.[field.unit]) {
-      return field.unit;
-    }
-
-    if (fallback && root.enggQuantities?.LENGTH_UNITS?.[fallback]) {
-      return fallback;
-    }
-
-    return (
-      root.enggQuantities?.DEFAULT_LENGTH_UNIT || "mm"
-    );
+  if (fallback && enggQuantities?.LENGTH_UNITS?.[fallback]) {
+    return fallback;
   }
 
-  /*
-   * Re-express a suggested value in a newly chosen unit.
-   *
-   * When the student switches from mm to m, a field showing "500"
-   * must not keep showing 500 - that would silently multiply the
-   * member by a thousand the moment they pressed Enter. So the
-   * number is converted, and the SAME number keeps meaning the
-   * SAME physical length across the switch.
-   *
-   * A field with no suggestion has nothing to convert, so changing
-   * the unit simply leaves it empty.
-   */
-  function convertSuggestion(value, fromUnit, toUnit) {
-    const units = root.enggQuantities?.LENGTH_UNITS;
+  return (
+    enggQuantities?.DEFAULT_LENGTH_UNIT || "mm"
+  );
+}
 
-    const numeric = Number(value);
+/*
+ * Re-express a suggested value in a newly chosen unit.
+ *
+ * When the student switches from mm to m, a field showing "500"
+ * must not keep showing 500 - that would silently multiply the
+ * member by a thousand the moment they pressed Enter. So the
+ * number is converted, and the SAME number keeps meaning the
+ * SAME physical length across the switch.
+ *
+ * A field with no suggestion has nothing to convert, so changing
+ * the unit simply leaves it empty.
+ */
+function convertSuggestion(value, fromUnit, toUnit) {
+  const units = enggQuantities?.LENGTH_UNITS;
 
-    if (
-      !units ||
-      !Number.isFinite(numeric) ||
-      !units[fromUnit] ||
-      !units[toUnit] ||
-      fromUnit === toUnit
-    ) {
-      return value;
-    }
+  const numeric = Number(value);
 
-    const millimetres = numeric * units[fromUnit].mm;
-
-    return millimetres / units[toUnit].mm;
+  if (
+    !units ||
+    !Number.isFinite(numeric) ||
+    !units[fromUnit] ||
+    !units[toUnit] ||
+    fromUnit === toUnit
+  ) {
+    return value;
   }
 
-  /*
-   * How a quantity is written into the field.
-   *
-   * The number is the authoritative value in the unit beside it, and
-   * it is trimmed of trailing zeros through the SHARED formatter, so
-   * a converted suggestion reads the way every other readout in the
-   * application does. The formatter is given no unit: the unit is a
-   * separate control in the same box, and appending one here would
-   * print "0.5 m" into a field whose select already says "m".
-   */
-  function formatValue(value) {
-    const quantities = root.enggQuantities;
+  const millimetres = numeric * units[fromUnit].mm;
 
-    if (!Number.isFinite(Number(value))) {
-      return "";
-    }
+  return millimetres / units[toUnit].mm;
+}
 
-    return quantities?.number
-      ? quantities.number(value)
-      : String(value);
+/*
+ * How a quantity is written into the field.
+ *
+ * The number is the authoritative value in the unit beside it, and
+ * it is trimmed of trailing zeros through the SHARED formatter, so
+ * a converted suggestion reads the way every other readout in the
+ * application does. The formatter is given no unit: the unit is a
+ * separate control in the same box, and appending one here would
+ * print "0.5 m" into a field whose select already says "m".
+ */
+function formatValue(value) {
+  const quantities = enggQuantities;
+
+  if (!Number.isFinite(Number(value))) {
+    return "";
   }
 
-  let openPopup = null;
-  let closeCurrent = null;
+  return quantities?.number
+    ? quantities.number(value)
+    : String(value);
+}
+
+let openPopup = null;
+let closeCurrent = null;
+
+/*
+ * A confirmation that has just happened, and whether the keyboard
+ * event that caused it has finished travelling.
+ *
+ * WHY THIS IS NEEDED
+ * ------------------
+ * Confirming removes the popup from the document BEFORE running
+ * the caller's callback. That is deliberate - it means the canvas
+ * is clear while the geometry is committed, and that a callback
+ * which throws cannot leave an orphaned input behind.
+ *
+ * But it has a consequence the popup cannot fix on its own. The
+ * keydown that confirmed the value is still bubbling when that
+ * removal happens, and by the time it reaches the document handler
+ * the field it was typed in no longer exists. Anything that decides
+ * "is the user typing?" by asking about the focused element now
+ * gets the wrong answer, and a canvas shortcut that means
+ * something else entirely can fire on the very keystroke that set
+ * the feature's size.
+ *
+ * So the popup stops the key from travelling any further: the
+ * keydown handlers on the input call `stopPropagation`, which is
+ * what every dialog in the application already does with the keys
+ * it owns. A dialog that does not stop a key is a dialog that
+ * leaks its keystrokes to the canvas behind it.
+ *
+ * There is deliberately no "recently consumed" flag here. One was
+ * tried and removed: it has to be cleared at some point, and every
+ * way of choosing that point is a race - clear it early and the
+ * canvas shortcut fires on the confirming Enter, clear it late and
+ * it swallows the next, unrelated key and stops the next tool from
+ * being chosen. Stopping the event is exact: it lasts precisely as
+ * long as the event does, and not one millisecond longer.
+ */
+
+/*
+ * Build the popup for a list of fields.
+ *
+ * `fields` is the whole of what is asked, in order:
+ *
+ *   [{ label, value, unit, min, allowZero }, ...]
+ *
+ * A one-field shape passes one entry; a rectangle passes two.
+ * The popup shows them one at a time, so the student is never
+ * looking at a form - just the next number the shape needs.
+ */
+function build(options, fields) {
+  const popup = document.createElement("div");
+
+  popup.className = "drawing-creation-dimension";
+
+  popup.setAttribute("role", "dialog");
+  popup.setAttribute("aria-label", options.title || "Dimension");
+
+  const unitLabel = unitForField(
+    fields[0],
+    options.unit
+  );
 
   /*
-   * A confirmation that has just happened, and whether the keyboard
-   * event that caused it has finished travelling.
-   *
-   * WHY THIS IS NEEDED
-   * ------------------
-   * Confirming removes the popup from the document BEFORE running
-   * the caller's callback. That is deliberate - it means the canvas
-   * is clear while the geometry is committed, and that a callback
-   * which throws cannot leave an orphaned input behind.
-   *
-   * But it has a consequence the popup cannot fix on its own. The
-   * keydown that confirmed the value is still bubbling when that
-   * removal happens, and by the time it reaches the document handler
-   * the field it was typed in no longer exists. Anything that decides
-   * "is the user typing?" by asking about the focused element now
-   * gets the wrong answer, and a canvas shortcut that means
-   * something else entirely can fire on the very keystroke that set
-   * the feature's size.
-   *
-   * So the popup stops the key from travelling any further: the
-   * keydown handlers on the input call `stopPropagation`, which is
-   * what every dialog in the application already does with the keys
-   * it owns. A dialog that does not stop a key is a dialog that
-   * leaks its keystrokes to the canvas behind it.
-   *
-   * There is deliberately no "recently consumed" flag here. One was
-   * tried and removed: it has to be cleared at some point, and every
-   * way of choosing that point is a race - clear it early and the
-   * canvas shortcut fires on the confirming Enter, clear it late and
-   * it swallows the next, unrelated key and stops the next tool from
-   * being chosen. Stopping the event is exact: it lasts precisely as
-   * long as the event does, and not one millisecond longer.
+   * The heading names the thing being sized, so a popup over a
+   * rectangle says "Rectangle" and not "Length" - which is the
+   * difference between being asked about the object and being
+   * asked about a number.
    */
+  const title = options.title || "Size";
 
   /*
-   * Build the popup for a list of fields.
-   *
-   * `fields` is the whole of what is asked, in order:
-   *
-   *   [{ label, value, unit, min, allowZero }, ...]
-   *
-   * A one-field shape passes one entry; a rectangle passes two.
-   * The popup shows them one at a time, so the student is never
-   * looking at a form - just the next number the shape needs.
+   * The unit is a SELECT, not a label. Every length unit the
+   * document understands is offered, the field's own suggested
+   * unit is selected, and the control is built from the shared
+   * unit list rather than hard-coding mm/cm/m - so a unit added
+   * to quantities.js appears here without this file being touched.
    */
-  function build(options, fields) {
-    const popup = document.createElement("div");
-
-    popup.className = "drawing-creation-dimension";
-
-    popup.setAttribute("role", "dialog");
-    popup.setAttribute("aria-label", options.title || "Dimension");
-
-    const unitLabel = unitForField(
-      fields[0],
-      options.unit
-    );
-
-    /*
-     * The heading names the thing being sized, so a popup over a
-     * rectangle says "Rectangle" and not "Length" - which is the
-     * difference between being asked about the object and being
-     * asked about a number.
-     */
-    const title = options.title || "Size";
-
-    /*
-     * The unit is a SELECT, not a label. Every length unit the
-     * document understands is offered, the field's own suggested
-     * unit is selected, and the control is built from the shared
-     * unit list rather than hard-coding mm/cm/m - so a unit added
-     * to quantities.js appears here without this file being touched.
-     */
-    const unitOptions = lengthUnits()
-      .map(
-        unit => `
+  const unitOptions = lengthUnits()
+    .map(
+      unit => `
             <option
                 value="${unit.value}"
                 ${unit.value === unitLabel ? "selected" : ""}
             >${unit.label}</option>
         `
-      )
-      .join("");
+    )
+    .join("");
 
-    popup.innerHTML = `
+  popup.innerHTML = `
             <div class="drawing-creation-dimension-title">${title}</div>
             <div class="drawing-creation-dimension-body">
                 <span class="drawing-creation-dimension-label"
@@ -284,403 +283,404 @@
                 data-creation-error hidden></div>
         `;
 
-    document.body.appendChild(popup);
+  document.body.appendChild(popup);
 
-    return popup;
+  return popup;
+}
+
+/*
+ * Open the popup and collect the quantities.
+ *
+ * `onConfirm(values)` receives the structured quantities in the
+ * order they were asked for:
+ *
+ *     [{ value: 0.5, unit: "m" }, ...]
+ *
+ * The `unit` is the one the student had CHOSEN on that field, not
+ * a label the document imposed on them. The caller is responsible
+ * for converting it, which it does through the same scale every
+ * other length in the application goes through.
+ *
+ * `onCancel` is called for every way out that is not a
+ * confirmation - the Escape key, or losing the popup - so the
+ * caller has one place to put its "nothing was created"
+ * handling. A value is only ever reported after it has been
+ * validated, so a caller can trust that `onConfirm` means the
+ * geometry can be committed.
+ */
+function open(options = {}) {
+  close();
+
+  const fields = (options.fields || []).filter(Boolean);
+
+  if (!fields.length) {
+    options.onCancel?.();
+    return null;
   }
 
+  const popup = build(options, fields);
+
+  openPopup = popup;
+
+  const input = popup.querySelector("[data-creation-input]");
+  const label = popup.querySelector("[data-creation-label]");
+  const unitEl = popup.querySelector("[data-creation-unit]");
+  const stepEl = popup.querySelector("[data-creation-step]");
+  const errorEl = popup.querySelector("[data-creation-error]");
+
+  let index = 0;
+
   /*
-   * Open the popup and collect the quantities.
-   *
-   * `onConfirm(values)` receives the structured quantities in the
-   * order they were asked for:
-   *
-   *     [{ value: 0.5, unit: "m" }, ...]
-   *
-   * The `unit` is the one the student had CHOSEN on that field, not
-   * a label the document imposed on them. The caller is responsible
-   * for converting it, which it does through the same scale every
-   * other length in the application goes through.
-   *
-   * `onCancel` is called for every way out that is not a
-   * confirmation - the Escape key, or losing the popup - so the
-   * caller has one place to put its "nothing was created"
-   * handling. A value is only ever reported after it has been
-   * validated, so a caller can trust that `onConfirm` means the
-   * geometry can be committed.
+   * The values confirmed so far, as structured quantities. Kept
+   * separate from the field list so a re-render never loses what
+   * was already accepted.
    */
-  function open(options = {}) {
+  const collected = [];
+
+  /*
+   * The unit chosen on the field currently being answered.
+   *
+   * It is held HERE rather than read back off the select each time,
+   * because the select is the student's control and the two must
+   * never disagree: what is reported is exactly what is shown.
+   */
+  const chosen = { unit: unitForField(fields[0], options.unit) };
+
+  /*
+   * Set once the student types, cleared each time a field is
+   * rendered. A field showing its own suggestion is converted when
+   * the unit changes; a typed one is left as the student wrote it.
+   */
+  let touched = false;
+
+  const closeIt = () => {
     close();
+    options.onCancel?.();
+  };
 
-    const fields = (options.fields || []).filter(Boolean);
+  closeCurrent = closeIt;
 
-    if (!fields.length) {
-      options.onCancel?.();
+  const showError = (message) => {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  };
+
+  const clearError = () => {
+    errorEl.textContent = "";
+    errorEl.hidden = true;
+  };
+
+  const renderStep = () => {
+    const field = fields[index];
+
+    label.textContent = field.label || "Length";
+    input.setAttribute("aria-label", field.label || "Length");
+
+    /*
+     * Each field opens on the unit its own suggestion was made in,
+     * so a suggestion and the unit beside it can never disagree.
+     */
+    chosen.unit = unitForField(field, options.unit);
+    unitEl.value = chosen.unit;
+
+    input.value = formatValue(field.value);
+
+    /*
+     * Whether the student has typed into THIS field. A field that
+     * still holds the suggestion is ours to convert when the unit
+     * changes; one they have edited is theirs, and is left alone.
+     */
+    touched = false;
+
+    /*
+     * The step indicator is only shown when there is more than
+     * one field, and it says where the student is so a
+     * two-value shape is never mistaken for a one-value one.
+     */
+    stepEl.textContent =
+      fields.length > 1 ? `${index + 1} of ${fields.length}` : "";
+
+    input.focus();
+    input.select();
+
+    /*
+     * Show the feature straight away, at its suggested size, before
+     * the student has touched anything. The drawing has been on
+     * screen since the last click; the popup must not be the thing
+     * that makes it disappear.
+     */
+    notifyPreview();
+  };
+
+  input.addEventListener("input", () => {
+    touched = true;
+
+    /*
+     * THE DRAWING FOLLOWS THE NUMBER.
+     *
+     * The student is being asked how big something is, with that
+     * something in front of them. If the value they type does not
+     * change what is drawn, the question is being asked against
+     * nothing - and on a sheet that is not yet calibrated it is the
+     * ONLY evidence of what the number means, because no other
+     * length on the sheet shares its scale yet.
+     *
+     * So each keystroke reports the value and its unit, and the
+     * caller redraws the pending geometry at that size. Nothing is
+     * committed by doing so: this is a preview, and the sheet only
+     * changes when the student presses Enter.
+     */
+    notifyPreview();
+  });
+
+  const notifyPreview = () => {
+    const raw = input.value.trim();
+    const numeric = Number(raw);
+
+    if (raw === "" || !Number.isFinite(numeric)) {
+      return;
+    }
+
+    options.onPreview?.(
+      index,
+      numeric,
+      chosen.unit
+    );
+  };
+
+  /*
+   * The student picked a different unit for this value.
+   *
+   * The number in the field is CONVERTED rather than left alone.
+   * Leaving "500" untouched while the unit became "m" would
+   * silently turn a half-metre member into a five-hundred-metre
+   * one the instant Enter was pressed - the field would be
+   * claiming one thing and meaning another, which is the exact
+   * failure a unit control exists to prevent.
+   *
+   * Only a field still showing its suggestion is converted. Once
+   * the student has typed a number of their own it is theirs: it
+   * would mean a different length in the new unit, and rewriting
+   * it under the cursor would be worse than leaving them to
+   * re-enter it. They have changed the unit deliberately, so a
+   * number they typed is read in that new unit.
+   *
+   * The unit is part of the value, so changing it is as much an edit
+   * of the length as changing the number is - and the drawing has
+   * to follow it for exactly that reason. 0.75 in m and 750 in mm
+   * are one length, and switching between them must not move the
+   * member by a thousand.
+   */
+  unitEl.addEventListener("change", () => {
+    const next = unitEl.value;
+
+    if (!touched) {
+      input.value = formatValue(
+        convertSuggestion(input.value, chosen.unit, next)
+      );
+    }
+
+    chosen.unit = next;
+    clearError();
+
+    notifyPreview();
+  });
+
+  /*
+   * Validate one field's raw text.
+   *
+   * Returns the number, or null with the popup left open and an
+   * explanation shown. A malformed entry must never reach the
+   * caller: the document's scale is established from the first
+   * creation dimension, so accepting "abc" would either throw or
+   * - worse - store a scale derived from a value nobody meant.
+   */
+  const readField = (field) => {
+    const raw = input.value.trim();
+
+    const value = Number(raw);
+
+    if (raw === "" || !Number.isFinite(value)) {
+      showError(
+        `Enter ${(field.label || "a length").toLowerCase()} as a number.`,
+      );
       return null;
     }
 
-    const popup = build(options, fields);
+    const minimum = field.allowZero ? 0 : field.min ?? 1e-9;
 
-    openPopup = popup;
-
-    const input = popup.querySelector("[data-creation-input]");
-    const label = popup.querySelector("[data-creation-label]");
-    const unitEl = popup.querySelector("[data-creation-unit]");
-    const stepEl = popup.querySelector("[data-creation-step]");
-    const errorEl = popup.querySelector("[data-creation-error]");
-
-    let index = 0;
-
-    /*
-     * The values confirmed so far, as structured quantities. Kept
-     * separate from the field list so a re-render never loses what
-     * was already accepted.
-     */
-    const collected = [];
-
-    /*
-     * The unit chosen on the field currently being answered.
-     *
-     * It is held HERE rather than read back off the select each time,
-     * because the select is the student's control and the two must
-     * never disagree: what is reported is exactly what is shown.
-     */
-    const chosen = { unit: unitForField(fields[0], options.unit) };
-
-    /*
-     * Set once the student types, cleared each time a field is
-     * rendered. A field showing its own suggestion is converted when
-     * the unit changes; a typed one is left as the student wrote it.
-     */
-    let touched = false;
-
-    const closeIt = () => {
-      close();
-      options.onCancel?.();
-    };
-
-    closeCurrent = closeIt;
-
-    const showError = (message) => {
-      errorEl.textContent = message;
-      errorEl.hidden = false;
-    };
-
-    const clearError = () => {
-      errorEl.textContent = "";
-      errorEl.hidden = true;
-    };
-
-    const renderStep = () => {
-      const field = fields[index];
-
-      label.textContent = field.label || "Length";
-      input.setAttribute("aria-label", field.label || "Length");
-
-      /*
-       * Each field opens on the unit its own suggestion was made in,
-       * so a suggestion and the unit beside it can never disagree.
-       */
-      chosen.unit = unitForField(field, options.unit);
-      unitEl.value = chosen.unit;
-
-      input.value = formatValue(field.value);
-
-      /*
-       * Whether the student has typed into THIS field. A field that
-       * still holds the suggestion is ours to convert when the unit
-       * changes; one they have edited is theirs, and is left alone.
-       */
-      touched = false;
-
-      /*
-       * The step indicator is only shown when there is more than
-       * one field, and it says where the student is so a
-       * two-value shape is never mistaken for a one-value one.
-       */
-      stepEl.textContent =
-        fields.length > 1 ? `${index + 1} of ${fields.length}` : "";
-
-      input.focus();
-      input.select();
-
-      /*
-       * Show the feature straight away, at its suggested size, before
-       * the student has touched anything. The drawing has been on
-       * screen since the last click; the popup must not be the thing
-       * that makes it disappear.
-       */
-      notifyPreview();
-    };
-
-    input.addEventListener("input", () => {
-      touched = true;
-
-      /*
-       * THE DRAWING FOLLOWS THE NUMBER.
-       *
-       * The student is being asked how big something is, with that
-       * something in front of them. If the value they type does not
-       * change what is drawn, the question is being asked against
-       * nothing - and on a sheet that is not yet calibrated it is the
-       * ONLY evidence of what the number means, because no other
-       * length on the sheet shares its scale yet.
-       *
-       * So each keystroke reports the value and its unit, and the
-       * caller redraws the pending geometry at that size. Nothing is
-       * committed by doing so: this is a preview, and the sheet only
-       * changes when the student presses Enter.
-       */
-      notifyPreview();
-    });
-
-    const notifyPreview = () => {
-      const raw = input.value.trim();
-      const numeric = Number(raw);
-
-      if (raw === "" || !Number.isFinite(numeric)) {
-        return;
-      }
-
-      options.onPreview?.(
-        index,
-        numeric,
-        chosen.unit
+    if (value <= minimum || (value === 0 && !field.allowZero)) {
+      showError(
+        `${field.label || "Length"} must be greater than zero.`,
       );
-    };
-
-    /*
-     * The student picked a different unit for this value.
-     *
-     * The number in the field is CONVERTED rather than left alone.
-     * Leaving "500" untouched while the unit became "m" would
-     * silently turn a half-metre member into a five-hundred-metre
-     * one the instant Enter was pressed - the field would be
-     * claiming one thing and meaning another, which is the exact
-     * failure a unit control exists to prevent.
-     *
-     * Only a field still showing its suggestion is converted. Once
-     * the student has typed a number of their own it is theirs: it
-     * would mean a different length in the new unit, and rewriting
-     * it under the cursor would be worse than leaving them to
-     * re-enter it. They have changed the unit deliberately, so a
-     * number they typed is read in that new unit.
-     *
-     * The unit is part of the value, so changing it is as much an edit
-     * of the length as changing the number is - and the drawing has
-     * to follow it for exactly that reason. 0.75 in m and 750 in mm
-     * are one length, and switching between them must not move the
-     * member by a thousand.
-     */
-    unitEl.addEventListener("change", () => {
-      const next = unitEl.value;
-
-      if (!touched) {
-        input.value = formatValue(
-          convertSuggestion(input.value, chosen.unit, next)
-        );
-      }
-
-      chosen.unit = next;
-      clearError();
-
-      notifyPreview();
-    });
-
-    /*
-     * Validate one field's raw text.
-     *
-     * Returns the number, or null with the popup left open and an
-     * explanation shown. A malformed entry must never reach the
-     * caller: the document's scale is established from the first
-     * creation dimension, so accepting "abc" would either throw or
-     * - worse - store a scale derived from a value nobody meant.
-     */
-    const readField = (field) => {
-      const raw = input.value.trim();
-
-      const value = Number(raw);
-
-      if (raw === "" || !Number.isFinite(value)) {
-        showError(
-          `Enter ${(field.label || "a length").toLowerCase()} as a number.`,
-        );
-        return null;
-      }
-
-      const minimum = field.allowZero ? 0 : field.min ?? 1e-9;
-
-      if (value <= minimum || (value === 0 && !field.allowZero)) {
-        showError(
-          `${field.label || "Length"} must be greater than zero.`,
-        );
-        return null;
-      }
-
-      clearError();
-
-      return value;
-    };
-
-    const advance = () => {
-      const field = fields[index];
-
-      const value = readField(field);
-
-      if (value === null) {
-        return;
-      }
-
-      collected[index] = {
-        value,
-        unit: chosen.unit
-      };
-
-      index += 1;
-
-      if (index < fields.length) {
-        renderStep();
-        return;
-      }
-
-      /*
-       * Every field is answered. The popup is removed BEFORE the
-       * callback runs, so the caller's geometry work happens with
-       * no popup on the canvas and no chance of the popup being
-       * left behind if the callback throws.
-       */
-      const values = collected.slice(0, fields.length);
-
-      close();
-
-      options.onConfirm?.(values);
-    };
-
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-
-        advance();
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-
-        closeIt();
-      }
-    });
-
-    /*
-     * Losing the popup is a cancel - but only if focus left the popup
-     * ITSELF.
-     *
-     * The test used to be "did the text input lose focus", which was
-     * right when the number was the only control here. It is now two
-     * controls sharing one box, so the unit selector is part of the
-     * popup too, and a click on it blurs the number without the
-     * student having gone anywhere. Checking the input alone made
-     * picking a unit cancel the question - the popup destroyed
-     * itself on the first interaction with its own unit control.
-     *
-     * So the whole popup is checked, and focus is restored afterwards
-     * when it is still open: after choosing a unit the student should
-     * be back in the number, where Enter continues the workflow.
-     */
-    input.addEventListener("blur", () => {
-      if (!openPopup) {
-        return;
-      }
-
-      window.setTimeout(() => {
-        if (
-          openPopup !== popup ||
-          popup.contains(document.activeElement)
-        ) {
-          return;
-        }
-
-        closeIt();
-      }, 0);
-    });
-
-    /*
-     * Choosing a unit hands focus to the selector, which is correct -
-     * it is the control being used. When the popup is still open, the
-     * number is put back in charge so the keyboard flow (Enter to
-     * commit, Escape to cancel) is never interrupted by having merely
-     * picked a unit.
-     */
-    unitEl.addEventListener("blur", () => {
-      if (!openPopup || openPopup !== popup) {
-        return;
-      }
-
-      window.setTimeout(() => {
-        if (
-          openPopup === popup &&
-          !popup.contains(document.activeElement)
-        ) {
-          closeIt();
-        } else if (openPopup === popup) {
-          input.focus();
-        }
-      }, 0);
-    });
-
-    renderStep();
-
-    return popup;
-  }
-
-  /*
-   * Close without invoking any callback.
-   *
-   * Used by `open` to clear a previous popup, and by the editor
-   * when it wants the popup gone without a cancel notification -
-   * a tool change, a file load, a sheet switch.
-   */
-  function close() {
-    if (openPopup) {
-      openPopup.remove();
-      openPopup = null;
+      return null;
     }
 
-    closeCurrent = null;
-  }
+    clearError();
 
-  function isOpen() {
-    return openPopup !== null;
-  }
-
-  /*
-   * Escape routed from the document level.
-   *
-   * The popup handles Escape from its own field, but the canvas
-   * may hold focus, and an Escape pressed there has to cancel the
-   * creation too - not silently close the popup and leave the
-   * geometry committed. Returns true when it consumed the key, so
-   * the editor knows the tool's own Escape handling should not
-   * also run.
-   */
-  function handleEscape() {
-    if (!openPopup) {
-      return false;
-    }
-
-    const closeIt = closeCurrent;
-
-    closeIt?.();
-
-    return true;
-  }
-
-  root.enggCreationDimension = {
-    close,
-    handleEscape,
-    isOpen,
-    open,
+    return value;
   };
-})(typeof window !== "undefined" ? window : globalThis);
+
+  const advance = () => {
+    const field = fields[index];
+
+    const value = readField(field);
+
+    if (value === null) {
+      return;
+    }
+
+    collected[index] = {
+      value,
+      unit: chosen.unit
+    };
+
+    index += 1;
+
+    if (index < fields.length) {
+      renderStep();
+      return;
+    }
+
+    /*
+     * Every field is answered. The popup is removed BEFORE the
+     * callback runs, so the caller's geometry work happens with
+     * no popup on the canvas and no chance of the popup being
+     * left behind if the callback throws.
+     */
+    const values = collected.slice(0, fields.length);
+
+    close();
+
+    options.onConfirm?.(values);
+  };
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+
+      advance();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+
+      closeIt();
+    }
+  });
+
+  /*
+   * Losing the popup is a cancel - but only if focus left the popup
+   * ITSELF.
+   *
+   * The test used to be "did the text input lose focus", which was
+   * right when the number was the only control here. It is now two
+   * controls sharing one box, so the unit selector is part of the
+   * popup too, and a click on it blurs the number without the
+   * student having gone anywhere. Checking the input alone made
+   * picking a unit cancel the question - the popup destroyed
+   * itself on the first interaction with its own unit control.
+   *
+   * So the whole popup is checked, and focus is restored afterwards
+   * when it is still open: after choosing a unit the student should
+   * be back in the number, where Enter continues the workflow.
+   */
+  input.addEventListener("blur", () => {
+    if (!openPopup) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (
+        openPopup !== popup ||
+        popup.contains(document.activeElement)
+      ) {
+        return;
+      }
+
+      closeIt();
+    }, 0);
+  });
+
+  /*
+   * Choosing a unit hands focus to the selector, which is correct -
+   * it is the control being used. When the popup is still open, the
+   * number is put back in charge so the keyboard flow (Enter to
+   * commit, Escape to cancel) is never interrupted by having merely
+   * picked a unit.
+   */
+  unitEl.addEventListener("blur", () => {
+    if (!openPopup || openPopup !== popup) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (
+        openPopup === popup &&
+        !popup.contains(document.activeElement)
+      ) {
+        closeIt();
+      } else if (openPopup === popup) {
+        input.focus();
+      }
+    }, 0);
+  });
+
+  renderStep();
+
+  return popup;
+}
+
+/*
+ * Close without invoking any callback.
+ *
+ * Used by `open` to clear a previous popup, and by the editor
+ * when it wants the popup gone without a cancel notification -
+ * a tool change, a file load, a sheet switch.
+ */
+function close() {
+  if (openPopup) {
+    openPopup.remove();
+    openPopup = null;
+  }
+
+  closeCurrent = null;
+}
+
+function isOpen() {
+  return openPopup !== null;
+}
+
+/*
+ * Escape routed from the document level.
+ *
+ * The popup handles Escape from its own field, but the canvas
+ * may hold focus, and an Escape pressed there has to cancel the
+ * creation too - not silently close the popup and leave the
+ * geometry committed. Returns true when it consumed the key, so
+ * the editor knows the tool's own Escape handling should not
+ * also run.
+ */
+function handleEscape() {
+  if (!openPopup) {
+    return false;
+  }
+
+  const closeIt = closeCurrent;
+
+  closeIt?.();
+
+  return true;
+}
+
+const enggCreationDimension = {
+  close,
+  handleEscape,
+  isOpen,
+  open,
+};
+
+export default enggCreationDimension;

@@ -1,4 +1,36 @@
 /* Engineering drawing workspace controller. */
+import enggBodyFrames from "../core/geometry/body-frames.js";
+import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
+import { coordinateSystemArms, rigidBodyHandles, trussJoints } from "../core/geometry/feature-handles.js";
+import enggMeasurement from "../core/geometry/measurement-core.js";
+import enggDrawingState from "../core/model/drawing-state.js";
+import enggDimensions from "../core/scale/dimensions.js";
+import enggScaleCalibration from "../core/scale/scale-calibration.js";
+import enggDrawingClipboard from "../core/selection/clipboard.js";
+import enggDrawingSnap from "../core/snapping/object-snap.js";
+import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
+import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggCreationDimension from "../features/dimensions/creation-dimension.js";
+import enggCreationDimensioning from "../features/dimensions/creation-dimensioning.js";
+import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
+import enggDimensionModel from "../features/dimensions/dimension-model.js";
+import enggSmartDimension from "../features/dimensions/smart-dimension.js";
+import enggDrawingExport from "../file/document-export.js";
+import enggDocumentFile from "../file/document-file.js";
+import enggRecovery from "../file/document-recovery.js";
+import enggFileSave from "../file/file-save.js";
+import enggDrawingReference from "../references/drawing-reference.js";
+import enggDrawingRenderer from "../rendering/renderer.js";
+import enggSheetTabs from "../sheets/sheet-tabs.js";
+import enggSheets from "../sheets/sheets.js";
+import enggPlotEditor from "../ui/editors/plot-editor.js";
+import enggSketchEditor from "../ui/editors/sketch-editor.js";
+import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
+import enggUi from "../ui/ui.js";
+import { disciplineToolGroups, drawToolDefinitions, drawToolLabelById, drawingToolGroups, engineeringTools, featureIcons, toolIcons } from "./tools.js";
 
 const toolHeading = document.getElementById("drawingToolHeading");
 const toolList = document.getElementById("drawingToolList");
@@ -724,7 +756,7 @@ function reorderSheet(sheetId, targetIndex) {
  * bar is a view of it.
  */
 function refreshSheetTabs() {
-    if (!drawingSheetBar || !window.enggSheetTabs) {
+    if (!drawingSheetBar || !enggSheetTabs) {
         return;
     }
 
@@ -777,7 +809,7 @@ function notifyReferences() {
  * editor's internals. It exposes sheets by ID and nothing that could
  * be mistaken for authority over them.
  */
-window.enggDrawingSheets = {
+const enggDrawingSheets = {
     get collection() {
         return sheetCollection;
     },
@@ -817,11 +849,15 @@ window.enggDrawingSheets = {
     serializeDocumentBody
 };
 
-window.enggDrawing = {
+export { enggDrawingSheets };
+
+const enggDrawing = {
     state: drawingState,
     model: enggDrawingState,
     renderer: enggDrawingRenderer
 };
+
+export { enggDrawing };
 
 const COORDINATE_SYSTEM_TYPE = "coordinate-system-2d";
 const COORDINATE_SYSTEM_LENGTH = 25;
@@ -3350,7 +3386,7 @@ function commitAnalysisAxis() {
             };
 
             object.geometry.expressions = [
-                window.enggDiagramEquations.createExpression(
+                enggDiagramEquations.createExpression(
                     "functionX",
                     {
                         defaultRange: {
@@ -3949,7 +3985,7 @@ function runStaticsAnalysis(
     }
 }
 
-function renderEngineeringTools(
+export function renderEngineeringTools(
     category
 ) {
     const safeCategory =
@@ -4268,12 +4304,12 @@ function showSizingPreview(
      * stands when there is not.
      */
     const calibrated =
-        window.enggDimensions?.isCalibrated?.(
+        enggDimensions?.isCalibrated?.(
             drawingState
         ) === true;
 
     const world = calibrated
-        ? window.enggDimensions.fromEngineering(
+        ? enggDimensions.fromEngineering(
               drawingState,
               Number(value),
               unit || "mm"
@@ -4316,7 +4352,7 @@ function beginCreationDimensioning(
     onReady
 ) {
     const framework =
-        window.enggCreationDimensioning;
+        enggCreationDimensioning;
 
     /*
      * THE SNAPSHOT ARRIVES FROM THE CALLER, TAKEN BEFORE THIS POINT.
@@ -4363,7 +4399,7 @@ function beginCreationDimensioning(
 
     renderCurrentDrawing();
 
-    window.enggCreationDimension.open({
+    enggCreationDimension.open({
         title: plan.title,
 
         /*
@@ -4399,7 +4435,7 @@ function beginCreationDimensioning(
          * document understands and reports whichever one the
          * student actually chose.
          */
-        unit: window.enggCreationDimensioning.displayUnit(
+        unit: enggCreationDimensioning.displayUnit(
             drawingState
         ),
 
@@ -4961,7 +4997,7 @@ function annotationKindLabel(
     kind
 ) {
     return (
-        window.enggAnnotationModel.KINDS?.[
+        enggAnnotationModel.KINDS?.[
             kind
         ]?.label ||
         kind
@@ -5029,7 +5065,7 @@ function commitAnnotation(
         );
 
     const object =
-        window.enggDrawingState.geometryFactories
+        enggDrawingState.geometryFactories
             .annotation({
                 kind,
                 sourceFeatureId,
@@ -5134,7 +5170,7 @@ function handleAnnotationClick(
     }
 
     const kinds =
-        window.enggAnnotationModel.kindsFor(
+        enggAnnotationModel.kindsFor(
             feature,
             drawingState
         ) || [];
@@ -5423,7 +5459,7 @@ function commitDimension(
      * scale, so both arrive here and both are gated identically.
      */
     if (
-        !window.enggDimensions.isCalibrated(
+        !enggDimensions.isCalibrated(
             drawingState
         )
     ) {
@@ -5449,7 +5485,7 @@ function commitDimension(
             drawingState
         );
 
-        window.enggScaleCalibration.open({
+        enggScaleCalibration.open({
             measuredUnits,
 
             /*
@@ -5462,7 +5498,7 @@ function commitDimension(
                 Number(measuredUnits?.toFixed?.(2) ?? measuredUnits),
 
             unit:
-                window.enggDimensions.readScale(
+                enggDimensions.readScale(
                     drawingState
                 )?.unit || "mm",
 
@@ -5482,7 +5518,7 @@ function commitDimension(
                     )
                 );
 
-                window.enggDimensions.calibrate(
+                enggDimensions.calibrate(
                     drawingState,
                     measuredUnits,
                     realValue,
@@ -6238,7 +6274,7 @@ function compositeSegmentPoints(object) {
 
     try {
         return (
-            window.enggFeatureGeometry?.rectangleCorners?.(
+            enggFeatureGeometry?.rectangleCorners?.(
                 object.geometry || {}
             ) || []
         ).filter(
@@ -10219,7 +10255,7 @@ function createStaticsFeature(
      * the scale, and a cancelled answer must establish nothing.
      */
     const sized =
-        window.enggCreationDimensioning
+        enggCreationDimensioning
             ?.hasCreationSize(object);
 
     if (sized) {
@@ -10929,7 +10965,7 @@ function updateInteractionFeedback(
         const inDiagram =
             onDiagram &&
             onDiagram.type === "analysis-diagram"
-                ? window.enggDrawingRenderer
+                ? enggDrawingRenderer
                       ?.analysisValueAt?.(
                           onDiagram.geometry,
                           readable
@@ -11102,7 +11138,7 @@ function scheduleGuidelineExpiry(
     }
 
     const holdMs =
-        window.enggDrawingSnap
+        enggDrawingSnap
             ?.GUIDELINE_HOLD_MS ??
         260;
 
@@ -11866,11 +11902,11 @@ function updatePreview(
              * aim at.
              */
             interaction.radiusPx =
-                window.enggDrawingRotationalArrow
+                enggDrawingRotationalArrow
                     .clampArcRadius(
                         Number.isFinite(reach) && reach > 0
                             ? reach
-                            : window.enggDrawingRotationalArrow
+                            : enggDrawingRotationalArrow
                                 .DEFAULT_ARC_RADIUS_PX
                     );
         }
@@ -13086,7 +13122,7 @@ function staticsPreviewType(
                  * from there.
                  */
                 radiusPx:
-                    window.enggDrawingRotationalArrow
+                    enggDrawingRotationalArrow
                         .DEFAULT_ARC_RADIUS_PX,
 
                 magnitude: 50,
@@ -15707,7 +15743,7 @@ function annotationTextOf(
 ) {
     try {
         return (
-            window.enggAnnotationModel.textFor(
+            enggAnnotationModel.textFor(
                 object,
                 drawingState
             ) || object.text || ""
@@ -15838,7 +15874,7 @@ function safeDimensionGraphics(
 ) {
     try {
         return (
-            window.enggDimensionModel.graphicsFor(
+            enggDimensionModel.graphicsFor(
                 object,
                 drawingState
             ) || null
@@ -16802,7 +16838,7 @@ function rotationalArrowHit(
     tolerance
 ) {
     const rotational =
-        window.enggDrawingRotationalArrow;
+        enggDrawingRotationalArrow;
 
     if (!rotational) {
         return false;
@@ -16912,7 +16948,7 @@ function pickDerivedMagnitude(
     point
 ) {
     const model =
-        window.enggAnnotationModel;
+        enggAnnotationModel;
 
     if (!model) {
         return null;
@@ -19254,7 +19290,7 @@ function openAnalysisEditorFor(object) {
     }
 
     const equations =
-        window.enggDiagramEquations;
+        enggDiagramEquations;
 
     if (!equations) {
         return false;
@@ -19286,7 +19322,7 @@ function openAnalysisEditorFor(object) {
     }
 
     const editor =
-        window.enggPlotEditor;
+        enggPlotEditor;
 
     if (!editor) {
         return false;
@@ -19366,8 +19402,8 @@ function openAnalysisEditorFor(object) {
  * dragged off its own diagram is not part of any diagram.
  */
 function openSketchEditorFor(object, geometry) {
-    const editor = window.enggSketchEditor;
-    const equations = window.enggDiagramEquations;
+    const editor = enggSketchEditor;
+    const equations = enggDiagramEquations;
 
     if (!editor || !equations) {
         return false;
@@ -21134,8 +21170,7 @@ function relativeCoordinateRows(
      * fields and emits the heading only if there are any.
      */
     const shared =
-        globalThis.window &&
-        globalThis.window.enggPropertyPanel;
+        enggPropertyPanel;
 
     const headed = fields =>
         shared && shared.section
@@ -21447,8 +21482,7 @@ function annotationSectionMarkup(
     types
 ) {
     const panels =
-        globalThis.window &&
-        globalThis.window.enggPropertyPanel;
+        enggPropertyPanel;
 
     /*
      * NO SHARED MODULE, NO SECTION. The fallback renders nothing rather than a
@@ -21474,7 +21508,7 @@ function annotationSectionMarkup(
     }
 
     const model =
-        globalThis.window.enggAnnotationModel;
+        enggAnnotationModel;
 
     const state = drawingState;
 
@@ -21535,7 +21569,7 @@ function annotationSectionMarkup(
  */
 const MAGNITUDE_BEARING_TYPES = (() => {
     const model =
-        globalThis.window?.enggAnnotationModel;
+        enggAnnotationModel;
 
     if (!model?.annotatableTypes) {
         /*
@@ -21567,7 +21601,7 @@ function arcRadiusRow(
     geometry
 ) {
     const rotational =
-        window.enggDrawingRotationalArrow;
+        enggDrawingRotationalArrow;
 
     const current =
         rotational
@@ -21648,8 +21682,7 @@ function analysisPanelRows(
      * finalise pass drops when the rows under it turn out to be empty.
      */
     const panels =
-        globalThis.window &&
-        globalThis.window.enggPropertyPanel;
+        enggPropertyPanel;
 
     const escape = value =>
         String(value ?? "").replace(
@@ -21997,7 +22030,7 @@ function analysisPanelRows(
          */
         if (geometry.mode === "plot") {
             const equations =
-                window.enggDiagramEquations;
+                enggDiagramEquations;
 
             const range = geometry.localRange;
 
@@ -22096,7 +22129,7 @@ function analysisPanelRows(
                         class="drawing-property-action"
                         data-plot-editor-open
                         ${
-                            window.enggSketchEditor
+                            enggSketchEditor
                                 ? ""
                                 : "disabled"
                         }>
@@ -22763,8 +22796,7 @@ function featureHeaderMarkup(
     typeLabel
 ) {
     const panels =
-        globalThis.window &&
-        globalThis.window.enggPropertyPanel;
+        enggPropertyPanel;
 
     const name =
         panels && panels.header
@@ -22980,8 +23012,7 @@ function featurePropertyMarkup(object) {
      * field out, which is the same as an absent value.
      */
     const panels =
-        globalThis.window &&
-        globalThis.window.enggPropertyPanel;
+        enggPropertyPanel;
 
     /*
      * A number as panel text. Delegated, because the shared formatter drops
@@ -25341,7 +25372,7 @@ function bindFeaturePropertyControls(object) {
     drawingProperties.querySelectorAll('[data-arc-radius]').forEach(input => {
         input.addEventListener('change', () => {
             const rotational =
-                window.enggDrawingRotationalArrow;
+                enggDrawingRotationalArrow;
 
             const previous =
                 enggDrawingState.snapshotDrawing(
@@ -26564,8 +26595,8 @@ function updateFeatureProperty(object, key, value) {
          * is what keeps the two routes from disagreeing about what a
          * millimetre is.
          */
-        const world = window.enggDimensions?.fromEngineering
-            ? window.enggDimensions.fromEngineering(
+        const world = enggDimensions?.fromEngineering
+            ? enggDimensions.fromEngineering(
                 drawingState,
                 value,
                 'mm'
@@ -26634,8 +26665,8 @@ function updateFeatureProperty(object, key, value) {
          * Relative To a live measurement in both directions: what the
          * panel prints is exactly what the panel accepts.
          */
-        const worldValue = window.enggDimensions?.fromEngineering
-            ? window.enggDimensions.fromEngineering(
+        const worldValue = enggDimensions?.fromEngineering
+            ? enggDimensions.fromEngineering(
                   drawingState,
                   value,
                   'mm'
@@ -26796,8 +26827,8 @@ function updateFeatureProperty(object, key, value) {
              * length typed at creation and the same length typed in
              * the panel move the beam by the same amount.
              */
-            const world = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(
+            const world = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(
                     drawingState,
                     value,
                     'mm'
@@ -27202,8 +27233,8 @@ function updateFeatureProperty(object, key, value) {
                          * what the panel accepts.
                          */
                         const station =
-                            window.enggDimensions?.fromEngineering
-                                ? window.enggDimensions.fromEngineering(
+                            enggDimensions?.fromEngineering
+                                ? enggDimensions.fromEngineering(
                                     drawingState,
                                     value,
                                     'mm'
@@ -27299,8 +27330,8 @@ function updateFeatureProperty(object, key, value) {
              * sized in the creation popup and one sized in its own
              * properties come out the same size.
              */
-            const millimetres = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            const millimetres = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             resizeRigidBody(object, key === 'rigidWidth' ? 'width' : 'height', millimetres);
@@ -27314,8 +27345,8 @@ function updateFeatureProperty(object, key, value) {
              * MILLIMETRES IN, WORLD UNITS STORED - as for every other
              * length the panel edits.
              */
-            const millimetres = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            const millimetres = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             setRigidBodyRadius(object, millimetres);
@@ -27409,8 +27440,8 @@ function updateFeatureProperty(object, key, value) {
              * becomes a radius of 25 mm whether it was typed in the
              * panel or in the creation popup.
              */
-            const millimetres = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            const millimetres = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             g.radius =
@@ -27454,8 +27485,8 @@ function updateFeatureProperty(object, key, value) {
              * typed at creation and a Width typed in the panel produce
              * the same rectangle.
              */
-            g[key] = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(
+            g[key] = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(
                     drawingState,
                     value,
                     'mm'
@@ -27496,8 +27527,8 @@ function updateFeatureProperty(object, key, value) {
              * MILLIMETRES IN, WORLD UNITS STORED - as for every other
              * length in the panel.
              */
-            g.radius = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            g.radius = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             return true;
@@ -27548,8 +27579,8 @@ function updateFeatureProperty(object, key, value) {
              * than one that is consistently wrong, because there is
              * then no single place to look for the mistake.
              */
-            g.axisLength = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            g.axisLength = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             return true;
@@ -27586,8 +27617,8 @@ function updateFeatureProperty(object, key, value) {
              * length the panel edits, and for the same reason: a raw
              * write would make a 50 mm axis 50 world units long.
              */
-            g[key] = window.enggDimensions?.fromEngineering
-                ? window.enggDimensions.fromEngineering(drawingState, value, 'mm')
+            g[key] = enggDimensions?.fromEngineering
+                ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
 
             return true;
@@ -28190,12 +28221,12 @@ function openDimensionEditorFor(object) {
             ? `${Number(measurement.value).toFixed(2)} drawing units`
             : "";
 
-    window.enggDimensionEditor.open({
+    enggDimensionEditor.open({
         dimensionType: object.dimensionType,
         measuredText,
         drawingLength,
         unit:
-            window.enggDimensions.readScale(
+            enggDimensions.readScale(
                 drawingState
             )?.unit || "mm",
         precision: object.style?.precision ?? 2,
@@ -28226,7 +28257,7 @@ function openDimensionEditorFor(object) {
              * NUMBERS right, not the shape changed under them.
              */
             if (changes.calibration && measurement) {
-                window.enggDimensions.calibrate(
+                enggDimensions.calibrate(
                     drawingState,
                     measurement.value,
                     changes.calibration.realValue,
@@ -28379,8 +28410,8 @@ let manipulationDrag = null;
 function mmOf(worldLength) {
     const value = Number(worldLength);
 
-    return window.enggDimensions?.toEngineering
-        ? window.enggDimensions.toEngineering(drawingState, value)
+    return enggDimensions?.toEngineering
+        ? enggDimensions.toEngineering(drawingState, value)
         : { value, unit: "mm" };
 }
 
@@ -31597,15 +31628,15 @@ function cancelInteraction() {
      * stopped responding. Nothing is created and no scale is set,
      * which is exactly what abandoning the question should mean.
      */
-    window.enggScaleCalibration?.close();
-    window.enggDimensionEditor?.close();
+    enggScaleCalibration?.close();
+    enggDimensionEditor?.close();
 
     /*
      * So does the Plot Editor. It previews onto the sheet, so leaving it
      * open across a tool switch would leave half-typed equations drawn on
      * the drawing with nothing on screen to account for them.
      */
-    window.enggPlotEditor?.close();
+    enggPlotEditor?.close();
 
     /*
      * A running Modify session is part of the
@@ -31834,10 +31865,10 @@ function deselectIfJustCreated() {
      * belongs to the dialog's own confirm and cancel.
      */
     if (
-        window.enggScaleCalibration?.isOpen?.() ||
-        window.enggDimensionEditor?.isOpen?.() ||
-        window.enggPlotEditor?.isOpen?.() ||
-        window.enggCreationDimension?.isOpen?.()
+        enggScaleCalibration?.isOpen?.() ||
+        enggDimensionEditor?.isOpen?.() ||
+        enggPlotEditor?.isOpen?.() ||
+        enggCreationDimension?.isOpen?.()
     ) {
         return false;
     }
@@ -35046,7 +35077,7 @@ function renderedBounds(
         }
 
         const rotational =
-            window.enggDrawingRotationalArrow;
+            enggDrawingRotationalArrow;
 
         const reach = (
             rotational
@@ -38949,18 +38980,18 @@ document.addEventListener(
              * the Escape the canvas needs.
              */
             if (
-                window.enggCreationDimension?.handleEscape?.()
+                enggCreationDimension?.handleEscape?.()
             ) {
                 return;
             }
             if (
-                window.enggSketchEditor?.handleEscape?.()
+                enggSketchEditor?.handleEscape?.()
             ) {
                 return;
             }
 
             if (
-                window.enggPlotEditor?.handleEscape?.()
+                enggPlotEditor?.handleEscape?.()
             ) {
                 return;
             }
@@ -39017,7 +39048,7 @@ document.addEventListener(
          */
         if (
             editable ||
-            window.enggCreationDimension?.isOpen?.()
+            enggCreationDimension?.isOpen?.()
         ) {
             return;
         }

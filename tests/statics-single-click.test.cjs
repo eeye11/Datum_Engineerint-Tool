@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * SINGLE-CLICK STATICS CREATION - regression guard.
  *
@@ -271,7 +271,7 @@ global.window = {
     }
 };
 
-require(modulePath("drawing-state.js"));
+loadModule("drawing-state.js");
 
 const factories = global.window.enggDrawingState.geometryFactories;
 

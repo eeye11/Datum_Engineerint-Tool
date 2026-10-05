@@ -27,7 +27,7 @@
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
@@ -43,8 +43,8 @@ global.document = dom.window.document;
 global.Blob = dom.window.Blob;
 global.URL = dom.window.URL;
 
-require(locate("document-file.js"));
-require(locate("file-save.js"));
+loadModule("document-file.js");
+loadModule("file-save.js");
 
 const file = global.window.enggDocumentFile;
 const save = global.window.enggFileSave;

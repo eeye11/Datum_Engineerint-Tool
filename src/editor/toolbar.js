@@ -1,3 +1,5 @@
+import { renderEngineeringTools } from "./drawing.js";
+
 document.querySelectorAll(".drawing-category").forEach(categoryButton => {
 	categoryButton.addEventListener("click", () => {
 		document.querySelectorAll(".drawing-category").forEach(button => button.classList.remove("active"));

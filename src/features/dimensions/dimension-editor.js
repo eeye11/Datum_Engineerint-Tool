@@ -35,79 +35,76 @@
  * The measured value is SHOWN, not offered as an input. The student can
  * see what the drawing says; what they cannot do is overwrite it.
  */
-(function (root) {
-    "use strict";
+let openDialog = null;
+let closeCurrent = null;
 
-    let openDialog = null;
-    let closeCurrent = null;
+/*
+ * Length units only.
+ *
+ * A dimension measures geometry, and geometry is length, so this
+ * is the same set the calibration offers - a force or a moment
+ * would not be a unit this dialog could apply.
+ */
+const UNITS = [
+    { value: "mm", label: "Millimetres (mm)" },
+    { value: "cm", label: "Centimetres (cm)" },
+    { value: "m", label: "Metres (m)" },
+    { value: "in", label: "Inches (in)" },
+    { value: "ft", label: "Feet (ft)" }
+];
 
-    /*
-     * Length units only.
-     *
-     * A dimension measures geometry, and geometry is length, so this
-     * is the same set the calibration offers - a force or a moment
-     * would not be a unit this dialog could apply.
-     */
-    const UNITS = [
-        { value: "mm", label: "Millimetres (mm)" },
-        { value: "cm", label: "Centimetres (cm)" },
-        { value: "m", label: "Metres (m)" },
-        { value: "in", label: "Inches (in)" },
-        { value: "ft", label: "Feet (ft)" }
-    ];
-
-    function optionList(selected) {
-        return UNITS.map(
-            (unit) =>
-                `<option value="${unit.value}"${
+function optionList(selected) {
+    return UNITS.map(
+        (unit) =>
+            `<option value="${unit.value}"${
                     unit.value === selected ? " selected" : ""
                 }>${unit.label}</option>`
-        ).join("");
-    }
+    ).join("");
+}
 
-    /*
-     * Is this measurement an angle?
-     *
-     * An angle is not a length, so offering it a length unit would be
-     * meaningless. Angles are shown and left alone.
-     */
-    function isAngular(dimensionType) {
-        return dimensionType === "angular";
-    }
+/*
+ * Is this measurement an angle?
+ *
+ * An angle is not a length, so offering it a length unit would be
+ * meaningless. Angles are shown and left alone.
+ */
+function isAngular(dimensionType) {
+    return dimensionType === "angular";
+}
 
-    function build(options) {
-        const {
-            dimension,
-            dimensionType,
-            measuredText,
-            drawingLength,
-            unit,
-            precision,
-            sourceName,
-            angular
-        } = options;
+function build(options) {
+    const {
+        dimension,
+        dimensionType,
+        measuredText,
+        drawingLength,
+        unit,
+        precision,
+        sourceName,
+        angular
+    } = options;
 
-        const dialog = document.createElement("div");
+    const dialog = document.createElement("div");
 
-        dialog.className =
-            "drawing-dimension-dialog";
+    dialog.className =
+        "drawing-dimension-dialog";
 
-        dialog.setAttribute(
-            "role",
-            "dialog"
-        );
+    dialog.setAttribute(
+        "role",
+        "dialog"
+    );
 
-        dialog.setAttribute(
-            "aria-modal",
-            "true"
-        );
+    dialog.setAttribute(
+        "aria-modal",
+        "true"
+    );
 
-        dialog.setAttribute(
-            "aria-label",
-            "Edit Dimension"
-        );
+    dialog.setAttribute(
+        "aria-label",
+        "Edit Dimension"
+    );
 
-        dialog.innerHTML = `
+    dialog.innerHTML = `
             <div class="drawing-dimension-dialog-title">
                 Edit Dimension
             </div>
@@ -185,184 +182,181 @@
             </div>
         `;
 
-        document.body.appendChild(
-            dialog
-        );
+    document.body.appendChild(
+        dialog
+    );
 
-        return dialog;
-    }
+    return dialog;
+}
 
-    /*
-     * Open the dimension editor.
-     *
-     * `onApply(changes)` receives only what the student actually
-     * touched:
-     *
-     *   { precision, calibration: { realValue, unit } }
-     *
-     * The calibration is absent unless a real length was entered, so
-     * the caller never has to ask whether one was meant. That matters:
-     * an empty field must not silently rescale a document.
-     *
-     * There is deliberately no show-units option. A visible dimension
-     * always states its unit - a bare 500 is ambiguous with every other
-     * quantity of the same size on the sheet - so whether to show it is
-     * not a choice this dialog may offer.
-     *
-     * `onCancel` runs for every way out, including Escape.
-     */
-    function open(options = {}) {
+/*
+ * Open the dimension editor.
+ *
+ * `onApply(changes)` receives only what the student actually
+ * touched:
+ *
+ *   { precision, calibration: { realValue, unit } }
+ *
+ * The calibration is absent unless a real length was entered, so
+ * the caller never has to ask whether one was meant. That matters:
+ * an empty field must not silently rescale a document.
+ *
+ * There is deliberately no show-units option. A visible dimension
+ * always states its unit - a bare 500 is ambiguous with every other
+ * quantity of the same size on the sheet - so whether to show it is
+ * not a choice this dialog may offer.
+ *
+ * `onCancel` runs for every way out, including Escape.
+ */
+function open(options = {}) {
+    close();
+
+    const angular = isAngular(
+        options.dimensionType
+    );
+
+    const dialog = build({
+        dimension: options.dimension,
+        dimensionType:
+            options.dimensionType || "linear",
+        measuredText:
+            options.measuredText || "",
+        drawingLength:
+            options.drawingLength || "",
+        unit: options.unit || "mm",
+        precision: options.precision ?? 2,
+        sourceName:
+            options.sourceName || "unknown source",
+        angular
+    });
+
+    openDialog = dialog;
+
+    const closeIt = () => {
+        close();
+        options.onCancel?.();
+    };
+
+    closeCurrent = closeIt;
+
+    const apply = () => {
+        const changes = {};
+
+        if (!angular) {
+            const precisionInput =
+                dialog.querySelector(
+                    "#dimPrecision"
+                );
+
+            const precision = Number(
+                precisionInput.value
+            );
+
+            if (
+                Number.isFinite(precision) &&
+                precision >= 0 &&
+                precision <= 6
+            ) {
+                changes.precision = precision;
+            }
+
+            /*
+             * A calibration is requested ONLY when a real length
+             * was actually typed. The unit alone is not enough,
+             * and a blank field is not a request to rescale.
+             */
+            const realValue = Number(
+                dialog.querySelector(
+                    "#dimRealValue"
+                ).value
+            );
+
+            if (
+                Number.isFinite(realValue) &&
+                realValue > 0
+            ) {
+                changes.calibration = {
+                    realValue,
+                    unit:
+                        dialog.querySelector(
+                            "#dimRealUnit"
+                        ).value
+                };
+            }
+        }
+
         close();
 
-        const angular = isAngular(
-            options.dimensionType
-        );
-
-        const dialog = build({
-            dimension: options.dimension,
-            dimensionType:
-                options.dimensionType || "linear",
-            measuredText:
-                options.measuredText || "",
-            drawingLength:
-                options.drawingLength || "",
-            unit: options.unit || "mm",
-            precision: options.precision ?? 2,
-            sourceName:
-                options.sourceName || "unknown source",
-            angular
-        });
-
-        openDialog = dialog;
-
-        const closeIt = () => {
-            close();
-            options.onCancel?.();
-        };
-
-        closeCurrent = closeIt;
-
-        const apply = () => {
-            const changes = {};
-
-            if (!angular) {
-                const precisionInput =
-                    dialog.querySelector(
-                        "#dimPrecision"
-                    );
-
-                const precision = Number(
-                    precisionInput.value
-                );
-
-                if (
-                    Number.isFinite(precision) &&
-                    precision >= 0 &&
-                    precision <= 6
-                ) {
-                    changes.precision = precision;
-                }
-
-                /*
-                 * A calibration is requested ONLY when a real length
-                 * was actually typed. The unit alone is not enough,
-                 * and a blank field is not a request to rescale.
-                 */
-                const realValue = Number(
-                    dialog.querySelector(
-                        "#dimRealValue"
-                    ).value
-                );
-
-                if (
-                    Number.isFinite(realValue) &&
-                    realValue > 0
-                ) {
-                    changes.calibration = {
-                        realValue,
-                        unit:
-                            dialog.querySelector(
-                                "#dimRealUnit"
-                            ).value
-                    };
-                }
-            }
-
-            close();
-
-            options.onApply?.(changes);
-        };
-
-        dialog
-            .querySelector("[data-dim-apply]")
-            .addEventListener(
-                "click",
-                apply
-            );
-
-        dialog
-            .querySelector("[data-dim-cancel]")
-            .addEventListener(
-                "click",
-                closeIt
-            );
-
-        dialog.addEventListener(
-            "keydown",
-            (event) => {
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    apply();
-                }
-
-                if (event.key === "Escape") {
-                    event.preventDefault();
-                    closeIt();
-                }
-            }
-        );
-
-        const first = dialog.querySelector(
-            "input, select"
-        );
-
-        first?.focus();
-
-        return dialog;
-    }
-
-    function close() {
-        if (openDialog) {
-            openDialog.remove();
-            openDialog = null;
-        }
-
-        closeCurrent = null;
-    }
-
-    function isOpen() {
-        return openDialog !== null;
-    }
-
-    function handleEscape() {
-        if (!openDialog) {
-            return false;
-        }
-
-        closeCurrent?.();
-
-        return true;
-    }
-
-    root.enggDimensionEditor = {
-        UNITS,
-        close,
-        handleEscape,
-        isOpen,
-        open
+        options.onApply?.(changes);
     };
-})(
-    typeof window !== "undefined"
-        ? window
-        : globalThis
-);
+
+    dialog
+        .querySelector("[data-dim-apply]")
+        .addEventListener(
+            "click",
+            apply
+        );
+
+    dialog
+        .querySelector("[data-dim-cancel]")
+        .addEventListener(
+            "click",
+            closeIt
+        );
+
+    dialog.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                apply();
+            }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeIt();
+            }
+        }
+    );
+
+    const first = dialog.querySelector(
+        "input, select"
+    );
+
+    first?.focus();
+
+    return dialog;
+}
+
+function close() {
+    if (openDialog) {
+        openDialog.remove();
+        openDialog = null;
+    }
+
+    closeCurrent = null;
+}
+
+function isOpen() {
+    return openDialog !== null;
+}
+
+function handleEscape() {
+    if (!openDialog) {
+        return false;
+    }
+
+    closeCurrent?.();
+
+    return true;
+}
+
+const enggDimensionEditor = {
+    UNITS,
+    close,
+    handleEscape,
+    isOpen,
+    open
+};
+
+export default enggDimensionEditor;

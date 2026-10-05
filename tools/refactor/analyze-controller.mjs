@@ -7,9 +7,10 @@ import * as eslintScope from "eslint-scope";
 const file = process.argv[2];
 const out = process.argv[3];
 const src = fs.readFileSync(file, "utf8");
-const ast = acorn.parse(src, { ecmaVersion: "latest", sourceType: "script", locations: true, ranges: true });
-const sm = eslintScope.analyze(ast, { ecmaVersion: 2022, sourceType: "script" });
-const globalScope = sm.globalScope;
+const ast = acorn.parse(src, { ecmaVersion: "latest", sourceType: process.env.SOURCE_TYPE || "script", locations: true, ranges: true });
+const sm = eslintScope.analyze(ast, { ecmaVersion: 2022, sourceType: process.env.SOURCE_TYPE || "script" });
+const globalScope = sm.scopes.find(s => s.type === (process.env.SOURCE_TYPE === "module" ? "module" : "global"));
+
 
 // Map each top-level statement to an index; every node maps to its top-level statement.
 const top = ast.body.map((node, index) => {

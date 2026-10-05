@@ -16,9 +16,6 @@
  * and there is exactly one set of vector rules in the
  * application.
  */
-(function (root) {
-    "use strict";
-
     /*
      * A load is stored with a direction as a unit vector in
      * degrees plus its own profile points. A load created
@@ -1597,7 +1594,7 @@ function unitVector(degrees) {
     };
   }
 
-  root.enggLoadProfile = {
+  const enggLoadProfile = {
         DEFAULT_LOAD_DIRECTION,
         DEFAULT_LOAD_INTERVAL,
         CUSTOM_VECTOR_SCALE,
@@ -1635,4 +1632,5 @@ function unitVector(degrees) {
         vectorScale,
         vectorScaleFor
     };
-})(window);
+
+export default enggLoadProfile;

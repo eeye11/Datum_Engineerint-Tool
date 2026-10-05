@@ -243,8 +243,8 @@ console.log("\n  a load's Start and End are lengths, and say so\n");
  * the reader is the only change that makes the label true.
  */
 const loadRows = section(
-  'if (\r\n            object.type === "load" ||',
-  "\r\n    const anchor = relativeChildAnchor(",
+  'if (\n            object.type === "load" ||',
+  "\n    const anchor = relativeChildAnchor(",
 );
 
 check("the load station rows are found", loadRows.length > 0);

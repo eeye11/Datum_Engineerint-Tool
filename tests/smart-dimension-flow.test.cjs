@@ -284,6 +284,9 @@ const sandbox = {
   },
 };
 
+/* The controller imports the module by name rather than reading window. */
+sandbox.enggFeatureGeometry = sandbox.window.enggFeatureGeometry;
+
 vm.createContext(sandbox);
 
 const pieces = [

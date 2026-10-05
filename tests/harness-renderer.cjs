@@ -86,7 +86,7 @@ function createHarness(projectRoot, jsdom, require) {
     randomUUID: () => "harness-uuid",
   };
 
-  const { locate } = require("./helpers/source-path.cjs");
+  const { loadModule } = require("./helpers/source-path.cjs");
 
   /*
    * LOADED BY NAME, NOT BY ADDRESS.
@@ -98,7 +98,7 @@ function createHarness(projectRoot, jsdom, require) {
    * through a reorganisation instead of breaking on it.
    */
   SCRIPTS.forEach((name) => {
-    require(locate(name));
+    loadModule(name);
   });
 
   MODULES.forEach((name) => {

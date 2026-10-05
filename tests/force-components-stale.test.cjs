@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DO THE COMPONENTS FOLLOW THEIR FORCE?
  *
@@ -26,10 +26,10 @@ global.window = {
   crypto: { randomUUID: () => "components-stale-uuid" }
 };
 
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("analysis-dependencies.js"));
-require(modulePath("drawing-state.js"));
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("analysis-dependencies.js");
+loadModule("drawing-state.js");
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES A FEATURE MOVE BY THE HANDLE, OR BY ITS OWN ARROW?
  *
@@ -29,8 +29,8 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = { crypto: { randomUUID: () => "move-uuid" } };
 
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
 
 const geometry = global.window.enggFeatureGeometry;
 

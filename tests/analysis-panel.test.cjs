@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * WHAT THE FEATURES PANEL NOW SAYS ABOUT A PLOT
@@ -55,10 +55,7 @@ const drawingSource = fs.readFileSync(
  */
 global.window = {};
 
-require(
-  locate("diagram-equations.js",
-  ),
-);
+loadModule("diagram-equations.js");
 
 /*
  * THE PANEL'S OWN BUILDER, extracted and run.
@@ -97,6 +94,17 @@ const sandbox = {
  */
 sandbox.window.enggDiagramEquations =
   global.window.enggDiagramEquations;
+
+/* The controller imports the module by name rather than reading window. */
+sandbox.enggDiagramEquations = sandbox.window.enggDiagramEquations;
+
+/*
+ * Modules the builder reaches by name and that this test does not supply
+ * are present but undefined, as they were when it read them from window.
+ */
+for (const name of new Set(body.match(/\bengg[A-Z]\w+/g) || [])) {
+  if (!(name in sandbox)) sandbox[name] = sandbox.window[name];
+}
 
 sandbox.globalThis = sandbox;
 

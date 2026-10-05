@@ -16,7 +16,9 @@
  * them is connected, and a floating endpoint that lands on none
  * is what makes the structure invalid.
  */
-function trussJoints(
+import enggFeatureGeometry from "./feature-geometry.js";
+
+export function trussJoints(
     members
 ) {
     return members.flatMap(member => [
@@ -32,7 +34,7 @@ function trussJoints(
  * all agree on the same geometry, and so the four
  * extensions stay independent in one feature.
  */
-function coordinateSystemArms(
+export function coordinateSystemArms(
     geometry
 ) {
     const origin =
@@ -96,7 +98,7 @@ function coordinateSystemArms(
  * for it, and every case writes the same defining values the
  * Features panel writes, so the two can never disagree.
  */
-function rigidBodyHandles(
+export function rigidBodyHandles(
     object
 ) {
     const g = object.geometry;

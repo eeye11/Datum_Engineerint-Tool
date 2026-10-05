@@ -1,0 +1,6 @@
+# Source files use LF everywhere, on every platform.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.woff binary
+*.woff2 binary

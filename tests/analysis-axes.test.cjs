@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE ANALYSIS GRAPH HAVE A COORDINATE SYSTEM?
@@ -72,10 +72,7 @@ for (const name of [
   "drawing-state.js",
   "renderer.js",
 ]) {
-  require(
-    locate(name,
-    ),
-  );
+  loadModule(name);
 }
 
 for (const name of [

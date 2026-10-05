@@ -24,7 +24,7 @@ const path = require("path");
 const vm = require("vm");
 const { JSDOM } = require("jsdom");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(__dirname, "..");
 const source = fs.readFileSync(locate("drawing.js"), "utf8");
 
@@ -69,7 +69,7 @@ for (const name of [
   "drawing-state.js",
   "feature-geometry.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 const measurement = global.window.enggMeasurement;

@@ -2,10 +2,10 @@
 const path = require("path");
 
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 global.window = {};
-require(modulePath("sheets.js"));
-require(modulePath("document-file.js"));
+loadModule("sheets.js");
+loadModule("document-file.js");
 const f = global.window.enggDocumentFile;
 
 let pass = 0, fail = 0;

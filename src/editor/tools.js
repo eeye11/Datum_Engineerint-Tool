@@ -1,7 +1,7 @@
 const drawingIcon = content => `<svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">${content}</svg>`;
 const iconStroke = 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"';
 
-const toolIcons = {
+export const toolIcons = {
 	Select: drawingIcon(`<path ${iconStroke} d="M4 3l3 12 3-4 4 4 1-1-4-4 5-1z"/>`),
 	Line: drawingIcon(`<path ${iconStroke} d="M4 16L16 4"/>`),
 	Polyline: drawingIcon(`<path ${iconStroke} d="M3 14l4-8 5 5 5-7"/><circle ${iconStroke} cx="3" cy="14" r="1"/><circle ${iconStroke} cx="7" cy="6" r="1"/><circle ${iconStroke} cx="12" cy="11" r="1"/>`),
@@ -245,7 +245,7 @@ const toolIcons = {
  * category such as Bodies or Loads is not a feature and has no
  * entry here, so no tree row is ever created for one.
  */
-const featureIcons = {
+export const featureIcons = {
 	point: toolIcons.Point,
 	particle: toolIcons.Particle,
 	"rigid-body": toolIcons["Rigid Body"],
@@ -273,7 +273,7 @@ const featureIcons = {
 	"coordinate-system-2d": toolIcons["Coordinate System"]
 };
 
-const drawingToolGroups = [
+export const drawingToolGroups = [
 	{
 		id: "selection",
 		label: "Selection",
@@ -307,7 +307,7 @@ const drawingToolGroups = [
  * section labels match the wording used in the tool
  * panel headings.
  */
-const disciplineToolGroups = {
+export const disciplineToolGroups = {
 	STATICS: [
 		{
 			id: "statics-selection",
@@ -433,13 +433,13 @@ const globalToolGroups = [
 
 const sidebarToolDefinitions = drawingToolGroups.flatMap(group => group.tools);
 const globalToolDefinitions = globalToolGroups.flatMap(group => group.tools);
-const drawToolDefinitions = [
+export const drawToolDefinitions = [
 	...sidebarToolDefinitions,
 	...globalToolDefinitions
 ];
-const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool => [tool.id, tool.label]));
+export const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool => [tool.id, tool.label]));
 
-const engineeringTools = {
+export const engineeringTools = {
 	GEOMETRY: sidebarToolDefinitions.map(tool => tool.label),
 	ANNOTATE: ["Dimension", "Smart Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
 	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Applied Moment", "Couple", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
@@ -452,25 +452,3 @@ const engineeringTools = {
 	CONTROLS: ["Block", "Input", "Output", "Sensor", "Controller", "Signal Arrow"],
 	"MATH / ANALYSIS": ["Point", "Function", "Vector", "Graph", "Equation"]
 };
-
-/*
- * PUBLISHED ON THE SHARED OBJECT, LIKE EVERY OTHER MODULE HERE.
- *
- * `engineeringTools` is the category-to-tool table, and drawing.js reads it
- * by that bare name. Every sibling module in this folder publishes what it
- * exposes - `window.enggDrawingState`, `window.enggAnnotationModel` - so a
- * consumer can depend on it existing. This one did not, because in the
- * browser a top-level `const` is visible to the next `<script>` anyway and
- * the publish looked redundant.
- *
- * A BROWSER IS NOT THE ONLY PLACE THESE FILES RUN. Anything that evaluates
- * them in a shared-but-separate context - a test harness, an isolated vm -
- * does not carry bare `const` declarations between files, so drawing.js
- * failed to load with "engineeringTools is not defined" while every other
- * module in the same list resolved fine. A harness failure that reads
- * exactly like a defect in drawing.js is worth removing, and the publish
- * costs nothing.
- */
-if (typeof window !== "undefined") {
-	window.engineeringTools = engineeringTools;
-}

@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * READING A CURSOR IN THE GRAPH'S OWN UNITS
@@ -60,7 +60,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 const renderer = global.window.enggDrawingRenderer;

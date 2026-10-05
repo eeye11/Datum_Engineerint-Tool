@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ANALYSIS AXIS OF A SLOPING BODY.
  *
@@ -25,9 +25,9 @@ global.window = {
   }
 };
 
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("analysis-dependencies.js"));
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("analysis-dependencies.js");
 
 const deps = global.window.enggAnalysisDependencies;
 

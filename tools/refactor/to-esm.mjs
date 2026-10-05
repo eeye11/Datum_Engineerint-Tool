@@ -191,14 +191,35 @@ for (const [file, { src, ast, iife, pubs }] of info) {
     if (iife) edits.push(...dedentEdits(ast, src, regionStart, regionEnd, edits));
     const body = applyEdits(src, edits, regionStart, regionEnd);
 
-    const head = iife ? src.slice(0, iife.stmt.start) : "";
+    // A plain file's leading comment block stays at the very top, above the imports.
+    let head = iife ? src.slice(0, iife.stmt.start) : "";
+    let bodyText = body;
+    if (!iife) {
+        const firstStatement = ast.body[0];
+        const leading = firstStatement ? src.slice(0, firstStatement.start) : "";
+        if (/^\s*(\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)+$/.test(leading)) {
+            head = leading;
+            bodyText = body.slice(leading.length);
+        }
+    }
     const tail = iife ? src.slice(iife.stmt.end).replace(/^;/, "") : "";
-    const importLines = [...imports].sort(([a], [b]) => a.localeCompare(b)).map(([name, o]) =>
-        o.kind === "default"
-            ? `import ${name} from "${relTo(o.file)}";`
-            : `import { ${name} } from "${relTo(o.file)}";`);
+
+    // One import statement per module: the default first, then named bindings.
+    const byModule = new Map();
+    for (const [name, o] of imports) {
+        const from = relTo(o.file);
+        if (!byModule.has(from)) byModule.set(from, { defaultName: null, named: [] });
+        if (o.kind === "default") byModule.get(from).defaultName = name;
+        else byModule.get(from).named.push(name);
+    }
+    const importLines = [...byModule].sort(([a], [b]) => a.localeCompare(b)).map(([from, { defaultName, named }]) => {
+        const parts = [];
+        if (defaultName) parts.push(defaultName);
+        if (named.length) parts.push(`{ ${named.sort().join(", ")} }`);
+        return `import ${parts.join(", ")} from "${from}";`;
+    });
     let out = head.trimEnd() + (head.trim() ? "\n" : "") + (importLines.length ? importLines.join("\n") + "\n\n" : "") +
-        body.replace(/^\s*\n/, "").trimEnd() + "\n" + (tail.trim() ? tail.trimEnd() + "\n" : "");
+        bodyText.replace(/^\s*\n/, "").trimEnd() + "\n" + (tail.trim() ? tail.trimEnd() + "\n" : "");
     outputs.set(file, out);
 }
 

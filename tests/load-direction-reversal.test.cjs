@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES REVERSING A LOAD MOVE IT?
  *
@@ -24,8 +24,8 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 global.window = {};
 
 /* The model pieces a load is made of, with no renderer involved. */
-require(modulePath("load-profile.js"));
-require(modulePath("drawing-state.js"));
+loadModule("load-profile.js");
+loadModule("drawing-state.js");
 
 const state = global.window.enggDrawingState;
 const profile = global.window.enggLoadProfile;

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The zoom sanitiser, tested directly.
  *
@@ -15,7 +15,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
  */
 
 global.window = {};
-require(modulePath("drawing-state.js"));
+loadModule("drawing-state.js");
 const state = global.window.enggDrawingState;
 
 let pass = 0;

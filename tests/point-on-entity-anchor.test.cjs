@@ -51,10 +51,10 @@ global.window = {
   },
 };
 
-const { modulePath } = require("./helpers/source-path.cjs");
+const { loadModule, modulePath } = require("./helpers/source-path.cjs");
 
-require(modulePath("dimensions.js"));
-require(modulePath("measurement-core.js"));
+loadModule("dimensions.js");
+loadModule("measurement-core.js");
 
 const m = global.window.enggMeasurement;
 

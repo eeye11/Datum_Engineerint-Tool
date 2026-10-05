@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE Y RANGE
@@ -68,7 +68,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 const renderer = global.window.enggDrawingRenderer;

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The Dimension model, tested directly.
  *
@@ -23,8 +23,8 @@ global.window = {
 
 /* ---- the modules this one needs ---- */
 
-require(modulePath("dimensions.js"));
-require(modulePath("measurement-core.js"));
+loadModule("dimensions.js");
+loadModule("measurement-core.js");
 
 global.window.enggDrawingState = {
   polygonVertices: (geometry) => {
@@ -57,7 +57,7 @@ global.window.enggFeatureGeometry = {
   }
 };
 
-require(modulePath("dimension-model.js"));
+loadModule("dimension-model.js");
 
 const model = global.window.enggDimensionModel;
 

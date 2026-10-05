@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DO COMPONENTS AND RESULTANTS FOLLOW THEIR SOURCES?
@@ -106,7 +106,7 @@ function loadModules() {
     "analysis-dependencies.js",
     "renderer.js",
   ]) {
-    require(locate(name));
+    loadModule(name);
   }
 
   for (const name of [

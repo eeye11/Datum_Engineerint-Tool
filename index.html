@@ -13,8 +13,8 @@
         src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
     ></script>
 
-    <link rel="stylesheet" href="src/styles/base.css">
-    <link rel="stylesheet" href="src/styles/editor.css">
+    <link rel="stylesheet" href="/src/styles/base.css">
+    <link rel="stylesheet" href="/src/styles/editor.css">
 
     <style>
 
@@ -379,14 +379,14 @@
 
             <button
                 class="tab active"
-                onclick="showTab('writing', this)"
+                data-tab="writing"
             >
                 Written Solution
             </button>
 
             <button
                 class="tab"
-                onclick="showTab('drawing', this)"
+                data-tab="drawing"
             >
                 Engineering Drawing
             </button>
@@ -460,7 +460,7 @@
 
                     <button
                         class="update-button"
-                        onclick="updateWriting()"
+                        data-action="render-solution"
                     >
                         Update Output
                     </button>
@@ -710,58 +710,8 @@
 
 
 
-    <!-- =========================
-         JAVASCRIPT
-    ========================= -->
-
-    <script src="src/solution/writing-tab.js"></script>
-    <script src="src/editor/tools.js"></script>
-    <script src="src/sheets/sheets.js"></script>
-    <script src="src/ui/ui.js"></script>
-        <!--
-        Measurement, dimension, annotation and smart dimension.
-
-        Loaded before drawing-state CREATES anything, though not
-        before it parses: the factories reach for these by name, so
-        a module that is read too early simply is not found until it
-        is used. The order among them is the reverse of the reading
-        order - measurement first because it knows what a feature can
-        be measured as, and the models that need that judgement next.
-    -->
-    <script src="src/core/geometry/measurement-core.js"></script>
-    <script src="src/core/units/quantities.js"></script>
-    <script src="src/ui/feature-panel/property-panel.js"></script>
-    <script src="src/features/dimensions/dimension-model.js"></script>
-    <script src="src/features/annotations/annotation-model.js"></script>
-    <script src="src/features/dimensions/smart-dimension.js"></script>
-<script src="src/core/model/drawing-state.js"></script>
-    <script src="src/file/document-file.js"></script>
-    <script src="src/file/file-save.js"></script>
-    <script src="src/file/document-export.js"></script>
-    <script src="src/file/document-recovery.js"></script>
-    <script src="src/core/scale/dimensions.js"></script>
-    <script src="src/core/scale/scale-calibration.js"></script>
-    <script src="src/core/geometry/feature-geometry.js"></script>
-    <script src="src/features/dimensions/creation-dimension.js"></script>
-    <script src="src/features/dimensions/creation-dimensioning.js"></script>
-    <script src="src/features/dimensions/dimension-editor.js"></script>
-    <script src="src/features/analysis/load-profile.js"></script>
-    <script src="src/core/selection/clipboard.js"></script>
-    <script src="src/features/analysis/rotational-arrow.js"></script>
-    <script src="src/core/geometry/body-frames.js"></script>
-    <script src="src/features/analysis/analysis-dependencies.js"></script>
-    <script src="src/features/analysis/diagram-equations.js"></script>
-    <script src="src/ui/editors/plot-editor.js"></script>
-    <script src="src/ui/editors/sketch-editor.js"></script>
-    <script src="src/core/geometry/feature-handles.js"></script>
-    <script src="src/rendering/renderer.js"></script>
-    <script src="src/core/snapping/object-snap.js"></script>
-    <script src="src/references/drawing-reference.js"></script>
-    <script src="src/sheets/sheet-tabs.js"></script>
-    <script src="src/editor/drawing.js"></script>
-    <script src="src/editor/toolbar.js"></script>
-    <script src="src/solution/written-references.js"></script>
-
+    <!-- The whole application is one ES module graph; src/main.js is its entry. -->
+    <script type="module" src="/src/main.js"></script>
 
 </body>
 

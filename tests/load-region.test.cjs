@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A LOAD ACT WHERE IT SAYS IT DOES?
@@ -67,10 +67,8 @@ global.document = dom.window.document;
  * The module attaches to `window`, so that is where it is read from.
  * The same binding the page's own script tag creates.
  */
-require(
-  locate("load-profile.js"
-  )
-);
+loadModule("load-profile.js"
+  );
 
 const profile = global.window.enggLoadProfile;
 

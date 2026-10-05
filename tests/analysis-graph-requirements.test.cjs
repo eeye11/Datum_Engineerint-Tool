@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * WHAT THE ANALYSIS GRAPH ALREADY DOES
@@ -36,7 +36,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>");
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(locate("sketch-editor.js"));
+loadModule("sketch-editor.js");
 
 const editor = global.window.enggSketchEditor;
 

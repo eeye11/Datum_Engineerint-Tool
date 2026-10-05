@@ -1,15 +1,8 @@
-function showTab(tabName, button) {
-    document.querySelectorAll(".review-content").forEach(section => {
-        section.classList.remove("active");
-    });
-
-    document.querySelectorAll(".tab").forEach(tab => {
-        tab.classList.remove("active");
-    });
-
-    document.getElementById(tabName).classList.add("active");
-    button.classList.add("active");
-}
+/*
+ * The Written Solution tab: the uploaded handwritten page, the LaTeX
+ * source, and the rendered solution.
+ */
+import { render } from "./written-references.js";
 
 /*
  * Render the written solution.
@@ -25,9 +18,7 @@ function showTab(tabName, button) {
  * So the button calls the one renderer, and there is exactly one.
  */
 function updateWriting() {
-    if (window.enggWrittenReferences) {
-        window.enggWrittenReferences.render();
-    }
+    render();
 }
 
 function previewImage(uploadId, imageId, messageId) {
@@ -47,3 +38,7 @@ function previewImage(uploadId, imageId, messageId) {
 }
 
 previewImage("writingImageUpload", "writingImage", "writingImageMessage");
+
+document
+    .querySelector("[data-action='render-solution']")
+    ?.addEventListener("click", updateWriting);

@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN ONE FORCE HAVE ITS MAGNITUDE BOX AND ANOTHER NOT?
@@ -69,7 +69,7 @@ for (const name of [
   "dimension-model.js",
   "annotation-model.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 const model = global.window.enggAnnotationModel;
