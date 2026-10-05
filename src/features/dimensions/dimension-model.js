@@ -1701,7 +1701,6 @@ function linearGraphics(
       offset
     ),
 
-    text: text,
     textFrame: textFrame(textAnchor, direction),
     textAnchor,
   };

@@ -140,8 +140,16 @@ function forcesOf(
  * solution against.
  */
 export function analysisSourceBody(
-    features
+    candidates
 ) {
+    /*
+     * A candidate can be missing: a click that snapped to something which
+     * is not a feature (a grid point, empty space) arrives as undefined.
+     * It is simply not a body, rather than a crash.
+     */
+    const features =
+        candidates.filter(Boolean);
+
     const member =
         features.find(
             object =>

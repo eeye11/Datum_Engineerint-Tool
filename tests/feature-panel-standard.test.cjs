@@ -159,8 +159,12 @@ check(
 
 console.log("\n  the feature panel uses the shared vocabulary\n");
 
+/*
+ * The builder, with the two helpers every panel builder shares (the heading
+ * marker and the finalise pass), which sit just above it.
+ */
 const propertyMarkup = section(
-  "function featurePropertyMarkup(",
+  "const section = label =>",
   "function pointSizeMarkup(",
 );
 

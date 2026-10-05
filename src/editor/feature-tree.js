@@ -13,6 +13,8 @@ import { drawingProperties } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { takeDistributedLoadMagnitude } from "./load-tool.js";
+import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
+import { finaliseRows, section } from "./feature-panel-markup.js";
 
 function objectIcon(
     object
@@ -391,6 +393,8 @@ function componentRowMarkup(
 export function renderLoadBuildPanel(
     interaction
 ) {
+    const { number, readOnly } = enggPropertyPanel;
+
     const rows = [
         section("DISTRIBUTED LOAD"),
     ];
@@ -529,7 +533,7 @@ export function renderLoadBuildPanel(
     }
 
     drawingProperties.innerHTML =
-        rows.join("");
+        finaliseRows(rows);
 
     /*
      * ONE LISTENER, ATTACHED ONCE PER PANEL.

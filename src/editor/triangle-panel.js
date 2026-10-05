@@ -4,7 +4,7 @@
 
 import { appearanceMarkup } from "./appearance-panel.js";
 import { distance } from "./construction-geometry.js";
-import { featureHeaderMarkup } from "./feature-panel-markup.js";
+import { featureHeaderMarkup, finaliseRows } from "./feature-panel-markup.js";
 
 /*
  * Triangle measurements derived from the actual

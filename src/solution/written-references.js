@@ -46,6 +46,17 @@ const DEFAULT_HEIGHT = 460;
 let renderAttached = () => {};
 
 /*
+ * MathJax arrives separately: its script loads asynchronously so the page
+ * does not wait for it. Until it is ready the solution is shown as plain
+ * text, and it is rendered again as soon as MathJax has started.
+ */
+function mathJax() {
+  return typeof window.MathJax?.typesetPromise === "function"
+    ? window.MathJax
+    : null;
+}
+
+/*
  * Render the written solution: the Update Output button and the live
  * updates call this same function, so clicking the button and editing the
  * drawing produce identical results.
@@ -152,7 +163,7 @@ function attach() {
   async function renderSolution() {
     const source = code.value;
 
-    MathJax.typesetClear([output]);
+    mathJax()?.typesetClear([output]);
 
     /*
      * Where every reference is, and the text either side of it.
@@ -176,7 +187,7 @@ function attach() {
        */
       output.textContent = mathOrPlain(source);
 
-      await MathJax.typesetPromise([output]);
+      await mathJax()?.typesetPromise([output]);
 
       return;
     }
@@ -205,7 +216,7 @@ function attach() {
      * alone, and a single pass is both faster and less likely to
      * renumber anything.
      */
-    await MathJax.typesetPromise([output]);
+    await mathJax()?.typesetPromise([output]);
   }
 
   /*
@@ -478,6 +489,14 @@ function attach() {
   );
 
   renderAttached = renderSolution;
+
+  if (!mathJax()) {
+    document
+      .getElementById("MathJax-script")
+      ?.addEventListener("load", () => {
+        Promise.resolve(window.MathJax?.startup?.promise).then(refreshAll);
+      });
+  }
 
   refreshAll();
 }

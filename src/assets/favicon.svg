@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Datum: the engineering datum-feature triangle on UAlberta green. -->
+  <rect width="32" height="32" rx="6" fill="#275d38"/>
+  <path d="M7 23h18" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M16 8l-7 12h14z" fill="#f2cd00"/>
+</svg>

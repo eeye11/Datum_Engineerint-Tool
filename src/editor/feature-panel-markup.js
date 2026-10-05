@@ -80,6 +80,95 @@ function escapeHtmlText(value) {
 }
 
 /*
+ * A SECTION HEADING, WHICH STANDS OR FALLS WITH ITS FIELDS.
+ *
+ * The panel is assembled by pushing a heading and then its fields into one
+ * list, so a heading cannot know at the moment it is written whether the
+ * fields below it will turn out to exist. It is therefore emitted as a
+ * MARKER, and `finaliseRows` removes any marker whose following rows are
+ * all empty - which is how an APPEARANCE heading over nothing, and the gap
+ * left where it was, both disappear.
+ *
+ * The marker is an HTML comment so a panel that somehow skipped
+ * finalisation still renders correctly, with the heading text hidden.
+ */
+export const section = label =>
+    `<!--section:${label}-->`;
+
+/*
+ * Drop every heading that is not followed by at least one real field, and
+ * drop every empty fragment. This is the single pass that enforces "no
+ * empty sections" and "no leftover whitespace from removed fields".
+ *
+ * A heading is kept only when a non-heading, non-empty row follows it
+ * before the next heading. Trailing headings are removed too, because a
+ * heading at the end of the panel has nothing under it by definition.
+ */
+export const finaliseRows = list => {
+    const kept = [];
+
+    /*
+     * NESTED ROWS ARE FLATTENED FIRST.
+     *
+     * A helper that builds a whole group of fields - the support panel,
+     * a relative-coordinate block - returns its rows as an ARRAY, and the
+     * caller pushes that array into the panel's row list as one entry. A
+     * pass that only understood strings skipped every such entry, so a
+     * support rendered as its title and nothing else: every field it
+     * carried was silently discarded here.
+     *
+     * Flattening means a helper may return one row or many without the
+     * caller having to know which, which is the contract the builders
+     * already assume.
+     */
+    const flat = list.flat(Infinity);
+
+    for (let index = 0; index < flat.length; index += 1) {
+        const entry = flat[index];
+
+        if (typeof entry !== "string" || entry.trim() === "") {
+            continue;
+        }
+
+        const marker = /^<!--section:(.*?)-->$/.exec(entry);
+
+        if (!marker) {
+            kept.push(entry);
+            continue;
+        }
+
+        /*
+         * Keep the heading only if a real field follows it before the next
+         * heading.
+         */
+        let hasField = false;
+
+        for (let ahead = index + 1; ahead < flat.length; ahead += 1) {
+            const next = flat[ahead];
+
+            if (typeof next !== "string" || next.trim() === "") {
+                continue;
+            }
+
+            if (/^<!--section:(.*?)-->$/.test(next)) {
+                break;
+            }
+
+            hasField = true;
+            break;
+        }
+
+        if (hasField) {
+            kept.push(
+                `<div class="drawing-properties-section">${escapeHtmlText(marker[1])}</div>`,
+            );
+        }
+    }
+
+    return kept.join("");
+};
+
+/*
  * The Features panel for a Rigid Body, in whichever shape it
  * currently has.
  *
@@ -427,95 +516,6 @@ export function featurePropertyMarkup(object) {
         coordinate("X", xKey, x, unit),
         coordinate("Y", yKey, y, unit),
     ];
-
-    /*
-     * A SECTION HEADING, WHICH STANDS OR FALLS WITH ITS FIELDS.
-     *
-     * The panel is assembled by pushing a heading and then its fields into one
-     * list, so a heading cannot know at the moment it is written whether the
-     * fields below it will turn out to exist. It is therefore emitted as a
-     * MARKER, and `finaliseRows` removes any marker whose following rows are
-     * all empty - which is how an APPEARANCE heading over nothing, and the gap
-     * left where it was, both disappear.
-     *
-     * The marker is an HTML comment so a panel that somehow skipped
-     * finalisation still renders correctly, with the heading text hidden.
-     */
-    const section = label =>
-        `<!--section:${label}-->`;
-
-    /*
-     * Drop every heading that is not followed by at least one real field, and
-     * drop every empty fragment. This is the single pass that enforces "no
-     * empty sections" and "no leftover whitespace from removed fields".
-     *
-     * A heading is kept only when a non-heading, non-empty row follows it
-     * before the next heading. Trailing headings are removed too, because a
-     * heading at the end of the panel has nothing under it by definition.
-     */
-    const finaliseRows = list => {
-        const kept = [];
-
-        /*
-         * NESTED ROWS ARE FLATTENED FIRST.
-         *
-         * A helper that builds a whole group of fields - the support panel,
-         * a relative-coordinate block - returns its rows as an ARRAY, and the
-         * caller pushes that array into the panel's row list as one entry. A
-         * pass that only understood strings skipped every such entry, so a
-         * support rendered as its title and nothing else: every field it
-         * carried was silently discarded here.
-         *
-         * Flattening means a helper may return one row or many without the
-         * caller having to know which, which is the contract the builders
-         * already assume.
-         */
-        const flat = list.flat(Infinity);
-
-        for (let index = 0; index < flat.length; index += 1) {
-            const entry = flat[index];
-
-            if (typeof entry !== "string" || entry.trim() === "") {
-                continue;
-            }
-
-            const marker = /^<!--section:(.*?)-->$/.exec(entry);
-
-            if (!marker) {
-                kept.push(entry);
-                continue;
-            }
-
-            /*
-             * Keep the heading only if a real field follows it before the next
-             * heading.
-             */
-            let hasField = false;
-
-            for (let ahead = index + 1; ahead < flat.length; ahead += 1) {
-                const next = flat[ahead];
-
-                if (typeof next !== "string" || next.trim() === "") {
-                    continue;
-                }
-
-                if (/^<!--section:(.*?)-->$/.test(next)) {
-                    break;
-                }
-
-                hasField = true;
-                break;
-            }
-
-            if (hasField) {
-                kept.push(
-                    `<div class="drawing-properties-section">${escapeHtmlText(marker[1])}</div>`,
-                );
-            }
-        }
-
-        return kept.join("");
-    };
 
     /*
      * A NUMBER THAT IS TRUE BUT NOT WRITTEN.

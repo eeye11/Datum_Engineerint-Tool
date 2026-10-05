@@ -11,16 +11,8 @@
  * So this loads the real page - index.html's own markup - into jsdom, then
  * loads the application's entry module, src/main.js, exactly as the browser
  * does, and checks that the editor came up in a working state.
- *
- * jsdom does not execute <script type="module">, so the entry module is
- * loaded here with require() (which Node supports for ES modules). Browser
- * APIs jsdom lacks are stubbed only where start-up needs them.
  */
-const { JSDOM } = require("jsdom");
-const path = require("path");
-const fs = require("fs");
-
-const projectRoot = path.join(__dirname, "..");
+const { bootApp } = require("./helpers/boot-app.cjs");
 
 let pass = 0;
 let fail = 0;
@@ -35,46 +27,11 @@ const check = (name, ok, detail) => {
   }
 };
 
-const html = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
-
-const dom = new JSDOM(html, {
-  pretendToBeVisual: true,
-  url: "http://localhost/",
-});
-
-const { window } = dom;
-
-/* The globals a browser module sees. */
-global.window = window;
-global.document = window.document;
-global.navigator = window.navigator;
-global.localStorage = window.localStorage;
-global.HTMLElement = window.HTMLElement;
-global.Element = window.Element;
-global.Node = window.Node;
-global.Event = window.Event;
-global.KeyboardEvent = window.KeyboardEvent;
-global.MouseEvent = window.MouseEvent;
-global.getComputedStyle = window.getComputedStyle.bind(window);
-global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-global.cancelAnimationFrame = (id) => clearTimeout(id);
-window.requestAnimationFrame = global.requestAnimationFrame;
-window.cancelAnimationFrame = global.cancelAnimationFrame;
-
-/* MathJax is a separately loaded script; the solution renderer only needs it to exist. */
-global.MathJax = window.MathJax = {
-  typesetClear() {},
-  typesetPromise: () => Promise.resolve(),
-};
-
 console.log("\n  the application boots from its entry module\n");
 
-let bootError = null;
+const { window, document, error } = bootApp();
 
-try {
-  require(path.join(projectRoot, "src", "main.js"));
-} catch (error) {
-  bootError = error;
+if (error) {
   console.log(
     `  stack: ${(error.stack || "").split("\n").slice(1, 4).map((s) => s.trim()).join(" | ")}`,
   );
@@ -82,11 +39,11 @@ try {
 
 check(
   "src/main.js and everything it imports evaluate without throwing",
-  !bootError,
-  bootError ? `${bootError.name}: ${bootError.message}` : "",
+  !error,
+  error ? `${error.name}: ${error.message}` : "",
 );
 
-if (bootError) {
+if (error) {
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   process.exit(1);
 }

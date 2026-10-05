@@ -77,7 +77,7 @@ function restoreSheetsFromHistory(captured) {
             captured
         );
 
-    renderSheetTabs();
+    refreshSheetTabs();
     renderCurrentDrawing();
     renderProperties();
 }

@@ -270,8 +270,6 @@ function createDrawingState() {
             arcAccumulatedSweep: 0,
             arcMode: "centrepoint",
             arcCursorAngle: null,
-            polygonMode: "sides",
-            polygonSides: 6,
             polygonSides: null,
             polygonMode: null,
             polygonAdditionalSides: null,
@@ -2506,8 +2504,6 @@ function clearInteraction(state) {
     state.interaction.arcAccumulatedSweep = 0;
     state.interaction.arcMode = "centrepoint";
     state.interaction.arcCursorAngle = null;
-    state.interaction.polygonMode = "sides";
-    state.interaction.polygonSides = 6;
     state.interaction.polygonSides = null;
     state.interaction.polygonMode = null;
     state.interaction.polygonAdditionalSides = null;

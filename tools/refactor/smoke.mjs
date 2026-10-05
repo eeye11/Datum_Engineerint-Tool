@@ -7,6 +7,7 @@ const errors = [];
 page.on("pageerror", e => errors.push("pageerror: " + e.message));
 page.on("console", m => { if (m.type() === "error") errors.push("console: " + m.text()); });
 page.on("requestfailed", r => errors.push("requestfailed: " + r.url()));
+page.on("response", r => { if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`); });
 await page.goto(url);
 await page.waitForTimeout(800);
 await page.click("text=Engineering Drawing");

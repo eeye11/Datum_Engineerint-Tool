@@ -9,9 +9,31 @@
  */
 import fs from "fs";
 
-const [beforeFile, afterFile] = process.argv.slice(2);
-const before = JSON.parse(fs.readFileSync(beforeFile, "utf8"));
-const after = JSON.parse(fs.readFileSync(afterFile, "utf8"));
+const args = process.argv.slice(2);
+const ignoreIds = args.includes("--ignore-ids");
+const [beforeFile, afterFile] = args.filter(a => !a.startsWith("--"));
+
+/*
+ * --ignore-ids: ids come from a counter, so a change that creates one more
+ * object renumbers everything after it. Each step's ids are replaced by
+ * their order of first appearance, so only real differences remain.
+ */
+const ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-4000-8000-[0-9a-f]{12}|sheet_[0-9a-f]{8}|ref_[0-9a-f]{8}/g;
+function normalise(results) {
+    if (!ignoreIds) return results;
+    const out = {};
+    for (const [step, value] of Object.entries(results)) {
+        const seen = new Map();
+        out[step] = JSON.parse(JSON.stringify(value).replace(ID_PATTERN, id => {
+            if (!seen.has(id)) seen.set(id, `#${seen.size + 1}`);
+            return seen.get(id);
+        }));
+    }
+    return out;
+}
+
+const before = normalise(JSON.parse(fs.readFileSync(beforeFile, "utf8")));
+const after = normalise(JSON.parse(fs.readFileSync(afterFile, "utf8")));
 
 function firstDifference(a, b, path = "") {
     if (a === b) return null;
