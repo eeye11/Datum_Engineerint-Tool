@@ -124,7 +124,7 @@ const readFile = (name) =>
  */
 const dependencies = fs
   .readFileSync(path.join(projectRoot, "index.html"), "utf8")
-  .match(/<script src="js\/([^"]+)"><\/script>/g)
+  .match(/<script src="src\/([^"]+)"><\/script>/g)
   .map((tag) => tag.match(/([^/"]+)">/)[1])
   .filter((name) => name !== "drawing.js");
 

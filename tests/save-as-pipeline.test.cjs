@@ -31,7 +31,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
-  "js",
+  "src",
 );
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {

@@ -30,7 +30,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SOURCE_ROOT = path.join(__dirname, "..", "..", "js");
+const SOURCE_ROOT = path.join(__dirname, "..", "..", "src");
 
 /* Folders that hold application source, in no particular order. */
 const SKIP = new Set(["node_modules", ".git"]);

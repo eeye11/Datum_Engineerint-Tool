@@ -33,7 +33,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
-  "js",
+  "src",
 );
 
 const code = fs.readFileSync(

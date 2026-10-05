@@ -5,8 +5,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "node backend/server.js",
-    "serve": "node backend/server.js",
+    "start": "node server/server.js",
+    "serve": "node server/server.js",
     "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
