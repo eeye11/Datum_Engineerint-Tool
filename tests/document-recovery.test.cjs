@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Crash recovery, tested against a stubbed localStorage.
  *
@@ -34,7 +34,7 @@ global.window = {
   clearTimeout: () => {}
 };
 
-require(modulePath("document-recovery.js"));
+loadModule("document-recovery.js");
 const r = global.window.enggRecovery;
 
 let pass = 0;

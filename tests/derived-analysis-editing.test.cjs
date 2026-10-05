@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A DRAGGED FEATURE STAY UNDER THE CURSOR?
@@ -37,8 +37,8 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = { crypto: { randomUUID: () => "drag-uuid" } };
 
-require(modulePath("body-frames.js"));
-require(modulePath("feature-geometry.js"));
+loadModule("body-frames.js");
+loadModule("feature-geometry.js");
 
 const geometry = global.window.enggFeatureGeometry;
 

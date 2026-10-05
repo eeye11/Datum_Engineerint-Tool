@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE SNAP LET GO WHEN THE CURSOR DOES?
@@ -66,11 +66,7 @@ const stateSource = fs.readFileSync(
   "utf8",
 );
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js",
-  ),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 const number = re => {
   const found = re.exec(code);
@@ -246,9 +242,7 @@ check(
 
 check(
   "an empty snap leaves the instruction alone",
-  /return\s*\([\s\S]{0,120}?\)\s*:\s*fallback/.test(
-    drawingCode,
-  ) || /:\s*fallback\s*;/.test(drawingCode),
+  /feedback\.length\s*\?[\s\S]{0,120}?:\s*fallback\s*\)/.test(drawingCode),
   "with no snap the status must be exactly the tool's instruction",
 );
 

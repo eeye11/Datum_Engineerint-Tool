@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DELETING AN ANALYSIS DIAGRAM MUST TAKE ITS WHOLE GRAPH WITH IT
@@ -53,9 +53,7 @@ global.window.requestAnimationFrame = global.requestAnimationFrame;
 global.window.cancelAnimationFrame = id => clearTimeout(id);
 
 const load = file =>
-  require(
-    locate(file),
-  );
+  loadModule(file);
 
 /*
  * The modules reach for the DOM by name, and the renderer reaches for

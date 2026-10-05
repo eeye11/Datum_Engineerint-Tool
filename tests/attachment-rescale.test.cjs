@@ -28,9 +28,9 @@
  */
 global.window = {};
 
-const { locate } = require("./helpers/source-path.cjs");
+const { loadModule, locate } = require("./helpers/source-path.cjs");
 
-require(locate("body-frames.js"));
+loadModule("body-frames.js");
 
 const frames = global.window.enggBodyFrames;
 

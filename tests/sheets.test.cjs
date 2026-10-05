@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Sheets and Drawing References, tested directly.
  *
@@ -19,7 +19,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
  */
 
 global.window = {};
-require(modulePath("sheets.js"));
+loadModule("sheets.js");
 const s = global.window.enggSheets;
 
 let pass = 0;

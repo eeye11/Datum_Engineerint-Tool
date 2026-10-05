@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DELETING A BODY TAKES ITS DEPENDENTS WITH IT
@@ -57,10 +57,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(
-  locate("drawing-state.js",
-  ),
-);
+loadModule("drawing-state.js");
 
 const S = global.window.enggDrawingState;
 

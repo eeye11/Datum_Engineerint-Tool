@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN THE SELECT TOOL REACH A DISTRIBUTED LOAD?
@@ -55,10 +55,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(
-  locate("load-profile.js",
-  ),
-);
+loadModule("load-profile.js");
 
 const profile = global.window.enggLoadProfile;
 

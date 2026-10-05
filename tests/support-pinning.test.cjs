@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A SUPPORT STAY PINNED WHILE IT IS BEING MOVED?
@@ -39,10 +39,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 let pass = 0;
 let fail = 0;
@@ -127,7 +124,7 @@ check(
 
 global.window = { crypto: { randomUUID: () => "support-pin-uuid" } };
 
-require(modulePath("body-frames.js"));
+loadModule("body-frames.js");
 
 const frames = global.window.enggBodyFrames;
 

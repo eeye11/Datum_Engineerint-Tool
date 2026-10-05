@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * Measurement core, tested directly.
  *
@@ -45,8 +45,8 @@ global.window = {
   }
 };
 
-require(modulePath("dimensions.js"));
-require(modulePath("measurement-core.js"));
+loadModule("dimensions.js");
+loadModule("measurement-core.js");
 
 const m = global.window.enggMeasurement;
 

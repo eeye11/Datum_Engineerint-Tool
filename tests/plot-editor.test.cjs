@@ -5,7 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE PLOT EDITOR SAY WHAT A STUDENT NEEDS?
@@ -51,15 +51,7 @@ global.document = dom.window.document;
 
 const projectRoot = path.join(__dirname, "..");
 
-global.window.enggDiagramEquations = undefined;
-
-vm.runInThisContext(
-  fs.readFileSync(
-    locate("diagram-equations.js"),
-    "utf8",
-  ),
-  { filename: "diagram-equations.js" },
-);
+loadModule("diagram-equations.js");
 
 /* The renderer needs a DOM too. */
 const rendererDom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -87,19 +79,16 @@ const analysisPlotMarks = (() => {
 
   return vm.runInNewContext(
     `(function (window) { ${source}; return analysisPlotMarks; })`,
-    { window: rendererDom.window },
+    {
+      window: rendererDom.window,
+      enggDiagramEquations: rendererDom.window.enggDiagramEquations,
+    },
   )(rendererDom.window);
 })();
 
 global.window.enggDrawingRenderer = { analysisPlotMarks };
 
-vm.runInThisContext(
-  fs.readFileSync(
-    locate("plot-editor.js"),
-    "utf8",
-  ),
-  { filename: "plot-editor.js" },
-);
+loadModule("plot-editor.js");
 
 const eq = global.window.enggDiagramEquations;
 const editor = global.window.enggPlotEditor;

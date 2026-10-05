@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The document scale, tested directly.
  *
@@ -14,7 +14,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
  */
 
 global.window = {};
-require(modulePath("dimensions.js"));
+loadModule("dimensions.js");
 const d = global.window.enggDimensions;
 
 let pass = 0;

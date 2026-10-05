@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * THE ROTATIONAL ARROW PATH - regression guard.
  *
@@ -35,7 +35,7 @@ global.window = {
     }
 };
 
-require(modulePath("rotational-arrow.js"));
+loadModule("rotational-arrow.js");
 
 const arrow = global.window.enggDrawingRotationalArrow;
 

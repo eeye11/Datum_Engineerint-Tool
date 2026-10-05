@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE GENERAL TOOLS, OVER EVERY STATICS FEATURE
@@ -61,12 +61,9 @@ sandbox.globalThis = sandbox;
 
 vm.createContext(sandbox);
 
-for (const name of ["body-frames.js", "feature-geometry.js"]) {
-  vm.runInContext(
-    fs.readFileSync(locate(name), "utf8"),
-    sandbox,
-  );
-}
+/* Both are ES modules now: loaded once, and handed to the sandbox by name. */
+sandbox.window.enggBodyFrames = loadModule("body-frames.js").default;
+sandbox.window.enggFeatureGeometry = loadModule("feature-geometry.js").default;
 
 const geometry =
   sandbox.window.enggFeatureGeometry ||

@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * SHOW MAGNITUDES, FROM A REAL FEATURE
@@ -62,9 +62,7 @@ for (const name of [
   "drawing-state.js",
   "renderer.js",
 ]) {
-  require(
-    locate(name),
-  );
+  loadModule(name);
 }
 
 /*

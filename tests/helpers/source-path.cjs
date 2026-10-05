@@ -30,7 +30,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SOURCE_ROOT = path.join(__dirname, "..", "..", "js");
+const SOURCE_ROOT = path.join(__dirname, "..", "..", "src");
 
 /* Folders that hold application source, in no particular order. */
 const SKIP = new Set(["node_modules", ".git"]);
@@ -132,9 +132,86 @@ function locate(name) {
   return modulePath(path.basename(name));
 }
 
+/*
+ * Load an application module, the way a test needs it.
+ *
+ * The sources are ES modules: each one `export default`s the object it
+ * used to publish on `window` (enggMeasurement, enggDrawingState, ...).
+ * Node can require() an ES module directly, and that returns its exports;
+ * this also places the default export on `window` (or the global object
+ * when a test has not stubbed one) under its old global name. Tests
+ * written against `window.enggX` therefore keep working unchanged, while
+ * new tests can simply use the returned exports.
+ *
+ * A module's own imports are loaded with it, exactly as in the browser.
+ */
+const DEFAULT_EXPORT = /^export default (\w+);/m;
+
+function loadModule(name) {
+  const file = locate(name);
+  const exported = require(file);
+  const declared = fs.readFileSync(file, "utf8").match(DEFAULT_EXPORT);
+  const target = globalThis.window || globalThis;
+
+  if (declared && exported.default !== undefined) {
+    target[declared[1]] = exported.default;
+  }
+
+  return exported;
+}
+
+/*
+ * The drawing controller's source, as one text.
+ *
+ * Several tests read the controller's source to check how it is written,
+ * or lift a function out of it by name and run it in a sandbox. The
+ * controller is split across the modules under src/editor/, so this gathers
+ * them in a stable order - a function is found wherever it lives - and
+ * leaves out the module syntax (import lines and `export` keywords), which
+ * is about how the files connect rather than what the code does, and which
+ * a sandbox cannot evaluate.
+ */
+function controllerSource() {
+  const editorDir = path.join(SOURCE_ROOT, "editor");
+  const files = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".js")) files.push(full);
+    }
+  })(editorDir);
+  /*
+   * Reading order: the table of contents at the top of editor/index.js,
+   * then anything it does not list. A test that slices "from this function
+   * to the next" relies on the two being adjacent, as they are in that order.
+   */
+  const indexFile = path.join(editorDir, "index.js");
+  const toc = [
+    ...fs.readFileSync(indexFile, "utf8").matchAll(/^ \*\s{3}([a-z-]+\.js)\s/gm),
+  ].map((m) => path.join(editorDir, m[1]));
+  const rank = (file) => {
+    const at = toc.indexOf(file);
+    return at < 0 ? toc.length + (file === indexFile ? 1 : 0) : at;
+  };
+
+  return files
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((file) =>
+      fs
+        .readFileSync(file, "utf8")
+        .replace(/^import[^;]*;\n/gm, "")
+        .replace(/^export (?=(?:async )?function |const |let |class )/gm, "")
+        .replace(/^export \{[^}]*\}(?: from "[^"]*")?;\n/gm, ""),
+    )
+    .join("\n");
+}
+
 module.exports = {
   SOURCE_ROOT,
+  controllerSource,
   duplicates,
+  loadModule,
   locate,
   modulePath,
   sourceDir,

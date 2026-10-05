@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ATTACHMENTS ARE STORED AS A FRACTION OF THEIR MEMBER.
  *
@@ -33,7 +33,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = {};
 
-require(modulePath("body-frames.js"));
+loadModule("body-frames.js");
 
 const frames = global.window.enggBodyFrames;
 

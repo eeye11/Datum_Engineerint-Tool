@@ -1,0 +1,40 @@
+# Every push and pull request: lint, test, build, and check the built site
+# in a real browser.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The integration API, driven in Chrome against the production build,
+      # including the cross-origin iframe bridge.
+      - name: Integration API in the browser
+        run: |
+          node tests/e2e/static-server.mjs dist 8126 &
+          sleep 1
+          node tests/e2e/api-check.mjs http://localhost:8126/

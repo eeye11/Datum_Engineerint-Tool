@@ -159,7 +159,6 @@ console.log(
  */
 const SANCTIONED = new Set([
   "renderer.js",
-  "drawing.js",
   "ui.js",
   "wiring.js",
   "sheet-tabs.js",
@@ -168,8 +167,11 @@ const SANCTIONED = new Set([
   "written-references.js"
 ]);
 
+/* The drawing editor (src/editor/) is the controller, and builds its own canvas overlay. */
+const inEditor = (name) => /[\\/]editor[\\/]/.test(modules.get(name));
+
 const offenders = [...modules.keys()]
-  .filter((name) => !SANCTIONED.has(name))
+  .filter((name) => !SANCTIONED.has(name) && !inEditor(name))
   .filter((name) => DRAWS_OWN_SVG.some((pattern) => pattern.test(read(name))));
 
 check(

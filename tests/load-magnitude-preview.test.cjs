@@ -27,11 +27,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const code = controllerSource();
 
 let pass = 0;
 let fail = 0;

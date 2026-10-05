@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES A REVERSED LOAD STILL HAVE ITS OUTLINE?
  *
@@ -124,12 +124,12 @@ global.window.document = {
 };
 global.document = global.window.document;
 
-require(modulePath("load-profile.js"));
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("load-profile.js"));
-require(modulePath("drawing-state.js"));
-require(modulePath("renderer.js"));
+loadModule("load-profile.js");
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("load-profile.js");
+loadModule("drawing-state.js");
+loadModule("renderer.js");
 
 const state = global.window.enggDrawingState;
 const profile = global.window.enggLoadProfile;

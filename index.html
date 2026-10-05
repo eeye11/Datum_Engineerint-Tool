@@ -5,348 +5,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>EnggWrite</title>
+    <title>Datum</title>
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg">
 
     <script
         id="MathJax-script"
         async
-        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+        src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"
     ></script>
 
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/engineering-drawing.css">
+    <link rel="stylesheet" href="/src/styles/tokens.css">
+    <link rel="stylesheet" href="/src/styles/base.css">
+    <link rel="stylesheet" href="/src/styles/editor.css">
+    <link rel="stylesheet" href="/src/styles/shell.css">
 
-    <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            --app-ui-font: Arial, sans-serif;
-            margin: 0;
-            font-family: var(--app-ui-font);
-            background: #f5f6f8;
-            color: #222;
-        }
-
-        /* =========================
-           HEADER
-        ========================= */
-
-        .header {
-            background: #ffffff;
-            border-bottom: 1px solid #d9dce1;
-            padding: 22px 40px;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-        }
-
-
-        /* =========================
-           PAGE
-        ========================= */
-
-        .page {
-            max-width: 1500px;
-            margin: 0 auto;
-            padding: 30px 40px;
-        }
-
-
-        /* =========================
-           TABS
-        ========================= */
-
-        .tabs {
-            display: flex;
-            gap: 5px;
-
-            border-bottom: 1px solid #cfd3d8;
-
-            margin-bottom: 25px;
-        }
-
-        .tab {
-            padding: 14px 30px;
-
-            border: none;
-            background: transparent;
-
-            font-size: 17px;
-            font-weight: 600;
-
-            color: #666;
-
-            cursor: pointer;
-
-            border-bottom: 3px solid transparent;
-        }
-
-        .tab:hover {
-            color: #222;
-        }
-
-        .tab.active {
-            color: #1f5c38;
-            border-bottom: 3px solid #1f5c38;
-        }
-
-
-        /* =========================
-           REVIEW CONTENT
-        ========================= */
-
-        .review-content {
-            display: none;
-        }
-
-        .review-content.active {
-            display: block;
-        }
-
-
-        /* =========================
-           COLUMN HEADERS
-        ========================= */
-
-        .column-headings {
-            display: grid;
-
-            grid-template-columns:
-                1fr 1fr 1fr;
-
-            gap: 20px;
-
-            margin-bottom: 10px;
-        }
-
-        .column-heading {
-            font-size: 16px;
-            font-weight: 600;
-
-            color: #555;
-
-            padding-left: 5px;
-        }
-
-
-        /* =========================
-           REVIEW GRID
-        ========================= */
-
-        .review-grid {
-            display: grid;
-
-            grid-template-columns:
-                1fr 1fr 1fr;
-
-            gap: 20px;
-        }
-
-
-        /* =========================
-           PANELS
-        ========================= */
-
-        .panel {
-            background: #ffffff;
-
-            border: 1px solid #d8dce1;
-
-            border-radius: 10px;
-
-            min-height: 430px;
-
-            padding: 15px;
-
-            box-shadow:
-                0 2px 6px rgba(0,0,0,0.05);
-        }
-
-
-        /* =========================
-           HANDWRITING
-        ========================= */
-
-        .handwritten-area {
-            width: 100%;
-            height: 395px;
-
-            display: flex;
-
-            justify-content: center;
-            align-items: center;
-
-            background: #fafafa;
-
-            border-radius: 6px;
-
-            overflow: hidden;
-        }
-
-        .handwritten-area img {
-            max-width: 100%;
-            max-height: 100%;
-
-            object-fit: contain;
-        }
-
-
-        /* =========================
-           CODE EDITOR
-        ========================= */
-
-        .code-editor {
-            width: 100%;
-            height: 395px;
-
-            resize: none;
-
-            border: none;
-
-            border-radius: 6px;
-
-            padding: 18px;
-
-            background: #1e1e1e;
-
-            color: #e6e6e6;
-
-            font-family:
-                Consolas,
-                "Courier New",
-                monospace;
-
-            font-size: 14px;
-
-            line-height: 1.5;
-
-            outline: none;
-        }
-
-
-        /* =========================
-           OUTPUT
-        ========================= */
-
-        .output {
-            width: 100%;
-            height: 395px;
-            padding: 20px;
-            overflow: auto;
-            background: #ffffff;
-            border-radius: 6px;
-        }
-
-        #writingOutput mjx-container[display="true"] {
-            margin: 0 0 18px 0 !important;
-        }
-
-
-        /* =========================
-           BUTTON
-        ========================= */
-
-        .update-button {
-            margin-top: 15px;
-
-            padding: 10px 20px;
-
-            background: #1f5c38;
-
-            color: white;
-
-            border: none;
-
-            border-radius: 6px;
-
-            cursor: pointer;
-
-            font-size: 14px;
-        }
-
-        .update-button:hover {
-            background: #17472b;
-        }
-
-
-        /* =========================
-           MOBILE
-        ========================= */
-
-        @media (max-width: 900px) {
-
-            .review-grid,
-            .column-headings {
-                grid-template-columns: 1fr;
-            }
-
-            .page {
-                padding: 20px;
-            }
-
-        }
-        
-
-        /* Keep the application shell inside the browser viewport. */
-        html,
-        body {
-            height: 100%;
-            overflow: hidden;
-        }
-
-        body {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-        }
-
-        .header {
-            flex: 0 0 auto;
-            padding: 10px 20px;
-        }
-
-        .header h1 {
-            font-size: 20px;
-            line-height: 1.2;
-        }
-
-        .page {
-            display: flex;
-            flex: 1 1 auto;
-            flex-direction: column;
-            min-height: 0;
-            max-width: none;
-            padding: 0 20px 10px;
-            width: 100%;
-        }
-
-        .tabs {
-            flex: 0 0 auto;
-            margin-bottom: 6px;
-        }
-
-        .review-content.active {
-            min-height: 0;
-        }
-
-        #writing.review-content.active {
-            overflow: auto;
-        }
-
-        #drawing.review-content.active {
-            display: flex;
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        
-    </style>
 </head>
 
 
@@ -379,14 +51,14 @@
 
             <button
                 class="tab active"
-                onclick="showTab('writing', this)"
+                data-tab="writing"
             >
                 Written Solution
             </button>
 
             <button
                 class="tab"
-                onclick="showTab('drawing', this)"
+                data-tab="drawing"
             >
                 Engineering Drawing
             </button>
@@ -460,7 +132,7 @@
 
                     <button
                         class="update-button"
-                        onclick="updateWriting()"
+                        data-action="render-solution"
                     >
                         Update Output
                     </button>
@@ -710,58 +382,8 @@
 
 
 
-    <!-- =========================
-         JAVASCRIPT
-    ========================= -->
-
-    <script src="js/script.js"></script>
-    <script src="js/app/tools.js"></script>
-    <script src="js/sheets/sheets.js"></script>
-    <script src="js/app/ui.js"></script>
-        <!--
-        Measurement, dimension, annotation and smart dimension.
-
-        Loaded before drawing-state CREATES anything, though not
-        before it parses: the factories reach for these by name, so
-        a module that is read too early simply is not found until it
-        is used. The order among them is the reverse of the reading
-        order - measurement first because it knows what a feature can
-        be measured as, and the models that need that judgement next.
-    -->
-    <script src="js/core/geometry/measurement-core.js"></script>
-    <script src="js/core/units/quantities.js"></script>
-    <script src="js/ui/feature-panel/property-panel.js"></script>
-    <script src="js/features/dimensions/dimension-model.js"></script>
-    <script src="js/features/annotations/annotation-model.js"></script>
-    <script src="js/features/dimensions/smart-dimension.js"></script>
-<script src="js/core/model/drawing-state.js"></script>
-    <script src="js/file/document-file.js"></script>
-    <script src="js/file/file-save.js"></script>
-    <script src="js/file/document-export.js"></script>
-    <script src="js/file/document-recovery.js"></script>
-    <script src="js/core/scale/dimensions.js"></script>
-    <script src="js/core/scale/scale-calibration.js"></script>
-    <script src="js/core/geometry/feature-geometry.js"></script>
-    <script src="js/features/dimensions/creation-dimension.js"></script>
-    <script src="js/features/dimensions/creation-dimensioning.js"></script>
-    <script src="js/features/dimensions/dimension-editor.js"></script>
-    <script src="js/features/analysis/load-profile.js"></script>
-    <script src="js/core/selection/clipboard.js"></script>
-    <script src="js/features/analysis/rotational-arrow.js"></script>
-    <script src="js/core/geometry/body-frames.js"></script>
-    <script src="js/features/analysis/analysis-dependencies.js"></script>
-    <script src="js/features/analysis/diagram-equations.js"></script>
-    <script src="js/ui/editors/plot-editor.js"></script>
-    <script src="js/ui/editors/sketch-editor.js"></script>
-    <script src="js/rendering/renderer.js"></script>
-    <script src="js/core/snapping/object-snap.js"></script>
-    <script src="js/references/drawing-reference.js"></script>
-    <script src="js/sheets/sheet-tabs.js"></script>
-    <script src="js/app/drawing.js"></script>
-    <script src="js/core/selection/drawing-delete.js"></script>
-    <script src="js/app/toolbar.js"></script>
-    <script src="js/references/written-references.js"></script>
-
+    <!-- The whole application is one ES module graph; src/main.js is its entry. -->
+    <script type="module" src="/src/main.js"></script>
 
 </body>
 

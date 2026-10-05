@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * RELATIVE TO IS A MEASUREMENT IN BOTH DIRECTIONS
@@ -27,10 +27,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const fs = require("fs");
 const path = require("path");
 
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const code = controllerSource();
 
 let pass = 0;
 let fail = 0;
@@ -243,8 +240,8 @@ console.log("\n  a load's Start and End are lengths, and say so\n");
  * the reader is the only change that makes the label true.
  */
 const loadRows = section(
-  'if (\r\n            object.type === "load" ||',
-  "\r\n    const anchor = relativeChildAnchor(",
+  'if (\n            object.type === "load" ||',
+  "\n    const anchor = relativeChildAnchor(",
 );
 
 check("the load station rows are found", loadRows.length > 0);

@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE SKETCH EDITOR
@@ -55,10 +55,7 @@ global.window = dom.window;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
 
-require(
-  locate("sketch-editor.js",
-  ),
-);
+loadModule("sketch-editor.js");
 
 const editor = global.window.enggSketchEditor;
 

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DO THE COMPONENT ARROWHEADS POINT ALONG THEIR COMPONENTS?
  *
@@ -116,11 +116,11 @@ global.window.document = {
 };
 global.document = global.window.document;
 
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("analysis-dependencies.js"));
-require(modulePath("drawing-state.js"));
-require(modulePath("renderer.js"));
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("analysis-dependencies.js");
+loadModule("drawing-state.js");
+loadModule("renderer.js");
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

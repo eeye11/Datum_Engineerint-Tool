@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * SINGLE-CLICK STATICS CREATION - regression guard.
  *
@@ -55,10 +55,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 
 
-const source = fs.readFileSync(
-    locate("drawing.js"),
-    "utf8"
-);
+const source = controllerSource();
 
 let pass = 0;
 let fail = 0;
@@ -271,7 +268,7 @@ global.window = {
     }
 };
 
-require(modulePath("drawing-state.js"));
+loadModule("drawing-state.js");
 
 const factories = global.window.enggDrawingState.geometryFactories;
 

@@ -31,17 +31,14 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
-  "js",
+  "src",
 );
 
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const code = controllerSource();
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -50,7 +47,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(locate("property-panel.js"));
+loadModule("property-panel.js");
 
 const panels = global.window.enggPropertyPanel;
 
@@ -159,7 +156,7 @@ check(
  * than from the panel source, because the panel's correctness depends on
  * this being right, not on it having been written down again.
  */
-require(locate("annotation-model.js"));
+loadModule("annotation-model.js");
 
 const annotatable = global.window.enggAnnotationModel
   .annotatableTypes();

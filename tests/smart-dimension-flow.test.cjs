@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * SMART DIMENSION: THE REFERENCE-TO-MEASUREMENT INFERENCE
@@ -45,10 +45,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const source = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const source = controllerSource();
 
 /*
  * Pull one function out of drawing.js by brace matching.
@@ -284,6 +281,9 @@ const sandbox = {
   },
 };
 
+/* The controller imports the module by name rather than reading window. */
+sandbox.enggFeatureGeometry = sandbox.window.enggFeatureGeometry;
+
 vm.createContext(sandbox);
 
 const pieces = [
@@ -296,6 +296,7 @@ const pieces = [
   "perpendicularDistanceDescriptor",
   "compositeSegmentPoints",
   "compositeSegmentReference",
+  "distance",
   "distanceToSegment",
   "lineLengthDescriptor",
   "pairOrientation",

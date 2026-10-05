@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A LENGTH MEAN ANYTHING, AND DOES IT KEEP MEANING IT?
@@ -28,9 +28,9 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = { crypto: { randomUUID: () => "scale-uuid" } };
 
-require(modulePath("dimension-model.js"));
-require(modulePath("dimensions.js"));
-require(modulePath("drawing-state.js"));
+loadModule("dimension-model.js");
+loadModule("dimensions.js");
+loadModule("drawing-state.js");
 
 const state = global.window.enggDrawingState;
 const scale = global.window.enggDimensions;

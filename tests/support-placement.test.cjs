@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A SUPPORT LAND WHERE IT WAS PLACED?
@@ -72,10 +72,7 @@ for (const name of [
   "drawing-state.js",
 ]) {
   try {
-    require(
-      locate(name,
-      ),
-    );
+    loadModule(name);
   } catch (error) {
     console.log(`  (could not load ${name}: ${error.message})`);
   }

@@ -33,7 +33,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 let pass = 0;
 let fail = 0;
 
@@ -47,10 +47,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const source = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8"
-);
+const source = controllerSource();
 
 const section = (name) => {
   const start = source.indexOf(`function ${name}`);

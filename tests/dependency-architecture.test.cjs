@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES THE DEPENDENCY SYSTEM HOLD THE WHOLE SHEET TOGETHER?
  *
@@ -27,11 +27,11 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = { crypto: { randomUUID: () => "deps-uuid" } };
 
-require(modulePath("load-profile.js"));
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("analysis-dependencies.js"));
-require(modulePath("drawing-state.js"));
+loadModule("load-profile.js");
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("analysis-dependencies.js");
+loadModule("drawing-state.js");
 
 const deps = global.window.enggAnalysisDependencies;
 const state = global.window.enggDrawingState;

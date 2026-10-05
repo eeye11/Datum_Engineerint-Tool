@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * A MAGNITUDE ANNOTATION: MAGNITUDE + UNIT, AND NOTHING ELSE
@@ -55,9 +55,9 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(locate("measurement-core.js"));
-require(locate("quantities.js"));
-require(locate("annotation-model.js"));
+loadModule("measurement-core.js");
+loadModule("quantities.js");
+loadModule("annotation-model.js");
 
 const model = global.window.enggAnnotationModel;
 
@@ -409,7 +409,7 @@ check(
 );
 
 {
-  const code = fs.readFileSync(locate("drawing.js"), "utf8");
+  const code = controllerSource();
 
   check(
     "and the drawing controller builds no Show Unit control",

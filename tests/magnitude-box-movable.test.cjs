@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * A MAGNITUDE BOX IS A BOX, NOT A PART OF THE FORCE
@@ -69,7 +69,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 for (const name of Object.keys(global.window)) {

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES AN ANALYSIS DIAGRAM DRAW?
  *
@@ -120,11 +120,11 @@ global.window.document = {
 
 global.document = global.window.document;
 
-require(modulePath("feature-geometry.js"));
-require(modulePath("body-frames.js"));
-require(modulePath("analysis-dependencies.js"));
-require(modulePath("drawing-state.js"));
-require(modulePath("renderer.js"));
+loadModule("feature-geometry.js");
+loadModule("body-frames.js");
+loadModule("analysis-dependencies.js");
+loadModule("drawing-state.js");
+loadModule("renderer.js");
 
 const state = global.window.enggDrawingState;
 const renderer = global.window.enggDrawingRenderer;
@@ -138,7 +138,7 @@ global.enggFeatureGeometry = global.window.enggFeatureGeometry;
  * The renderer reads the equation engine as a bare global, the same way
  * the browser hands it over.
  */
-require(modulePath("diagram-equations.js"));
+loadModule("diagram-equations.js");
 
 global.enggDiagramEquations = global.window.enggDiagramEquations;
 

@@ -29,20 +29,18 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
-  "js",
+  "src",
 );
 
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const code = controllerSource();
 
+/* The application entry module, which lists the modules in load order. */
 const index = fs.readFileSync(
-  path.join(__dirname, "..", "index.html"),
+  path.join(__dirname, "..", "src", "main.js"),
   "utf8",
 );
 
@@ -53,7 +51,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 global.window = dom.window;
 global.document = dom.window.document;
 
-require(locate("property-panel.js"));
+loadModule("property-panel.js");
 
 const panels = global.window.enggPropertyPanel;
 
@@ -178,7 +176,9 @@ console.log("\n  and the header is the SHARED one\n");
 check(
   "the header is built from the shared module when it is present",
   /enggPropertyPanel/.test(header) &&
-    /window\s*&&/.test(header),
+    /import enggPropertyPanel from "[^"]*property-panel\.js"/.test(
+      fs.readFileSync(locate("feature-panel-markup.js"), "utf8"),
+    ),
   "the panel is not using the shared header, so it will drift from the others",
 );
 
@@ -225,7 +225,7 @@ const panelAt = index.indexOf(
 );
 
 const drawingAt = index.indexOf(
-  "drawing.js",
+  "editor/index.js",
 );
 
 check(

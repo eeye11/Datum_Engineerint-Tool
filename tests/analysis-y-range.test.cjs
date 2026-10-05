@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE Y RANGE
@@ -68,7 +68,7 @@ for (const name of [
   "analysis-dependencies.js",
   "renderer.js",
 ]) {
-  require(locate(name));
+  loadModule(name);
 }
 
 const renderer = global.window.enggDrawingRenderer;
@@ -228,10 +228,7 @@ check(
  */
 console.log("\n  the unit is the one the diagram measures\n");
 
-const source = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const source = controllerSource();
 
 check(
   "a shear diagram's range is in kN",

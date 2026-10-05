@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A REVERSED LOAD KEEP ITS OUTLINE?
@@ -89,10 +89,7 @@ for (const name of [
   "renderer.js",
 ]) {
   try {
-    require(
-      locate(name,
-      ),
-    );
+    loadModule(name);
   } catch (error) {
     console.log(`  (could not load ${name}: ${error.message})`);
   }

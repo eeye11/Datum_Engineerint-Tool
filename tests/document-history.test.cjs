@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN THE HISTORY TAKE THE SHEETS WITH IT?
@@ -59,7 +59,7 @@ const check = (name, ok, detail) => {
 const read = name =>
   fs.readFileSync(locate(name), "utf8");
 
-const drawingSource = read("drawing.js");
+const drawingSource = controllerSource();
 const sheetsSource = read("sheets.js");
 const stateSource = read("drawing-state.js");
 
@@ -87,10 +87,10 @@ console.log(
 const exported = new Set();
 
 const exportBlock = sheetsCode.slice(
-  sheetsCode.indexOf("root.enggSheets = {"),
+  sheetsCode.indexOf("const enggSheets = {"),
 );
 
-for (const match of exportBlock.matchAll(/^\s{4}(\w+),?$/gm)) {
+for (const match of exportBlock.matchAll(/^\s+(\w+),?$/gm)) {
   exported.add(match[1]);
 }
 
@@ -150,7 +150,7 @@ global.window.crypto = {
   randomUUID: () => "test-uuid",
 };
 
-require(locate("drawing-state.js"));
+loadModule("drawing-state.js");
 
 const S = global.window.enggDrawingState;
 

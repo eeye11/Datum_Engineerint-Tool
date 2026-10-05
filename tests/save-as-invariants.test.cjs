@@ -22,9 +22,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const dir = path.join(__dirname, "..", "js", "engineering-drawing");
-const code = fs.readFileSync(path.join(dir, "drawing.js"), "utf8");
-const saveCode = fs.readFileSync(path.join(dir, "file-save.js"), "utf8");
+const { controllerSource, modulePath } = require("./helpers/source-path.cjs");
+
+const code = controllerSource();
+const saveCode = fs.readFileSync(modulePath("file-save.js"), "utf8");
 
 let pass = 0;
 let fail = 0;

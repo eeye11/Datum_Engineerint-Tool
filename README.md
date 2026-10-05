@@ -1,95 +1,96 @@
-# EnggDraw / EnggWrite
+# Datum
 
-An engineering-drawing and statics tool: draw geometry and statics features,
-dimension them, annotate them, organise them on sheets, and write the worked
-solution alongside the figure.
+Datum is where an engineering student writes up a solution: the **written
+working** (LaTeX, usually produced by the OCR tool from a handwritten page)
+and the **drawings** it refers to — free body diagrams, beams and trusses,
+loads and supports, dimensions, and shear-force, bending-moment and
+axial-force diagrams. The two are submitted together to the autograder.
 
-## Running
+```
+handwritten page ─► OCR ─► LaTeX ─► Datum ─► submission ─► autograder
+```
+
+## For students
+
+Open Datum in a web browser. Nothing to install.
+
+- **Written Solution** — paste or correct your LaTeX on the left, see it
+  rendered on the right. Put a drawing in your solution with *Insert Reference*.
+- **Engineering Drawing** — choose a toolset across the top (Geometry,
+  Annotate, Statics…), then a tool on the left. The status bar at the bottom
+  always says what the current tool expects next. `Esc` cancels, `Ctrl+Z`
+  undoes.
+- **Save** keeps your work as a `.enggdraw` file you can open again later.
+  Datum also keeps a recovery copy in your browser in case the tab closes.
+
+## For developers
+
+Requires [Node.js](https://nodejs.org/) 22.12 or newer.
 
 ```bash
 npm install
-npm start          # serves the app on http://localhost:3000
+npm run dev        # http://localhost:5173, reloads as you edit
+npm test           # unit and integration tests (node:test)
+npm run lint       # ESLint
+npm run build      # static site in dist/ — host it anywhere
+npm start          # serve dist/ plus TikZ rendering (optional server)
 ```
 
-`index.html` is the entry point. It loads `css/style.css`,
-`css/engineering-drawing.css` and the modules in `js/engineering-drawing/`
-as plain `<script>` tags, in dependency order.
+### Publishing
 
-## Tests
+Every push to `main` builds the site and publishes it with GitHub Pages
+(`.github/workflows/pages.yml`), at
+`https://<owner>.github.io/Datum_Engineerint-Tool/`. A repository admin
+turns this on once: **Settings → Pages → Source: GitHub Actions**. The
+build is plain static files, so `dist/` can equally be copied to any web
+host, including a university one, at any path.
 
-```bash
-npm test           # node --test tests/*.test.cjs
+### Checking a change
+
+`npm run test:golden -- <url> <out.json>` drives the running app through every
+tool in Chrome and records what it produced. Recording before and after a
+change, then `node tests/e2e/golden-compare.mjs before.json after.json`,
+shows exactly what the change did. See [docs/TESTING.md](docs/TESTING.md).
+
+### Where things are
+
+```
+index.html            the page
+src/main.js           the application entry point
+src/editor/           the drawing editor — editor/index.js lists every part
+src/core/             geometry, units, scale, the document model, snapping
+src/features/         dimensions, annotations, analysis
+src/rendering/        drawing the document as SVG
+src/sheets/           sheets and the sheet tab bar
+src/file/             save, open, export, crash recovery
+src/solution/         the Written Solution tab
+src/references/       drawing references (a sheet placed in the solution)
+src/ui/               shared panel and dialog components
+src/api/              the integration API — the only supported entry for other tools
+src/styles/           tokens.css (colours, type), base, editor, shell
+server/               optional Node server (TikZ → SVG)
+tests/                node:test suites; tests/e2e/ browser scenarios
+docs/                 architecture, integration, file format, testing
+tools/                developer scripts (refactoring codemods, audits, QA)
 ```
 
-The suite covers dimensions, annotation models, smart dimensions, sheets,
-document save/load round-trips, crash recovery, drawing references,
-measurement core, zoom, undo/drag, and the feature/analysis matrix.
-`tests/diag-kinds.cjs` is a small diagnostic printer rather than a test file.
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing the code,
+and [docs/TOOL-MAP.md](docs/TOOL-MAP.md) to find where a toolbar command lives.
 
-## Layout
+## For other tools
 
-```
-index.html                      application entry point
-css/                            stylesheets
-js/script.js                    page bootstrap
+Datum exposes a small, versioned API — in the page as `window.datum`, and to
+an embedding page over `postMessage` — for reading and loading documents,
+rendering a sheet to SVG, and reading or setting the LaTeX solution. See
+[docs/INTEGRATION.md](docs/INTEGRATION.md). The saved-file format is
+specified in [docs/FILE-FORMAT.md](docs/FILE-FORMAT.md).
 
-js/app/                         drawing controller, toolbar, tool registry
-js/core/                        shared machinery: geometry, units, scale,
-                                  model state, snapping, selection
-js/features/                    persistent data models (dimensions,
-                                  annotations, analysis)
-js/rendering/                   drawing the document to the SVG canvas
-js/ui/                          feature panels, editors, popups
-js/sheets/                      sheets and their tabs
-js/file/                        save, load, export, crash recovery
-js/references/                  the written-solution reference system
+## Design principles
 
-backend/server.js               express static server + TikZ render endpoint
-tests/                          automated tests (node:test)
-tools/audit/                    system-wide engineering audits
-tools/qa/                       browser-driven verification scripts
-tools/dev/                      one-off diagnostics
-tools/tikz-probes/              early TikZ integration probes
-```
-
-## Where to look first
-
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — what lives where, and why.
-  Read this before hunting for a file.
-- **[TOOL-MAP.md](TOOL-MAP.md)** — every toolbar command, and the places
-  its code lives.
-
-Sources are grouped by **ownership**, not by the order they were written:
-shared machinery is separated from the tools that use it, and the folder
-tree mirrors the toolbar a user sees.
-
-## Module map
-
-| Concern | Where |
-| --- | --- |
-| Tools & toolbar | `app/tools.js`, `app/toolbar.js`, `app/ui.js` |
-| Drawing controller | `app/drawing.js` |
-| Geometry / statics state | `core/model/drawing-state.js`, `core/geometry/` |
-| Drawing & rendering | `rendering/renderer.js` |
-| Snapping & selection | `core/snapping/object-snap.js`, `core/selection/` |
-| Units & quantities | `core/units/quantities.js` |
-| Sheet Universal Length Scale | `core/scale/dimensions.js` |
-| Dimensions & annotations | `features/dimensions/`, `features/annotations/` |
-| Analysis | `features/analysis/`, `ui/editors/` |
-| Sheets | `sheets/sheets.js`, `sheets/sheet-tabs.js` |
-| File / save / load / export | `file/` |
-| Written solution | `references/` |
-
-## Notes
-
-- There is no build step. The browser loads the sources directly.
-- `tools/` scripts are development aids, not part of the app. `tools/audit/`
-  holds the engineering audits (`node tools/audit/<name>.cjs`);
-  `tools/dev/` holds one-off diagnostics; the browser-driven scripts under
-  `tools/qa/` need a Playwright-compatible driver and a static server
-  (`node tools/static-server.cjs <repo-root>`).
-- Tests locate source modules **by name**, never by path, through
-  `tests/helpers/source-path.cjs` — so moving a file does not break them.
-- Analysis philosophy: EnggDraw does not compute SFD/BMD/AFD values or infer a
-  student's solution — those diagrams are drawn as ordinary geometry. See
-  `tests/analysis-rows.test.cjs` for the current state of each analysis row.
+- **Datum documents; it does not solve.** The analysis tools help a student
+  draw and label their own reasoning. Nothing works out an unknown or
+  reports a solution.
+- **A dimension measures geometry; an annotation states meaning.** A beam's
+  length is a dimension of the geometry; "250 N at 30°" is an annotation.
+- **A reference is not a picture.** A drawing in the written solution is
+  rendered from the sheet's current contents every time.

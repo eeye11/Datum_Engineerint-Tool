@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DO ALL THE VECTORS POINT THE SAME WAY?
@@ -92,10 +92,7 @@ for (const name of [
   "drawing-state.js",
   "renderer.js",
 ]) {
-  require(
-    locate(name,
-    ),
-  );
+  loadModule(name);
 }
 
 for (const name of [

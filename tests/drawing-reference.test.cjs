@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The Drawing Reference token, tested directly.
  *
@@ -19,8 +19,8 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
  */
 
 global.window = {};
-require(modulePath("sheets.js"));
-require(modulePath("drawing-reference.js"));
+loadModule("sheets.js");
+loadModule("drawing-reference.js");
 
 const s = global.window.enggSheets;
 const r = global.window.enggDrawingReference;

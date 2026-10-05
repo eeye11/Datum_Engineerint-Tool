@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * DOES AN EQUATION MEAN WHAT IT SAYS?
  *
@@ -16,7 +16,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 
 global.window = {};
 
-require(modulePath("diagram-equations.js"));
+loadModule("diagram-equations.js");
 
 const eq = global.window.enggDiagramEquations;
 

@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * The native document format, tested directly.
  *
@@ -22,8 +22,8 @@ global.window = {};
  * single drawing into a document of sheets is what version 1 -> 2 is.
  * Loading it here is the same order the page loads them in.
  */
-require(modulePath("sheets.js"));
-require(modulePath("document-file.js"));
+loadModule("sheets.js");
+loadModule("document-file.js");
 const f = global.window.enggDocumentFile;
 
 let pass = 0;

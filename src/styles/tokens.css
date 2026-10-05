@@ -1,0 +1,51 @@
+/*
+ * ============================================================
+ * DESIGN TOKENS
+ * ============================================================
+ *
+ * Every colour and font the interface uses more than once is named here,
+ * once. The other stylesheets refer to these names; change a value here and
+ * it changes everywhere.
+ *
+ * THE PALETTE follows the University of Alberta's: UAlberta green as the
+ * one accent colour (active tools, the selected tab, primary buttons) and
+ * UAlberta gold as a highlight. The green the interface was designed with,
+ * #1f5c38, is a shade darker than the official #275d38; the official
+ * values are listed below so the palette can be aligned with one edit.
+ *
+ * Drawing colours (a feature's stroke, the selection highlight on the
+ * canvas) are not here: they belong to the drawing, are stored in the
+ * document, and are set by the renderer.
+ */
+:root {
+    /* University of Alberta reference colours. */
+    --ualberta-green: #275d38;
+    --ualberta-gold: #f2cd00;
+
+    /* The accent: UAlberta green, in the shades the interface uses. */
+    --datum-green: #1f5c38;
+    --datum-green-hover: #17472b;
+    --datum-green-ink: #164c2d;
+    --datum-green-line: #a9c7b4;
+    --datum-green-soft: #c5d9cb;
+    --datum-green-tint: #dcebe2;
+    --datum-green-wash: #e6f0ea;
+    --datum-gold: var(--ualberta-gold);
+
+    /* Neutrals. */
+    --datum-ink: #26343b;
+    --datum-muted: #70808a;
+    --datum-subtle: #6b7b83;
+    --datum-border: #d4dde1;
+    --datum-panel: #f5f8f9;
+    --datum-page: #f5f6f8;
+    --datum-surface: #ffffff;
+
+    /* Status. */
+    --datum-error: #b00020;
+    --datum-focus: #1677ff;
+
+    /* Type. */
+    --datum-font: Arial, sans-serif;
+    --datum-font-mono: Consolas, "Courier New", monospace;
+}

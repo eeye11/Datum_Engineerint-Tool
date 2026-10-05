@@ -3,7 +3,7 @@ const { JSDOM } = require("jsdom");
 
 const path = require("path");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DO COMPONENTS AND RESULTANTS FOLLOW THEIR SOURCES?
@@ -106,7 +106,7 @@ function loadModules() {
     "analysis-dependencies.js",
     "renderer.js",
   ]) {
-    require(locate(name));
+    loadModule(name);
   }
 
   for (const name of [
@@ -538,10 +538,7 @@ console.log("\n  and the canvas shows two shafts, not three\n");
 console.log("\n  and the tool parents it to the force\n");
 
 {
-  const source = require("fs").readFileSync(
-    locate("drawing.js"),
-    "utf8",
-  );
+  const source = controllerSource();
 
   /* Comments stripped: they DESCRIBE this, which is the trap. */
   const code = source
