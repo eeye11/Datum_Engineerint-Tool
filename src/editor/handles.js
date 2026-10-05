@@ -11,8 +11,8 @@ import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingCanvas } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { isRectangleLike, safeDimensionGraphics } from "./hit-testing.js";
-import { STATICS_ATTACHABLE_FEATURES } from "./statics-tools.js";
 import { translateObject } from "./transforms.js";
+import { STATICS_BODY_TYPES, isConnectionType, isSupportType } from "../core/model/feature-types.js";
 
 /*
  * Which view the Features panel is showing.
@@ -221,36 +221,6 @@ export function moveObjectAndChildren(
 }
 
 /*
- * The Statics support variants. They differ in the symbol
- * they draw, not in how they are selected or edited, so
- * they are identified by one shared predicate.
- */
-export function isSupportType(
-    type
-) {
-    return [
-        "pin-support",
-        "roller-support",
-        "fixed-support",
-        "smooth-support"
-    ].includes(type);
-}
-
-/*
- * The Statics connection variants. Like the supports, they
- * share one behaviour and differ only in symbol.
- */
-export function isConnectionType(
-    type
-) {
-    return [
-        "pin-connection",
-        "fixed-connection",
-        "slider-connection"
-    ].includes(type);
-}
-
-/*
  * The bodies a Statics feature may attach to.
  *
  * Only real bodies are eligible, so a force snapped onto a
@@ -263,7 +233,7 @@ export function isStaticsBody(
 ) {
     return Boolean(
         object &&
-            STATICS_ATTACHABLE_FEATURES.includes(
+            STATICS_BODY_TYPES.includes(
                 object.type
             )
     );

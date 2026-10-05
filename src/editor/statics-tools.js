@@ -7,10 +7,10 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import { ANALYSIS_DIAGRAM_MODES, ANALYSIS_DIAGRAM_MODE_LABELS, ANALYSIS_DIAGRAM_TOOLS, beginAnalysisDiagram } from "./analysis-tools.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingState, editorState } from "./editor-state.js";
-import { isConnectionType, isSupportType } from "./handles.js";
 import { activate2DCoordinateSystemTool, activateTool, initialToolMessage } from "./tool-activation.js";
 import { activeCategory, closeCoordinateSystemMenu, openToolSubmenu } from "./tool-menus.js";
 import { renderEngineeringTools, setToolMessage } from "./toolbar-render.js";
+import { STATICS_BODY_TYPES, isConnectionType, isSupportType } from "../core/model/feature-types.js";
 
 export const STATICS_TOOL_MENUS = {
     body: [
@@ -321,47 +321,6 @@ export const STATICS_FEATURE_LABELS = Object.fromEntries(
 );
 
 /*
- * Statics features that can be attached to a body.
- *
- * A force, a load or a support reads as acting on whatever
- * it was snapped onto, so it may become that body's child.
- * A body or a member cannot be a child of another body, and
- * a reference feature belongs to no one.
- */
-export function attachableStaticsType(
-    type
-) {
-    return [
-        "force",
-        "load",
-        "varying-load",
-        "moment",
-        "couple",
-        "pin-support",
-        "roller-support",
-        "fixed-support",
-        "smooth-support"
-    ].includes(type);
-}
-
-/*
- * The bodies a Statics feature may attach to.
- *
- * Only real bodies are eligible, so a force snapped onto a
- * Beam becomes part of that Beam, while one snapped onto a
- * stray Line stays unattached rather than adopting geometry
- * that has no engineering meaning.
- */
-export const STATICS_ATTACHABLE_FEATURES = [
-    "particle",
-    "rigid-body",
-    "beam",
-    "truss",
-    "cable",
-    "shaft"
-];
-
-/*
  * The Statics tools that act on a body, so they begin by
  * asking for one rather than placing themselves in free
  * space.
@@ -554,7 +513,7 @@ export function staticsAttachmentId(
 
     if (
         !target ||
-        !STATICS_ATTACHABLE_FEATURES.includes(
+        !STATICS_BODY_TYPES.includes(
             target.type
         )
     ) {

@@ -8,9 +8,9 @@ import { renderCurrentDrawing } from "./canvas-render.js";
 import { twoPointSpanOf } from "./dimension-inference.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
-import { isConnectionType, isSupportType } from "./handles.js";
 import { cancelModifySession } from "./modify-tools.js";
 import { setToolMessage } from "./toolbar-render.js";
+import { isConnectionType, isSupportType } from "../core/model/feature-types.js";
 
 /*
  * Reflect a point across the infinite line through two

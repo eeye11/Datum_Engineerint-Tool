@@ -14,13 +14,13 @@ import { isDimensionTool } from "./dimension-tool.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { polygonFromCursor } from "./geometry-creation.js";
-import { isSupportType } from "./handles.js";
 import { LOAD_BUILD_PHASES, constantLoadDraft, distributedLoadDraft, isLoadBuildPhase, isLoadSpanPhase, loadBuildInstruction, loadDirectionUnderPointer } from "./load-tool.js";
 import { constructionFeedbackMessage, inferenceLabel, snapTypeLabel, updateInteractionFeedback } from "./pointer.js";
 import { STATICS_CHILD_TOOLS, STATICS_SPAN_TOOLS, bodyPlacementLocations, isBodyAttachedTool, staticsBodyMessage, staticsSpanInstruction, staticsToolPointCount } from "./statics-tools.js";
 import { isArcTool } from "./tool-menus.js";
 import { setToolMessage } from "./toolbar-render.js";
 import { trussSnapGeometry, trussStageMessage } from "./truss-tool.js";
+import { isSupportType } from "../core/model/feature-types.js";
 
 export function createPreview(
     type,

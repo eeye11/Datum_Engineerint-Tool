@@ -17,10 +17,11 @@ import { LOAD_BUILD_PHASES, beginDistributedLoadConstruction, continueDistribute
 import { commitMomentPlacement } from "./preview.js";
 import { beginStaticsAttachment, continueStaticsAttachment, staticsBodyAtPoint } from "./statics-attachment.js";
 import { createStaticsFeature } from "./statics-creation.js";
-import { STATICS_CHILD_TOOLS, STATICS_PLACEMENT_TOOLS, STATICS_SPAN_TOOLS, attachableStaticsType, isBodyAttachedTool, isFreeMomentTool, staticsAttachmentId, staticsInstruction, staticsSpanInstruction } from "./statics-tools.js";
+import { STATICS_CHILD_TOOLS, STATICS_PLACEMENT_TOOLS, STATICS_SPAN_TOOLS, isBodyAttachedTool, isFreeMomentTool, staticsAttachmentId, staticsInstruction, staticsSpanInstruction } from "./statics-tools.js";
 import { isArcTool, openPolygonSidesPrompt, referenceArcOptions } from "./tool-menus.js";
 import { setToolMessage } from "./toolbar-render.js";
 import { TRUSS_STAGES, continueTrussConstruction } from "./truss-tool.js";
+import { attachableStaticsType } from "../core/model/feature-types.js";
 
 /*
  * Build the polygon definition for the active

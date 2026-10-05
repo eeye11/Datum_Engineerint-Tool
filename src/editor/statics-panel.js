@@ -13,18 +13,7 @@ import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { relativeCoordinateRows } from "./relative-coordinates.js";
 import { staticsSupportSection } from "./statics-tools.js";
-
-const STATICS_VECTOR_FEATURE_TYPES = [
-    "force",    "resultant",
-    "load",
-    "varying-load"
-];
-
-function usesStaticsVectors(object) {
-    return STATICS_VECTOR_FEATURE_TYPES.includes(
-        object?.type
-    );
-}
+import { usesStaticsVectors } from "../core/model/feature-types.js";
 
 export function staticsDisplayMarkup(object) {
     if (!usesStaticsVectors(object)) {

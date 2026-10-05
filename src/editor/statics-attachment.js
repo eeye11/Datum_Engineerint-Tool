@@ -10,13 +10,14 @@ import { renderCurrentDrawing } from "./canvas-render.js";
 import { staticsForceLineWidth } from "./constants.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
-import { isConnectionType, isStaticsBody, isSupportType, trussJointHandles } from "./handles.js";
+import { isStaticsBody, trussJointHandles } from "./handles.js";
 import { objectAtPoint } from "./hit-testing.js";
 import { beginMomentPlacement } from "./preview.js";
 import { moveRigidBodyTo, setRigidBodyRadius } from "./property-inputs.js";
 import { STATICS_CHILD_TOOLS, STATICS_FEATURE_LABELS, isBodyAttachedTool, staticsAttachmentId, staticsBodyMessage, staticsInstruction, staticsToolPointCount } from "./statics-tools.js";
 import { activeCategory } from "./tool-menus.js";
 import { renderEngineeringTools, setToolMessage } from "./toolbar-render.js";
+import { isConnectionType, isSupportType } from "../core/model/feature-types.js";
 
 /*
  * Whether a feature is one of the Statics engineering

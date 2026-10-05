@@ -37,8 +37,9 @@ const TOOLS = [
     ["STATICS", "body", "beam"], ["STATICS", "body", "truss"],
     ["STATICS", "body", "cable"], ["STATICS", "body", "shaft"],
     ["STATICS", "point-force", null, "beam"],
-    ["STATICS", "load", "distributed-load", "beam"],
-    ["STATICS", "load", "varying-distributed-load", "beam"],
+    /* body -> start -> end -> magnitude (typed into the panel) -> direction */
+    ["STATICS", "load", "distributed-load", "beam", ["c:0.45,0.6", "c:0.3,0.6", "c:0.6,0.6", "type:25", "Enter", "c:0.45,0.4"]],
+    ["STATICS", "load", "varying-distributed-load", "beam", ["c:0.45,0.6", "c:0.3,0.6", "c:0.6,0.6", "type:25", "Enter", "c:0.45,0.4"]],
     ["STATICS", "moment", "applied-moment", "beam"],
     ["STATICS", "moment", "couple", "beam"],
     ["STATICS", "support", "pin-support", "beam", ["c:0.4,0.6", "c:0.25,0.6"]],
@@ -228,7 +229,9 @@ async function main() {
         await chooseTool(category, toolId, sub);
         const steps = [];
         for (const action of actions || SPOTS) {
-            if (typeof action === "string" && !action.startsWith("c:")) {
+            if (typeof action === "string" && action.startsWith("type:")) {
+                await page.keyboard.type(action.slice(5)); await sleep(100);
+            } else if (typeof action === "string" && !action.startsWith("c:")) {
                 await page.keyboard.press(action); await sleep(150);
             } else {
                 const spot = typeof action === "string"

@@ -9,6 +9,7 @@ import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { distance } from "./construction-geometry.js";
 import { drawingState } from "./editor-state.js";
 import { isRectangleLike, objectPoints } from "./hit-testing.js";
+import { isSpanShapedType } from "../core/model/feature-types.js";
 
 function pointInsideSelection(
     point,
@@ -461,34 +462,6 @@ function rectangleInsideCircle(
                 circle.center
             ) <=
             Math.abs(circle.radius)
-    );
-}
-
-/*
- * The feature types drawn as a single straight span between
- * two points.
- *
- * They share one selection test and one way of reporting their
- * ends, so they are identified by one predicate rather than by
- * repeating the same list at every call site.
- */
-const SPAN_SHAPED_TYPES = [
-    "line",
-    "beam",
-    "cable",
-    "shaft",
-    "pin-connection",
-    "fixed-connection",
-    "slider-connection",
-    "connection",
-    "truss"
-];
-
-function isSpanShapedType(
-    type
-) {
-    return SPAN_SHAPED_TYPES.includes(
-        type
     );
 }
 

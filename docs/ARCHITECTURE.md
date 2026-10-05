@@ -192,7 +192,9 @@ base, editor, shell — and later files win where they overlap.
 ## Adding a feature
 
 1. **Model** — a factory in `core/model/drawing-state.js`
-   (`geometryFactories`); shared geometry in `core/geometry/`.
+   (`geometryFactories`); shared geometry in `core/geometry/`; and an entry
+   in `core/model/feature-types.js` saying which groups the type belongs to
+   (body, support, attachable, span-shaped, …).
 2. **Measurement** — register what it can be measured as in
    `core/geometry/measurement-core.js`.
 3. **Rendering** — `rendering/renderer.js`.
@@ -213,14 +215,18 @@ base, editor, shell — and later files win where they overlap.
 
 ## Known debts, and what would pay them
 
-- **A feature type is spread across many modules.** A beam is handled in
-  about eight editor modules (hit-testing, handles, transforms, panels, …),
-  each with its own `if (object.type === "beam")` branch. That is why step
-  5–6 above touches so many files. The next structural step is a
-  **feature-type registry** — one module per type declaring its factory,
-  hit test, handles, transforms and panel rows, with the editor modules
-  dispatching through it. `core/geometry/measurement-core.js` already works
-  this way for measurement, so the pattern is proven here.
+- **A feature type's behaviour is spread across many modules.** What a type
+  *is* has one home: `core/model/feature-types.js` declares each type's
+  groups (body, support, connection, attachable, span-shaped, vector), and
+  the editor asks it instead of keeping its own lists. What a type *does*
+  is still spread: a beam is handled in about eight editor modules
+  (hit-testing, handles, transforms, panels, …), each with its own
+  `if (object.type === "beam")` branch, which is why steps 5–6 above touch
+  so many files. The next step is to grow the registry from traits into
+  behaviour — each type declaring its hit test, handles, transforms and
+  panel rows, with the editor dispatching through it.
+  `core/geometry/measurement-core.js` already works this way for
+  measurement, so the pattern is proven here.
 - **Three very large functions** remain: `featurePropertyMarkup`
   (~1,300 lines), `updateFeatureProperty` (~1,100) and
   `bindFeaturePropertyControls` (~950). They are per-type switch

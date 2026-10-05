@@ -10,9 +10,9 @@ import { RIGID_BODY_HEIGHT, RIGID_BODY_WIDTH, staticsForceLineWidth } from "./co
 import { beginCreationDimensioning, commitCreatedFeature } from "./creation-sizing.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
-import { isSupportType } from "./handles.js";
-import { STATICS_PLACEMENT_TOOLS, attachableStaticsType } from "./statics-tools.js";
+import { STATICS_PLACEMENT_TOOLS } from "./statics-tools.js";
 import { setToolMessage } from "./toolbar-render.js";
+import { attachableStaticsType, isSupportType } from "../core/model/feature-types.js";
 
 export function createStaticsFeature(
     toolId,

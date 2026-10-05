@@ -13,9 +13,10 @@ import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import { distance } from "./construction-geometry.js";
 import { drawingCanvas } from "./dom.js";
 import { drawingState } from "./editor-state.js";
-import { isConnectionType, isSupportType, rectangleCorners } from "./handles.js";
+import { rectangleCorners } from "./handles.js";
 import { isLoadGeometry } from "./relative-coordinates.js";
 import { momentDirectionOf } from "./statics-panel.js";
+import { isConnectionType, isSupportType } from "../core/model/feature-types.js";
 
 /*
  * The distance from a point to a closed outline.
