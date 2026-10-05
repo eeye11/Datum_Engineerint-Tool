@@ -35,3 +35,6 @@ ui.txt
 dist/
 build/
 coverage/
+
+# Golden-master recordings (tests/e2e/golden-scenario.mjs)
+*.golden.json
