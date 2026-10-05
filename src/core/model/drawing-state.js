@@ -1985,7 +1985,8 @@ function commitDrawingChange(state, previousObjects) {
      */
     refreshAnalysisObjects(state);
 
-    state.history.past.push(
+    pushHistory(
+        state.history.past,
         cloneObjects(previousObjects)
     );
 
@@ -2238,6 +2239,25 @@ function restoreDocumentSnapshot(state, entry) {
     }
 }
 
+/*
+ * HOW FAR BACK UNDO GOES.
+ *
+ * Every history entry is a full copy of the document, so an unbounded
+ * history grows with every edit for as long as the page is open - a long
+ * session on a large drawing would hold hundreds of copies of it. A
+ * hundred steps is far more than anyone undoes; the oldest is dropped
+ * once there are more.
+ */
+const HISTORY_LIMIT = 100;
+
+function pushHistory(list, entry) {
+    list.push(entry);
+
+    if (list.length > HISTORY_LIMIT) {
+        list.splice(0, list.length - HISTORY_LIMIT);
+    }
+}
+
 function canUndo(state) {
     return state.history.past.length > 0;
 }
@@ -2251,7 +2271,8 @@ function undo(state) {
         return false;
     }
 
-    state.history.future.push(
+    pushHistory(
+        state.history.future,
         snapshotDocument(state)
     );
 
@@ -2268,7 +2289,8 @@ function redo(state) {
         return false;
     }
 
-    state.history.past.push(
+    pushHistory(
+        state.history.past,
         snapshotDocument(state)
     );
 
@@ -2774,6 +2796,7 @@ const enggDrawingState = {
     selectObject,
     clearSelection,
     setHistorySinks,
+    HISTORY_LIMIT,
     snapshotDocument,
     snapshotDrawing,
     commitDrawingChange,
