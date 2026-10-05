@@ -25,7 +25,7 @@ Open Datum in a web browser. Nothing to install.
 
 ## For developers
 
-Requires [Node.js](https://nodejs.org/) 22 or newer.
+Requires [Node.js](https://nodejs.org/) 22.12 or newer.
 
 ```bash
 npm install
@@ -36,7 +36,18 @@ npm run build      # static site in dist/ — host it anywhere
 npm start          # serve dist/ plus TikZ rendering (optional server)
 ```
 
-`npm run test:golden <url> <out.json>` drives the running app through every
+### Publishing
+
+Every push to `main` builds the site and publishes it with GitHub Pages
+(`.github/workflows/pages.yml`), at
+`https://<owner>.github.io/Datum_Engineerint-Tool/`. A repository admin
+turns this on once: **Settings → Pages → Source: GitHub Actions**. The
+build is plain static files, so `dist/` can equally be copied to any web
+host, including a university one, at any path.
+
+### Checking a change
+
+`npm run test:golden -- <url> <out.json>` drives the running app through every
 tool in Chrome and records what it produced. Recording before and after a
 change, then `node tests/e2e/golden-compare.mjs before.json after.json`,
 shows exactly what the change did. See [docs/TESTING.md](docs/TESTING.md).
