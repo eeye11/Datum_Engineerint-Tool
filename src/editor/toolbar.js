@@ -1,4 +1,4 @@
-import { renderEngineeringTools } from "./drawing.js";
+import { renderEngineeringTools } from "./index.js";
 
 document.querySelectorAll(".drawing-category").forEach(categoryButton => {
 	categoryButton.addEventListener("click", () => {

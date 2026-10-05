@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * CAN THE HISTORY TAKE THE SHEETS WITH IT?
@@ -59,7 +59,7 @@ const check = (name, ok, detail) => {
 const read = name =>
   fs.readFileSync(locate(name), "utf8");
 
-const drawingSource = read("drawing.js");
+const drawingSource = controllerSource();
 const sheetsSource = read("sheets.js");
 const stateSource = read("drawing-state.js");
 

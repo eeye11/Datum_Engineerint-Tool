@@ -18,7 +18,7 @@ import enggDrawingRenderer from "../rendering/renderer.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggSheets from "../sheets/sheets.js";
 import enggWrittenReferences from "../solution/written-references.js";
-import { enggDrawing, enggDrawingSheets } from "../editor/drawing.js";
+import { enggDrawing, enggDrawingSheets } from "../editor/index.js";
 
 export function installAutomationHooks(target = window) {
     Object.assign(target, {

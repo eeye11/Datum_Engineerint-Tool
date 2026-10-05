@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * IS EVERY FEATURE CLASSIFIED ONCE, AND IN ONE PLACE?
@@ -45,10 +45,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 /* Read from the module rather than restated here. */
 const COORDINATE_SYSTEM_TYPE =

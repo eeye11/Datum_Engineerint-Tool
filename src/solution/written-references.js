@@ -33,7 +33,7 @@
  *     without anything being re-inserted: there is no image here to
  *     go stale.
  */
-import { enggDrawingSheets } from "../editor/drawing.js";
+import { enggDrawingSheets } from "../editor/index.js";
 import enggDrawingReference from "../references/drawing-reference.js";
 
 const DEFAULT_WIDTH = 760;

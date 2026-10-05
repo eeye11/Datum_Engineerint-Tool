@@ -24,9 +24,9 @@ const path = require("path");
 const vm = require("vm");
 const { JSDOM } = require("jsdom");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(__dirname, "..");
-const source = fs.readFileSync(locate("drawing.js"), "utf8");
+const source = controllerSource();
 
 let pass = 0;
 let fail = 0;

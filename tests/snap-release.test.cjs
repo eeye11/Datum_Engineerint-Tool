@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES THE SNAP LET GO WHEN THE CURSOR DOES?
@@ -66,11 +66,7 @@ const stateSource = fs.readFileSync(
   "utf8",
 );
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js",
-  ),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 const number = re => {
   const found = re.exec(code);

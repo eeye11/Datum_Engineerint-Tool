@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * SINGLE-CLICK STATICS CREATION - regression guard.
  *
@@ -55,10 +55,7 @@ const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-
 
 
 
-const source = fs.readFileSync(
-    locate("drawing.js"),
-    "utf8"
-);
+const source = controllerSource();
 
 let pass = 0;
 let fail = 0;

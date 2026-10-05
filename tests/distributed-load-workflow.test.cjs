@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * THE DISTRIBUTED LOAD CREATION WORKFLOW
@@ -44,10 +44,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const source = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const source = controllerSource();
 
 const stateSource = fs.readFileSync(
   locate("drawing-state.js"),

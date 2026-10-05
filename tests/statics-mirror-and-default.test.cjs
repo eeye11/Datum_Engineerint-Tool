@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * MIRROR, AND THE DEFAULT TOOL
@@ -52,10 +52,7 @@ const check = (name, ok, detail) => {
  * builder. It is extracted rather than reimplemented because the question
  * is what that function DOES, not what a copy of it would do.
  */
-const source = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const source = controllerSource();
 
 const start = source.indexOf("function mirrorObjectAcrossLine");
 

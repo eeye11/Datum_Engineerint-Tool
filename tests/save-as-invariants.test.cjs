@@ -22,9 +22,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const { modulePath } = require("./helpers/source-path.cjs");
+const { controllerSource, modulePath } = require("./helpers/source-path.cjs");
 
-const code = fs.readFileSync(modulePath("drawing.js"), "utf8");
+const code = controllerSource();
 const saveCode = fs.readFileSync(modulePath("file-save.js"), "utf8");
 
 let pass = 0;

@@ -29,17 +29,14 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(
   __dirname,
   "..",
   "src",
 );
 
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const code = controllerSource();
 
 /* The application entry module, which lists the modules in load order. */
 const index = fs.readFileSync(
@@ -179,7 +176,9 @@ console.log("\n  and the header is the SHARED one\n");
 check(
   "the header is built from the shared module when it is present",
   /enggPropertyPanel/.test(header) &&
-    /import enggPropertyPanel from "[^"]*property-panel\.js"/.test(code),
+    /import enggPropertyPanel from "[^"]*property-panel\.js"/.test(
+      fs.readFileSync(locate("feature-panel-markup.js"), "utf8"),
+    ),
   "the panel is not using the shared header, so it will drift from the others",
 );
 
@@ -226,7 +225,7 @@ const panelAt = index.indexOf(
 );
 
 const drawingAt = index.indexOf(
-  "drawing.js",
+  "editor/index.js",
 );
 
 check(

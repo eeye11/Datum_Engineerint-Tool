@@ -28,7 +28,7 @@ const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const dir = path.join(__dirname, "..");
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -42,7 +42,7 @@ loadModule("property-panel.js");
 
 const panels = global.window.enggPropertyPanel;
 
-const code = fs.readFileSync(locate("drawing.js"), "utf8");
+const code = controllerSource();
 
 let pass = 0;
 let fail = 0;

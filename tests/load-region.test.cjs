@@ -4,7 +4,7 @@ const { JSDOM } = require("jsdom");
 const path = require("path");
 const fs = require("fs");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * DOES A LOAD ACT WHERE IT SAYS IT DOES?
@@ -254,10 +254,7 @@ check(
 
 console.log("\n  a load's height is derived, never typed\n");
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 const code = drawingSource
   .replace(/\/\*[\s\S]*?\*\//g, "")

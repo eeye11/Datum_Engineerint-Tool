@@ -1,0 +1,1483 @@
+/*
+ * The Statics sections of a feature's panel: vectors, annotations, supports and loads.
+ */
+
+import enggBodyFrames from "../core/geometry/body-frames.js";
+import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
+import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggSketchEditor from "../ui/editors/sketch-editor.js";
+import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
+import { drawingState, editorState } from "./editor-state.js";
+import { relativeCoordinateRows } from "./relative-coordinates.js";
+import { staticsSupportSection } from "./statics-tools.js";
+
+const STATICS_VECTOR_FEATURE_TYPES = [
+    "force",    "resultant",
+    "load",
+    "varying-load"
+];
+
+function usesStaticsVectors(object) {
+    return STATICS_VECTOR_FEATURE_TYPES.includes(
+        object?.type
+    );
+}
+
+export function staticsDisplayMarkup(object) {
+    if (!usesStaticsVectors(object)) {
+        return "";
+    }
+
+    const current =
+        enggLoadProfile.vectorScaleFor(
+            drawingState
+        );
+
+    /*
+     * The dropdown carries the decades for speed, and a CUSTOM entry at
+     * the bottom for everything else.
+     *
+     * The custom value is stored in exactly the same place as a listed
+     * one and read back the same way, so choosing it is not a different
+     * kind of setting - it is the same setting, typed. The entry is only
+     * shown as selected when the current value is NOT one of the offered
+     * magnitudes; otherwise the real value is selected and the custom box
+     * is hidden, so the control never claims a scale the sheet is not
+     * using.
+     */
+    const isListed =
+        enggLoadProfile.VECTOR_SCALE_OPTIONS.some(
+            option => option.value === current
+        );
+
+    const options =
+        enggLoadProfile.VECTOR_SCALE_OPTIONS
+            .map(
+                option => `
+                    <option
+                        value="${option.value}"${
+                            option.value === current
+                                ? " selected"
+                                : ""
+                        }
+                    >${option.label}</option>
+                `
+            )
+            .join("");
+
+    const customField =
+        isListed && !editorState.staticsCustomScaleOpen
+            ? ""
+            : `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">Custom Scale</span>
+                <input type="number" step="any" min="0"
+                    data-statics-vector-custom
+                    aria-label="Custom vector scale"
+                    value="${isListed ? current : current}">
+                <span class="drawing-property-unit">×</span>
+                <button type="button"
+                    class="drawing-property-action"
+                    data-statics-vector-apply>Apply</button>
+            </div>
+        `;
+
+    return `
+        <div class="drawing-properties-block drawing-statics-display">
+            <div class="drawing-properties-title">STATICS DISPLAY</div>
+
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">Vector Scale</span>
+                <span class="drawing-property-grid-value">
+                    <select data-statics-vector-scale
+                        aria-label="Vector Scale">
+                        ${options}
+                        <option
+                            value="${
+                                enggLoadProfile
+                                    .CUSTOM_VECTOR_SCALE
+                            }"${
+                                isListed && !editorState.staticsCustomScaleOpen
+                                    ? ""
+                                    : " selected"
+                            }
+                        >Custom…</option>
+                    </select>
+                </span>
+            </div>
+
+            ${customField}
+        </div>
+    `;
+}
+
+/*
+ * The Reverse Direction control for a load.
+ *
+ * Turning a load around is a single, frequent adjustment - a
+ * sign the user got the way round on the first attempt, or a
+ * direction to be swapped while testing - so it is a button
+ * rather than something to be typed as a number. Typing
+ * direction - 180 by hand is easy to get wrong for an angle
+ * like 135, and impossible to get right for a value the user
+ * has not read precisely.
+ *
+ * The control sits directly under the Direction field it
+ * changes, so the value it edits and the control that edits it
+ * are read together and the displayed direction is always the
+ * one currently in force.
+ */
+export function reverseDirectionMarkup(
+    control = "data-load-reverse-direction"
+) {
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label"></span>
+            <button type="button"
+                class="drawing-property-action drawing-property-action-icon-only"
+                ${control}
+                aria-label="Reverse Direction"
+                title="Reverse Direction">
+                <span class="drawing-property-action-icon"
+                    aria-hidden="true">&#8593;&#8595;</span>
+            </button>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * ========================================================
+ * THE ANNOTATION CONTROLS FOR A MAGNITUDE-BEARING FEATURE
+ * ========================================================
+ *
+ * A force, a load, a moment, a resultant and a force-components pair each
+ * carry an engineering magnitude, and each can have that magnitude written
+ * beside it on the sheet as a box the student can drag to where there is room.
+ *
+ * These switches control WHETHER that box appears. They do not hold the value
+ * - the value belongs to the feature, and the box prints it from there every
+ * frame - and they are not the place the magnitude is edited. A number typed
+ * here would be a second copy of one already on the force, free to disagree
+ * with it.
+ *
+ * So this is two checkboxes and a heading, and the whole engineering half of
+ * the feature is elsewhere.
+ *
+ * WHY THE BOX IS CONTROLLED TWICE
+ *
+ * There is a sheet-wide switch as well, and the relationship is deliberate:
+ * the per-feature switch may only NARROW the sheet-wide one. A sheet full of
+ * twenty forces is unreadable with twenty boxes on it, so a student switches
+ * off the seventeen that do not matter; turning the whole class off is not a
+ * way to cope, because it also loses the three that did.
+ *
+ * So a feature switched off here stays off even when the sheet is turned back
+ * on - the choice is remembered on the feature, not recomputed from the global
+ * switch. `annotationDisplay` is where it is stored, and the annotation model
+ * reads the same field, so the checkbox and the box on the sheet cannot
+ * disagree about whether it is showing.
+ *
+ * Only features that actually HAVE a magnitude are given these controls. A
+ * beam has no magnitude to annotate, so it gets no ANNOTATION heading - see
+ * `magnitudeBearingTypes` below, and note that the section is omitted entirely
+ * for every other feature rather than rendered empty.
+ */
+export function annotationSectionMarkup(
+    object,
+    types
+) {
+    const panels =
+        enggPropertyPanel;
+
+    /*
+     * NO SHARED MODULE, NO SECTION. The fallback renders nothing rather than a
+     * second copy of these controls that would drift from this one.
+     */
+    if (!panels) {
+        return "";
+    }
+
+    /*
+     * THE FEATURES THAT HAVE A MAGNITUDE TO ANNOTATE.
+     *
+     * A list, not a guess: the question "does this feature have an
+     * engineering magnitude" has to be answered once, and answered the same
+     * way by the panel and by the renderer. Answering it per-panel is how a
+     * Beam ends up with a Show Magnitude switch that does nothing.
+     */
+    if (
+        !types ||
+        !types.has(object.type)
+    ) {
+        return "";
+    }
+
+    const model =
+        enggAnnotationModel;
+
+    const state = drawingState;
+
+    /*
+     * Read through the model's own predicate rather than by inspecting the
+     * state here. The panel and the renderer must be asking one question of
+     * one function; a panel that read `display.showMagnitudes` directly would
+     * ignore the per-feature setting and show a box the sheet does not have.
+     */
+    const shown = model
+        ? model.magnitudeShownFor(object, state)
+        : true;
+
+    const display =
+        object.annotationDisplay ||
+        {};
+
+    /*
+     * THERE IS NO "Show Unit" CONTROL, AND THERE IS NO REASON FOR ONE.
+     *
+     * It was offered here as an informational readout of the sheet's
+     * unit setting, on the reasoning that the annotation model might
+     * hide units. It does not: `unitSuffix` accepts the flag and then
+     * deliberately ignores it, because a magnitude without its unit is
+     * not the same quantity as one with it.
+     *
+     * So the switch reported a setting the user could not change and
+     * that nothing acted on - a dead control that looked meaningful.
+     * Removed rather than disabled, because a switch that cannot be
+     * flipped is worse than no switch: it implies a choice that does
+     * not exist.
+     */
+    const fields = [
+        panels.toggle({
+            label: "Show Magnitude",
+            attribute: "data-feature-show-magnitude",
+            on: shown,
+        }),
+    ];
+
+    return panels.section("ANNOTATION", fields);
+}
+
+/*
+ * THE FEATURE TYPES THAT CARRY SOMETHING WORTH ANNOTATING.
+ *
+ * Not written here. The annotation model owns this question, because it is
+ * the same question it already answers internally when it decides whether a
+ * box can be produced - and a second list would be a second answer.
+ *
+ * That is not hypothetical. The first version of this named
+ * "distributed-load" and "applied-moment"; Datum's features are called "load"
+ * and "moment", so the list matched nothing at all and the section was
+ * offered to no feature whatsoever while looking entirely correct.
+ *
+ * Read once and cached, because it is a Set built by walking the model's kind
+ * table and the answer cannot change while the page is loaded.
+ */
+export const MAGNITUDE_BEARING_TYPES = (() => {
+    const model =
+        enggAnnotationModel;
+
+    if (!model?.annotatableTypes) {
+        /*
+         * No model, no feature has a box, so nothing is offered. An empty set
+         * renders no sections and breaks nothing; a guessed list would render
+         * switches for features that cannot have one.
+         */
+        return new Set();
+    }
+
+    return model.annotatableTypes();
+})();
+
+/*
+ * The Arc Radius row for a rotational feature.
+ *
+ * PRESENTATION, and labelled as such.
+ *
+ * The field is deliberately kept out of the DIRECTION and MAGNITUDE
+ * groups and given a unit of pixels rather than N·m, because it is the
+ * one number on this feature that is not engineering. It says how big
+ * the curved arrow is drawn; it does not say how hard the moment
+ * turns. Showing it next to a magnitude with the same styling is what
+ * invites a student to read "radius 25, so 500 N·m" as one statement,
+ * and widening the arc to make a moment legible would then appear to
+ * change its value.
+ */
+export function arcRadiusRow(
+    geometry
+) {
+    const rotational =
+        enggDrawingRotationalArrow;
+
+    const current =
+        rotational
+            ? rotational.clampArcRadius(
+                geometry.arcRadius ??
+                    rotational.DEFAULT_ARC_RADIUS_PX
+            )
+            : Number(geometry.arcRadius) || 16;
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Arc Radius</span>
+            <input type="number"
+                step="1"
+                min="${rotational ? rotational.MIN_ARC_RADIUS_PX : 8}"
+                max="${rotational ? rotational.MAX_ARC_RADIUS_PX : 80}"
+                data-arc-radius
+                aria-label="Arc Radius"
+                title="How large the curved arrow is drawn. This is presentation only and does not change the magnitude."
+                value="${current}">
+            <span class="drawing-property-unit">px</span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * The Features panel for an ANALYSIS object.
+ *
+ * ONE panel for all five kinds, because they have the same shape: a
+ * source relationship, some display switches, and a set of values
+ * that are either derived or editable. Only the labels and which
+ * values exist differ, and branching per type would have meant five
+ * near-identical panels that drift apart.
+ *
+ * DERIVED VALUES ARE SHOWN, NOT EDITED
+ * ------------------------------------
+ * A resultant's magnitude and a components object's Fx and Fy are
+ * CALCULATED from forces the student typed. Putting them in editable
+ * boxes would invite the one thing that must not happen: typing a
+ * magnitude that disagrees with the sources, leaving an arrow whose
+ * label contradicts its own geometry. So they are rendered as read-only
+ * text, and the control for changing them is the force itself - which
+ * is where the number actually comes from.
+ *
+ * A broken source is stated plainly rather than shown as zero. Zero is
+ * a claim, and an unresolved object has no claim to make.
+ */
+
+export function analysisPanelRows(
+    object
+) {
+    const geometry = object.geometry || {};
+
+    const engineering = object.engineering || {};
+
+    const sources = enggAnalysisDependencies
+        .sourceIdsOf(object)
+        .map(
+            id =>
+                drawingState.objects.find(
+                    candidate =>
+                        candidate.id === id
+                ) || null
+        );
+
+    const rows = [];
+
+    /*
+     * ========================================================
+     * THE SAME PANEL VOCABULARY AS EVERY OTHER FEATURE
+     * ========================================================
+     *
+     * These rows go through the shared property-panel module for the same
+     * reason the Statics panels do: a field with a missing value is not a
+     * field, so an analysis diagram cannot print "Magnitude NaN" or leave a
+     * unit standing beside nothing. The heading is a marker that the caller's
+     * finalise pass drops when the rows under it turn out to be empty.
+     */
+    const panels =
+        enggPropertyPanel;
+
+    const escape = value =>
+        String(value ?? "").replace(
+            /[&<>"']/g,
+            character =>
+                ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                })[character],
+        );
+
+    const section = label =>
+        `<!--section:${label}-->`;
+
+    /*
+     * A READ-ONLY FIELD, OMITTED WHEN IT HAS NO VALUE.
+     *
+     * `value` may be a number (joined with its unit) or a ready-made string
+     * such as a body name or a range. Either way an absent value produces no
+     * field rather than an empty one - which is what stops a diagram printing
+     * "Magnitude NaN" or leaving a unit standing beside nothing.
+     *
+     * The shared module is used when it is present; when it is not (a bare
+     * test harness that lifts this function out on its own), the same rules are
+     * applied locally rather than the field silently vanishing.
+     */
+    const readOnly = (label, value, unit) => {
+        if (panels && panels.readOnlyQuantity) {
+            /*
+             * The shared helpers join the number and its unit, so a value that
+             * has already been formatted to a string is joined with its unit
+             * here and passed as a finished string.
+             */
+            if (typeof value === "number") {
+                return panels.readOnlyQuantity(label, value, unit || "");
+            }
+
+            if (value === undefined || value === null || String(value).trim() === "") {
+                return "";
+            }
+
+            return panels.readOnly(
+                label,
+                unit ? `${value} ${unit}` : String(value),
+            );
+        }
+
+        /*
+         * LOCAL FALLBACK. Same two rules: no value, no field; number and unit
+         * joined once.
+         */
+        if (value === undefined || value === null) {
+            return "";
+        }
+
+        if (typeof value === "number" && !Number.isFinite(value)) {
+            return "";
+        }
+
+        const shown = typeof value === "number" ? number(value) : String(value);
+
+        if (shown.trim() === "") {
+            return "";
+        }
+
+        return `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">${escape(label)}</span>
+                <span class="drawing-property-derived">${escape(shown)}</span>
+                <span class="drawing-property-unit">${escape(unit || "")}</span>
+                <span></span>
+            </div>
+        `;
+    };
+
+    const toggle = (label, key, on) => {
+        if (panels && panels.row) {
+            return panels.row({
+                label,
+                control: `<input type="checkbox"
+                      data-analysis-toggle="${escape(key)}"
+                      aria-label="${escape(label)}"
+                      ${on ? "checked" : ""}>`,
+            });
+        }
+
+        return `
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">${escape(label)}</span>
+                <input type="checkbox"
+                    data-analysis-toggle="${escape(key)}"
+                    aria-label="${escape(label)}"
+                    ${on ? "checked" : ""}>
+                <span class="drawing-property-unit"></span>
+                <span></span>
+            </div>
+        `;
+    };
+
+    const number = value => {
+        if (panels && panels.number) {
+            return panels.number(value);
+        }
+
+        const numeric = Number(value);
+
+        if (!Number.isFinite(numeric)) {
+            return "";
+        }
+
+        const rounded = Math.round(numeric * 100) / 100;
+
+        return Object.is(rounded, -0) ? "0" : String(rounded);
+    };
+
+    /*
+     * THE ORDINATE'S UNIT, from the diagram type.
+     *
+     * A bending moment is kN-m and a shear force is kN, so a Y Range typed
+     * against the wrong unit would be wrong by a factor of a metre. It is
+     * read from one small table here rather than from a second copy of the
+     * diagram table, and it is the same convention the axis label uses - the
+     * two cannot end up quoting different units for the same diagram.
+     */
+    const ordinateUnit = () =>
+        ({
+            sfd: "kN",
+            bmd: "kN\u00b7m",
+            afd: "kN",
+        })[geometry.diagramType] || "";
+
+    const heading = {
+        "force-components": "FORCE COMPONENTS",
+        resultant: "RESULTANT",
+        "shear-force-diagram": "SHEAR FORCE DIAGRAM",
+        "bending-moment-diagram": "BENDING MOMENT DIAGRAM",
+        "axial-force-diagram": "AXIAL FORCE DIAGRAM"
+    }[object.type] ||
+        "ANALYSIS";
+
+    rows.push(section(heading));
+
+    /*
+     * THE SOURCE, WHICH THE STUDENT MUST BE ABLE TO SEE.
+     *
+     * Not decoration: an analysis object that silently follows
+     * something the student cannot name is impossible to reason about
+     * when it updates, because there is nothing to look at and work out
+     * why. The names are listed, and a source that has been deleted is
+     * named as missing rather than dropped from the list.
+     */
+    rows.push(section("SOURCE"));
+
+    if (!sources.length) {
+        rows.push(
+            readOnly(
+                "Relative to",
+                "Nothing selected"
+            )
+        );
+    } else {
+        sources.forEach((source, index) => {
+            rows.push(
+                readOnly(
+                    sources.length > 1
+                        ? "Source " + (index + 1)
+                        : "Relative to",
+                    source
+                        ? source.name || source.type
+                        : "deleted"
+                )
+            );
+        });
+    }
+
+    if (engineering.unresolved) {
+        rows.push(
+            readOnly(
+                "Status",
+                "Source deleted - showing no values"
+            )
+        );
+    }
+
+    if (object.type === "force-components") {
+        rows.push(section("COMPONENTS"));
+        rows.push(
+            readOnly(
+                "Horizontal",
+                number(geometry.forceX),
+                "N"
+            )
+        );
+        rows.push(
+            readOnly(
+                "Vertical",
+                number(geometry.forceY),
+                "N"
+            )
+        );
+
+        rows.push(section("DISPLAY"));
+
+        /*
+         * OFF BY DEFAULT, and the panel has to say so.
+         *
+         * This reads `!== false`, which reports the original force as
+         * ON - so the checkbox claimed a setting the drawing was not using,
+         * and a student who unticked it saw no change, because unsetting
+         * `false` left the field absent and the renderer read absent as on
+         * too. Two places had the same wrong default and cancelled out to
+         * "always on".
+         *
+         * A Force Components feature draws Fx and Fy. The decomposed vector
+         * is a genuine reference for checking the work, so it is offered -
+         * but drawing it by default put a second copy of the force on the
+         * sheet, which is the thing the tool exists to avoid.
+         */
+        rows.push(
+            toggle(
+                "Show Original Force",
+                "showOriginal",
+                geometry.showOriginal === true
+            )
+        );
+        rows.push(
+            toggle(
+                "Show X Component",
+                "showX",
+                geometry.showX !== false
+            )
+        );
+        rows.push(
+            toggle(
+                "Show Y Component",
+                "showY",
+                geometry.showY !== false
+            )
+        );
+
+        rows.push(section("VALUE LABELS"));
+        rows.push(
+            toggle(
+                "Show Magnitudes",
+                "showValues",
+                geometry.showValues !== false
+            )
+        );
+    }
+
+    if (object.type === "resultant") {
+        rows.push(section("RESULTANT"));
+        rows.push(
+            readOnly(
+                "Magnitude",
+                number(geometry.magnitude),
+                "N"
+            )
+        );
+        rows.push(
+            readOnly(
+                "Direction",
+                number(geometry.angle),
+                "°"
+            )
+        );
+
+        rows.push(section("DISPLAY"));
+        rows.push(
+            toggle(
+                "Show Resultant",
+                "showResultant",
+                geometry.showResultant !== false
+            )
+        );
+        rows.push(
+            toggle(
+                "Show Construction",
+                "showConstruction",
+                geometry.showConstruction === true
+            )
+        );
+
+        /*
+         * WHETHER THE RESULTANT'S MAGNITUDE IS WRITTEN BESIDE IT.
+         *
+         * Force Components above already has its own "Show Magnitudes"
+         * control, and does not get this section as well: two switches that
+         * mean the same thing on one panel is the duplicate-control problem,
+         * and a student who unticks one and watches nothing change has no way
+         * to work out which is authoritative.
+         *
+         * The Resultant had no such control, so its value could be read but
+         * never written on the sheet - which for a derived force is the whole
+         * point of having it. This brings it into line with the features that
+         * did have the switch.
+         */
+        rows.push(
+            annotationSectionMarkup(
+                object,
+                MAGNITUDE_BEARING_TYPES
+            )
+        );
+    }
+
+    if (object.type === "analysis-diagram") {
+        const span = geometry.sourceSpan;
+
+        rows.push(section("REFERENCE"));
+
+        rows.push(
+            readOnly(
+                "Reference",
+                span
+                    ? "Body Length"
+                    : "No source"
+            )
+        );
+
+        /*
+         * ========================================================
+         * PLOT: WHAT THE DIAGRAM IS, NOT WHAT IS ON IT
+         * ========================================================
+         *
+         * A Plot holds EXPRESSIONS - relations the student has added to
+         * the graph - and the equations among them are the part that takes
+         * real thought. They are edited in the Plot Editor, which has
+         * room for a card per expression and a live graph beside them;
+         * this panel states the range the graph covers and how many
+         * expressions are in it, and then hands over.
+         *
+         * The old presentation - From/To/f(x) for every segment, plus an
+         * Add/Remove pair and a separate CHECKS block - made this panel
+         * into a data inspector. A student with five expressions had to
+         * read a wall of numbers to answer the one question they have,
+         * and every one of those rows competed with the colour, line
+         * width and position controls that also live here.
+         *
+         * THE COUNT IS THE WHOLE OF IT HERE. No equation is printed in
+         * this panel, because a partial list is worse than none: it looks
+         * like the diagram has been fully described when it has not.
+         */
+        if (geometry.mode === "plot") {
+            const equations =
+                enggDiagramEquations;
+
+            const range = geometry.localRange;
+
+            const expressions = equations
+                ? equations.readPlot(geometry)
+                : [];
+
+            rows.push(section("PLOT"));
+
+            rows.push(
+                readOnly(
+                    "Range",
+                    span &&
+                        range &&
+                        Number.isFinite(Number(range.from)) &&
+                        Number.isFinite(Number(range.to))
+                        ? `${number(range.from)} → ${
+                            number(range.to)
+                        } mm`
+                        : "No source body"
+                )
+            );
+
+            rows.push(
+                readOnly(
+                    "Expressions",
+                    String(expressions.length)
+                )
+            );
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label"></span>
+                    <button type="button"
+                        class="drawing-property-action"
+                        data-plot-editor-open
+                        ${equations ? "" : "disabled"}>
+                        Open Analysis Editor
+                    </button>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+        }
+
+        /*
+         * ========================================================
+         * SKETCH: THE SAME PANEL, THE OTHER MODE
+         * ========================================================
+         *
+         * A Sketch is a list of drawn elements rather than a list of
+         * equations, so it counts ELEMENTS and says so - reusing the word
+         * "expressions" would leave the student to work out which they are
+         * looking at.
+         *
+         * It offers the same one button for the same reason: the drawing is
+         * done in the editor, and this panel describes the diagram rather than
+         * being where it is made.
+         */
+        if (geometry.mode === "sketch") {
+            const range = geometry.localRange;
+
+            const elements = Array.isArray(
+                geometry.sketchElements
+            )
+                ? geometry.sketchElements
+                : [];
+
+            rows.push(section("SKETCH"));
+
+            rows.push(
+                readOnly(
+                    "Range",
+                    span &&
+                        range &&
+                        Number.isFinite(Number(range.from)) &&
+                        Number.isFinite(Number(range.to))
+                        ? `${number(range.from)} → ${
+                            number(range.to)
+                        } mm`
+                        : "No source body"
+                )
+            );
+
+            rows.push(
+                readOnly(
+                    "Elements",
+                    String(elements.length)
+                )
+            );
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label"></span>
+                    <button type="button"
+                        class="drawing-property-action"
+                        data-plot-editor-open
+                        ${
+                            enggSketchEditor
+                                ? ""
+                                : "disabled"
+                        }>
+                        Open Analysis Editor
+                    </button>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+        }
+
+        rows.push(section("DISPLAY"));
+        rows.push(
+            toggle(
+                "Zero Axis",
+                "showZeroAxis",
+                geometry.showZeroAxis !== false
+            )
+        );
+
+        /*
+         * ========================================================
+         * THE Y RANGE
+         * ========================================================
+         *
+         * Blank means "fit to what I have drawn", which is the state a
+         * student wants until they have something to fit. Leaving the
+         * fields empty is therefore a real answer rather than an unset one,
+         * and it is why the renderer falls back to the diagram's own peak
+         * rather than treating a missing range as zero.
+         *
+         * Only the ordinate is offered. The x range is not a choice: it is
+         * the length of the member the diagram describes, and a field for
+         * it would let the two disagree - a graph whose axis says 0-500
+         * while the body it belongs to is 522 long.
+         */
+        rows.push(section("Y RANGE"));
+
+        rows.push(`
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Minimum
+                </span>
+                <input type="number" step="any"
+                    class="drawing-property-input"
+                    data-geometry-field="yRange"
+                    data-geometry-part="from"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yRange?.from)
+                        )
+                            ? number(geometry.yRange.from)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `);
+
+        rows.push(`
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Maximum
+                </span>
+                <input type="number" step="any"
+                    class="drawing-property-input"
+                    data-geometry-field="yRange"
+                    data-geometry-part="to"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yRange?.to)
+                        )
+                            ? number(geometry.yRange.to)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `);
+        rows.push(
+            toggle(
+                "Source Reference",
+                "showReferencePositions",
+                geometry.showReferencePositions !== false
+            )
+        );
+
+        /*
+         * SHOW EQUATIONS, AND ONLY FOR A PLOT.
+         *
+         * There is nothing to write beside a Sketch - the shape IS the
+         * student's work - so offering the toggle there would be a control
+         * that does nothing, which is worse than no control.
+         *
+         * Off by default: a diagram with its equations on it reads as a
+         * finished answer.
+         */
+        if (geometry.mode === "plot") {
+            rows.push(
+                toggle(
+                    "Show Equations",
+                    "showEquations",
+                    geometry.showEquations === true
+                )
+            );
+        }
+
+        /*
+         * ========================================================
+         * TICKS
+         * ========================================================
+         *
+         * Off by default, and the spacing fields beside them do nothing
+         * until it is on - which is stated in the fields themselves rather
+         * than left to be discovered.
+         *
+         * A spacing that would produce an unreadable number of marks draws
+         * none, rather than drawing some arbitrary subset. That is
+         * deliberately visible: a student who typed 0.001 on a 5 m beam
+         * should see that it did not take, and fix it, rather than be given
+         * a scale they never asked for.
+         *
+         * The x spacing is in the member's own units and the y spacing in
+         * the ordinate's, so a beam in mm and a diagram in kN each get a
+         * number they can read.
+         */
+        rows.push(
+            toggle(
+                "Ticks",
+                "showTicks",
+                geometry.showTicks === true
+            )
+        );
+
+        const tickFields = `
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    X Spacing
+                </span>
+                <input type="number" step="any" min="0"
+                    class="drawing-property-input"
+                    data-geometry-field="xTickSpacing"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.xTickSpacing)
+                        )
+                            ? number(geometry.xTickSpacing)
+                            : ""
+                    }"
+                    placeholder="${
+                        geometry.localRange
+                            ? number(
+                                  (Number(
+                                      geometry.localRange.to,
+                                  ) -
+                                      Number(
+                                          geometry.localRange.from,
+                                      )) /
+                                      5,
+                              )
+                            : ""
+                    }"/>
+                <span class="drawing-property-unit">mm</span>
+                <span></span>
+            </div>
+
+            <div class="drawing-property-grid">
+                <span class="drawing-property-grid-label">
+                    Y Spacing
+                </span>
+                <input type="number" step="any" min="0"
+                    class="drawing-property-input"
+                    data-geometry-field="yTickSpacing"
+                    value="${
+                        Number.isFinite(
+                            Number(geometry.yTickSpacing)
+                        )
+                            ? number(geometry.yTickSpacing)
+                            : ""
+                    }"
+                    placeholder="auto"/>
+                <span class="drawing-property-unit">
+                    ${ordinateUnit()}
+                </span>
+                <span></span>
+            </div>
+        `;
+
+        rows.push(tickFields);
+        rows.push(
+            toggle(
+                "Background",
+                "backgroundVisible",
+                geometry.backgroundVisible !== false
+            )
+        );
+    }
+
+    rows.push(section("POSITION"));
+    rows.push(
+        readOnly(
+            "X",
+            number(geometry.position?.x ?? geometry.start?.x),
+            "mm"
+        )
+    );
+        rows.push(
+            readOnly(
+                "Y",
+                number(geometry.position?.y ?? geometry.start?.y),
+                "mm"
+            )
+        );
+
+        /*
+         * THE HEADINGS ARE RESOLVED HERE, NOT LEFT AS MARKERS.
+         *
+         * This function returns a finished list, so a heading must stand or fall
+         * with the rows under it before it leaves - otherwise a caller that simply
+         * joins the list would show the marker as an invisible HTML comment and
+         * lose the heading text. The rules are the same ones the caller's finalise
+         * pass applies: a heading with no real field under it is dropped, and an
+         * empty fragment is dropped.
+         */
+        const finalised = [];
+
+        for (let index = 0; index < rows.length; index += 1) {
+            const entry = rows[index];
+
+            if (typeof entry !== "string" || entry.trim() === "") {
+                continue;
+            }
+
+            const marker = /^<!--section:(.*?)-->$/.exec(entry);
+
+            if (!marker) {
+                finalised.push(entry);
+                continue;
+            }
+
+            let hasField = false;
+
+            for (let ahead = index + 1; ahead < rows.length; ahead += 1) {
+                const next = rows[ahead];
+
+                if (typeof next !== "string" || next.trim() === "") {
+                    continue;
+                }
+
+                if (/^<!--section:(.*?)-->$/.test(next)) {
+                    break;
+                }
+
+                hasField = true;
+                break;
+            }
+
+            if (hasField) {
+                finalised.push(
+                    `<div class="drawing-properties-section">${escape(marker[1])}</div>`,
+                );
+            }
+        }
+
+        return finalised;
+    }
+
+/*
+ * THE FEATURES PANEL FOR A SUPPORT.
+ *
+ * A support has a RELATIONSHIP to a body and a SIDE, and those are the
+ * only two things about its position a student edits. Everything else
+ * about where it appears is derived, and putting a derived value in an
+ * editable box is how a drawing ends up self-contradictory: a support
+ * whose Y had been typed to move it clear of the beam would sit
+ * somewhere the attachment said it could not.
+ *
+ * SO THERE IS NO Y FIELD HERE, AND NO ORIENTATION ANGLE.
+ *
+ * The distance clear of the body is the support renderer's business,
+ * worked out from the body's own depth, and the angle it points is
+ * worked out from the body's own normal. Neither is a number the
+ * student can get wrong, so neither is offered. `Position X` below is
+ * the one position that IS theirs: how far along the body they put it.
+ *
+ * Real X/Y are shown read-only, because a student checking a support
+ * against a dimension needs to see where it actually is - but the
+ * values are consequences, not settings.
+ */
+/*
+ * THE SENSE A ROTATIONAL FEATURE TURNS, AS A WORD.
+ *
+ * One reader for the direction, used by the Features panel, the
+ * annotation model and the Reverse control, so a moment cannot be
+ * described one way and reversed as though it were another.
+ *
+ * A feature states its direction as "CCW" or "CW". Older files stored
+ * a `clockwise` flag and it is still read - without that, every moment
+ * in an existing drawing would have silently become anticlockwise the
+ * moment it was opened, which is a change nobody asked for and nobody
+ * can see.
+ */
+export function momentDirectionOf(
+    geometry
+) {
+    if (geometry?.direction != null) {
+        return String(geometry.direction) === "CW"
+            ? "CW"
+            : "CCW";
+    }
+
+    return geometry?.clockwise === true
+        ? "CW"
+        : "CCW";
+}
+
+export function supportPanelRows(
+    object
+) {
+    const geometry = object.geometry || {};
+
+    const rows = [];
+
+    const section = label =>
+        `<div class="drawing-properties-section">${label}</div>`;
+
+    const number = value => {
+        if (!Number.isFinite(Number(value))) {
+            return "";
+        }
+
+        const rounded =
+            Math.round(Number(value) * 100) /
+            100;
+
+        return Object.is(rounded, -0) ? "0" : String(rounded);
+    };
+
+    const parent = object.parentId
+        ? drawingState.objects.find(
+            candidate =>
+                candidate.id === object.parentId
+        ) || null
+        : null;
+
+    rows.push(
+        section(
+            staticsSupportSection(
+                object.type
+            )
+        )
+    );
+
+    rows.push(section("POSITION"));
+
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Relative to</span>
+            <span class="drawing-property-readonly">${
+                parent
+                    ? parent.name || parent.type
+                    : "Nothing"
+            }</span>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `);
+
+    /*
+     * WHERE ALONG THE BODY, in millimetres, and the label says so.
+     *
+     * Calling this simply "Position X" invited the reading that it is an
+     * x coordinate in its own right, and the value a student would then
+     * expect to type to move the support to a particular x on the
+     * sheet. It is not: it is a distance along the body.
+     *
+     * WHAT IS STORED IS THE FRACTION, and what is SHOWN is the distance
+     * that fraction currently represents. Those are different on purpose.
+     * The distance is the number a student thinks in - "300mm along this
+     * 600mm beam" - while the fraction is what survives the beam being
+     * resized underneath it. Showing the distance and storing the
+     * fraction is the translation made once, here, rather than by every
+     * other part of the application guessing which one it is holding.
+     */
+    const parentFrame = parent
+        ? enggBodyFrames.frameOf(parent)
+        : null;
+
+    const attachmentFraction = parentFrame
+        ? enggBodyFrames.attachmentFraction(
+              parentFrame,
+              geometry.attachment
+          )
+        : 0;
+
+    const alongBody = parentFrame
+        ? attachmentFraction * parentFrame.length
+        : 0;
+
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Position Along Body</span>
+            <input type="number" step="1"
+                data-support-distance
+                aria-label="Position Along Body"
+                value="${number(alongBody)}">
+            <span class="drawing-property-unit">mm</span>
+            <span></span>
+        </div>
+    `);
+
+    /*
+     * WHICH SIDE, and nothing else.
+     *
+     * A checkbox rather than a direction control or a negative
+     * distance, because it is genuinely a two-way choice and because
+     * the alternative - letting a student type a negative offset - is
+     * how a support ends up on the wrong side of a beam with no way to
+     * describe what it should have been.
+     */
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Flip</span>
+            <input type="checkbox"
+                data-support-flip
+                aria-label="Flip to the other side of the body"
+                ${geometry.flipped ? "checked" : ""}>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `);
+
+    /*
+     * WHERE IT ACTUALLY IS, derived.
+     *
+     * Read-only on purpose. The two numbers are recomputed from the
+     * attachment and the body every frame, so a box the student could
+     * type into would be writing to a value that the next redraw
+     * overwrites - and they would see their entry spring back.
+     */
+    const placement = parentFrame
+        ? enggBodyFrames.supportPlacement(
+            parent,
+            enggBodyFrames.attachmentPoint(
+                parentFrame,
+                geometry.attachment
+            ),
+            geometry.flipped === true
+        )
+        : null;
+
+    rows.push(section("REAL POSITION"));
+
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">X</span>
+            <span class="drawing-property-derived">${
+                number(placement?.render?.x ?? geometry.position?.x)
+            }</span>
+            <span class="drawing-property-unit">mm</span>
+            <span></span>
+        </div>
+    `);
+
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Y</span>
+            <span class="drawing-property-derived">${
+                number(placement?.render?.y ?? geometry.position?.y)
+            }</span>
+            <span class="drawing-property-unit">mm</span>
+            <span></span>
+        </div>
+    `);
+
+    return rows;
+}
+
+/*
+ * The Features panel for a Distributed Load.
+ *
+ * A distributed load is one continuous load, so this panel shows
+ * the things that define it rather than the arrows it draws:
+ * the body it acts on, the one direction all of its arrows share,
+ * the magnitude and position of each point that shapes the
+ * profile, and the interval those arrows are sampled at.
+ *
+ * Editing any of them writes to the same model the renderer
+ * reads, so the change is visible at once and the load keeps its
+ * identity throughout.
+ */
+export function distributedLoadPanelMarkup(
+    object,
+    helpers
+) {
+    const {
+        coordinate,
+        scalar,
+        section
+    } = helpers;
+
+    const geometry = object.geometry || {};
+
+    /*
+     * A NUMBER THAT IS NEVER THE STRING "NaN". A missing value produces an
+     * empty string rather than a word that is not a measurement.
+     */
+    const number =
+        value =>
+            Number.isFinite(Number(value))
+                ? Number(value).toFixed(2)
+                : "";
+
+    const rows = [];
+
+    rows.push(section("LOADED BODY"));
+    rows.push(
+        relativeCoordinateRows(
+            object,
+            "LOADED BODY",
+            helpers
+        )
+    );
+    /*
+     * THE LOADED REGION AND NOTHING ELSE.
+     *
+     * The four absolute coordinates that used to follow are gone: Start X,
+     * Start Y, End X and End Y. The two X values were already the
+     * load's stations wearing the wrong labels, and they are now stated as
+     * stations in `relativeCoordinateRows` above - where they belong,
+     * because they are distances along the member rather than coordinates
+     * on the sheet.
+     *
+     * The two Y values are not a setting at all. They are the heights of
+     * the load's own outline, and storing them independently of the
+     * direction is what let a reversed load keep its outline on the
+     * original side of the beam: the arrows turned over and the outline
+     * stayed, so the drawing showed a load pushing from underneath a
+     * region drawn above it. The height now follows from the body and the
+     * direction, and there is no field in which it can be got wrong.
+     *
+     * A load is therefore positioned by its two stations and its direction,
+     * and by nothing else - which is the whole of what it is.
+     */
+
+    rows.push(section("FORCE"));
+    rows.push(
+        scalar(
+            "Direction",
+            "direction",
+            enggLoadProfile.loadDirection(geometry),
+            "°"
+        )
+    );
+    rows.push(reverseDirectionMarkup());
+    rows.push(
+        scalar(
+            "Interval",
+            "interval",
+            enggLoadProfile.loadInterval(geometry),
+            "mm"
+        )
+    );
+
+    const points =
+        enggLoadProfile
+            .profilePointPositions(geometry);
+
+    rows.push(section("DISTRIBUTION"));
+
+    /*
+     * WHETHER THE LOAD INTENSITY IS WRITTEN BESIDE THE LOAD.
+     *
+     * Added before the early return below, because a load whose profile has
+     * no points yet still has an intensity and still deserves the control -
+     * otherwise the section would appear and disappear as the profile gained
+     * points, which reads as the panel being broken rather than as the load
+     * being incomplete.
+     */
+    const annotation =
+        annotationSectionMarkup(
+            object,
+            MAGNITUDE_BEARING_TYPES
+        );
+
+    if (annotation) {
+        rows.push(annotation);
+    }
+
+    if (!points.length) {
+        rows.push(`
+            <div class="drawing-property-grid drawing-property-grid-value">
+                <span class="drawing-property-grid-label">Magnitude</span>
+                <span class="drawing-property-readonly">${number(0)}</span>
+                <span class="drawing-property-unit">N/mm</span>
+                <span></span>
+            </div>
+        `);
+
+        return rows.join("");
+    }
+
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-head">
+            <span></span><span>Magnitude</span><span>Position</span><span></span>
+        </div>
+    `);
+
+    points.forEach((point, index) => {
+        /*
+         * `drawing-property-grid-pair`, not `drawing-property-grid`:
+         * this row has a magnitude AND a position, so its unit is the
+         * fourth child. The ordinary grid's fourth track is a fixed 14px
+         * Fix-checkbox column, and with no checkbox here the position
+         * input fell into the unit track and was squeezed under its own
+         * stepper.
+         */
+        rows.push(`
+            <div class="drawing-property-grid drawing-property-grid-pair">
+                <span class="drawing-property-grid-label">Point ${index + 1}</span>
+                <input type="number" step="any"
+                    data-property="loadPoint.${index}.magnitude"
+                    aria-label="Point ${index + 1} Magnitude"
+                    value="${number(point.magnitude)}">
+                <input type="number" step="any"
+                    data-property="loadPoint.${index}.t"
+                    aria-label="Point ${index + 1} Position"
+                    value="${number(point.t * 100)}">
+                <span class="drawing-property-unit">N/mm</span>
+            </div>
+        `);
+    });
+
+    return rows.join("");
+}

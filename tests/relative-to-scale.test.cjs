@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * RELATIVE TO IS A MEASUREMENT IN BOTH DIRECTIONS
@@ -27,10 +27,7 @@ const { locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 const fs = require("fs");
 const path = require("path");
 
-const code = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const code = controllerSource();
 
 let pass = 0;
 let fail = 0;

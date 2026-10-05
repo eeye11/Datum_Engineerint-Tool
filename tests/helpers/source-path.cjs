@@ -164,9 +164,12 @@ function loadModule(name) {
  * The drawing controller's source, as one text.
  *
  * Several tests read the controller's source to check how it is written,
- * or lift a function out of it by name. The controller is split across
- * several modules under src/editor/, so this gathers them in a stable
- * order; a function is found wherever it lives.
+ * or lift a function out of it by name and run it in a sandbox. The
+ * controller is split across the modules under src/editor/, so this gathers
+ * them in a stable order - a function is found wherever it lives - and
+ * leaves out the module syntax (import lines and `export` keywords), which
+ * is about how the files connect rather than what the code does, and which
+ * a sandbox cannot evaluate.
  */
 function controllerSource() {
   const editorDir = path.join(SOURCE_ROOT, "editor");
@@ -178,9 +181,29 @@ function controllerSource() {
       else if (entry.name.endsWith(".js")) files.push(full);
     }
   })(editorDir);
+  /*
+   * Reading order: the table of contents at the top of editor/index.js,
+   * then anything it does not list. A test that slices "from this function
+   * to the next" relies on the two being adjacent, as they are in that order.
+   */
+  const indexFile = path.join(editorDir, "index.js");
+  const toc = [
+    ...fs.readFileSync(indexFile, "utf8").matchAll(/^ \*\s{3}([a-z-]+\.js)\s/gm),
+  ].map((m) => path.join(editorDir, m[1]));
+  const rank = (file) => {
+    const at = toc.indexOf(file);
+    return at < 0 ? toc.length + (file === indexFile ? 1 : 0) : at;
+  };
+
   return files
-    .sort()
-    .map((file) => fs.readFileSync(file, "utf8"))
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((file) =>
+      fs
+        .readFileSync(file, "utf8")
+        .replace(/^import[^;]*;\n/gm, "")
+        .replace(/^export (?=(?:async )?function |const |let |class )/gm, "")
+        .replace(/^export \{[^}]*\}(?: from "[^"]*")?;\n/gm, ""),
+    )
     .join("\n");
 }
 

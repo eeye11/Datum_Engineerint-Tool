@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const vm = require("vm");
 
-const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
+const { controllerSource, loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
  * ========================================================
  * WHAT THE FEATURES PANEL NOW SAYS ABOUT A PLOT
@@ -42,10 +42,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const drawingSource = fs.readFileSync(
-  locate("drawing.js"),
-  "utf8",
-);
+const drawingSource = controllerSource();
 
 /*
  * The equations module really is loaded, so the expression count the panel

@@ -42,7 +42,7 @@ import "./rendering/renderer.js";
 import "./core/snapping/object-snap.js";
 import "./references/drawing-reference.js";
 import "./sheets/sheet-tabs.js";
-import "./editor/drawing.js";
+import "./editor/index.js";
 import "./editor/toolbar.js";
 import "./solution/written-references.js";
 import "./solution/writing-tab.js";
