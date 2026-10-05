@@ -246,9 +246,7 @@ check(
 
 check(
   "an empty snap leaves the instruction alone",
-  /return\s*\([\s\S]{0,120}?\)\s*:\s*fallback/.test(
-    drawingCode,
-  ) || /:\s*fallback\s*;/.test(drawingCode),
+  /feedback\.length\s*\?[\s\S]{0,120}?:\s*fallback\s*\)/.test(drawingCode),
   "with no snap the status must be exactly the tool's instruction",
 );
 

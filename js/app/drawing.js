@@ -5322,21 +5322,6 @@ function dimensionDescriptorsFor(
 }
 
 /*
- * A short name for a measurement, for the message that tells the
- * student what the tool has recognised.
- */
-function dimensionChoiceLabel(
-    dimensionType
-) {
-    return (
-        enggMeasurement.DIMENSION_TYPES?.[
-            dimensionType
-        ]?.label ||
-        dimensionType
-    );
-}
-
-/*
  * A readable description of what is about to be measured.
  *
  * The status line has to say what the tool RECOGNISED, not merely
@@ -5812,60 +5797,6 @@ function findDimensionTarget(
  * anything, so a plain crossing count is enough and an exact answer
  * is not required.
  */
-/*
- * How far a point is from a LINE SEGMENT.
- *
- * Distance to an infinite line would be wrong near the ends: a click
-
- * just past the tip of a force arrow would measure zero to a line that
-
- * runs on past it, and would pick a feature the pointer is nowhere near.
-
- * Clamping the projection to the segment avoids that, which is the same
-
- * reason a hit test uses the segment rather than the line.
-
- */
-function distanceToSegment(
-    point,
-    from,
-    to
-) {
-    const deltaX = to.x - from.x;
-    const deltaY = to.y - from.y;
-
-    const lengthSquared =
-        deltaX * deltaX + deltaY * deltaY;
-
-    /*
-     * A segment of no length - two coincident anchors - is a point, and
-
-     * is measured as one.
-
-     */
-    if (lengthSquared < 1e-12) {
-        return Math.hypot(
-            point.x - from.x,
-            point.y - from.y
-        );
-    }
-
-    const t = Math.max(
-        0,
-        Math.min(
-            1,
-            ((point.x - from.x) * deltaX +
-                (point.y - from.y) * deltaY) /
-                lengthSquared
-        )
-    );
-
-    return Math.hypot(
-        point.x - (from.x + t * deltaX),
-        point.y - (from.y + t * deltaY)
-    );
-}
-
 function pointInsideOutline(
     point,
     outline
@@ -7809,22 +7740,6 @@ function trussMember(
         start: { ...start },
         end: { ...end }
     };
-}
-
-/*
- * Every point in a truss construction, in order.
- *
- * These are the joints. A member endpoint that lands on one of
- * them is connected, and a floating endpoint that lands on none
- * is what makes the structure invalid.
- */
-function trussJoints(
-    members
-) {
-    return members.flatMap(member => [
-        member.start,
-        member.end
-    ]);
 }
 
 /*
@@ -11451,42 +11366,6 @@ function circumcenter(
             ) /
             denominator
     };
-}
-
-/*
- * Normalise an angle into (-PI, PI].
- *
- * Every angle in the centrepoint arc goes through
- * this one function, so the whole calculation stays
- * in a single system and never mixes 0..2PI values
- * with -PI..PI values.
- */
-function normalizeAngle(
-    angle
-) {
-    if (!Number.isFinite(angle)) {
-        return 0;
-    }
-
-    const twoPi =
-        2 * Math.PI;
-
-    let result =
-        (
-            angle +
-            Math.PI
-        ) %
-        twoPi;
-
-    if (result < 0) {
-        result +=
-            twoPi;
-    }
-
-    return (
-        result -
-        Math.PI
-    );
 }
 
 /*
@@ -15728,70 +15607,6 @@ function pointInsidePolygon(
     }
 
     return inside;
-}
-
-/*
- * The four arms of the coordinate system as segments.
- *
- * Shared by hit-testing, handles and snapping so they
- * all agree on the same geometry, and so the four
- * extensions stay independent in one feature.
- */
-function coordinateSystemArms(
-    geometry
-) {
-    const origin =
-        geometry?.origin;
-
-    if (!origin) {
-        return [];
-    }
-
-    const fallback =
-        Number.isFinite(Number(geometry.axisLength)) &&
-        Number(geometry.axisLength) > 0
-            ? Number(geometry.axisLength)
-            : 25;
-
-    const read = value =>
-        Number.isFinite(Number(value)) && Number(value) > 0
-            ? Number(value)
-            : fallback;
-
-    return [
-        {
-            kind: "xPositive",
-            start: origin,
-            end: {
-                x: origin.x + read(geometry.xPositiveLength),
-                y: origin.y
-            }
-        },
-        {
-            kind: "xNegative",
-            start: origin,
-            end: {
-                x: origin.x - read(geometry.xNegativeLength),
-                y: origin.y
-            }
-        },
-        {
-            kind: "yPositive",
-            start: origin,
-            end: {
-                x: origin.x,
-                y: origin.y + read(geometry.yPositiveLength)
-            }
-        },
-        {
-            kind: "yNegative",
-            start: origin,
-            end: {
-                x: origin.x,
-                y: origin.y - read(geometry.yNegativeLength)
-            }
-        }
-    ];
 }
 
 /*
@@ -20993,13 +20808,23 @@ function trussIsAxisAligned(
 function normalizeAngle(
     angle
 ) {
-    let value = angle;
-
-    while (value > Math.PI) {
-        value -= Math.PI * 2;
+    /*
+     * A non-finite angle has no direction. It is treated as zero,
+     * rather than looping forever trying to wrap Infinity.
+     */
+    if (!Number.isFinite(angle)) {
+        return 0;
     }
 
-    while (value < -Math.PI) {
+    /*
+     * Reduce by whole turns first so a very large angle wraps in one
+     * step; the result keeps the (-PI, PI] boundaries exactly.
+     */
+    let value = angle % (Math.PI * 2);
+
+    if (value > Math.PI) {
+        value -= Math.PI * 2;
+    } else if (value < -Math.PI) {
         value += Math.PI * 2;
     }
 
@@ -28956,56 +28781,6 @@ function supportHandles(
             }
         }
     ];
-}
-
-/*
- * The manipulation handles for a rigid body, in its current shape.
- *
- * Each shape is dragged through the handle that means something
- * for it, and every case writes the same defining values the
- * Features panel writes, so the two can never disagree.
- */
-function rigidBodyHandles(
-    object
-) {
-    const g = object.geometry;
-
-    const shape =
-        enggFeatureGeometry.rigidBodyShape(g);
-
-    if (shape === "circle") {
-        const center = g.center || { x: 0, y: 0 };
-
-        return [
-            { kind: "rigid-centre", point: center },
-            {
-                kind: "rigid-radius",
-                point: {
-                    x: center.x + (Number(g.radius) || 0),
-                    y: center.y
-                }
-            }
-        ];
-    }
-
-    if (
-        shape === "triangle" ||
-        shape === "polygon"
-    ) {
-        return enggFeatureGeometry
-            .definingPoints(g, shape)
-            .map((point, index) => ({
-                kind: `rigid-vertex${index}`,
-                point
-            }));
-    }
-
-    return enggFeatureGeometry
-        .rectangleCorners(g)
-        .map((point, index) => ({
-            kind: `rigid-corner${index}`,
-            point
-        }));
 }
 
 /*

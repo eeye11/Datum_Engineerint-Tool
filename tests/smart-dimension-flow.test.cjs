@@ -296,6 +296,7 @@ const pieces = [
   "perpendicularDistanceDescriptor",
   "compositeSegmentPoints",
   "compositeSegmentReference",
+  "distance",
   "distanceToSegment",
   "lineLengthDescriptor",
   "pairOrientation",
