@@ -208,10 +208,10 @@ typical integration:
 `npm start` runs a small Node server that serves the built site and offers
 one endpoint:
 
-| Endpoint                 | Purpose                                       |
-| ------------------------ | --------------------------------------------- |
-| `GET /api/health`        | `{ status: "ok", tikz: "ready" | "loading" | "unavailable" }` |\| false }`        |
-| `POST /api/render-tikz`  | `{ tikz }` → `{ success, svg }` (TikZ → SVG)   |
+| Endpoint                | Purpose                                                              |
+| ----------------------- | -------------------------------------------------------------------- |
+| `GET /api/health`       | `{ status: "ok", tikz }`, where `tikz` is `ready`, `loading` or `unavailable` |
+| `POST /api/render-tikz` | `{ tikz }` → `{ success, svg }` (TikZ → SVG); 503 until TikZ is ready |
 
 The editor does not depend on it: the hosted static site works without it.
 
