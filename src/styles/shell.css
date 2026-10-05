@@ -11,10 +11,10 @@
 }
 
 body {
-    --app-ui-font: Arial, sans-serif;
+    --app-ui-font: var(--datum-font);
     margin: 0;
     font-family: var(--app-ui-font);
-    background: #f5f6f8;
+    background: var(--datum-page);
     color: #222;
 }
 
@@ -79,8 +79,8 @@ body {
 }
 
 .tab.active {
-    color: #1f5c38;
-    border-bottom: 3px solid #1f5c38;
+    color: var(--datum-green);
+    border-bottom: 3px solid var(--datum-green);
 }
 
 
@@ -244,7 +244,7 @@ body {
 
     padding: 10px 20px;
 
-    background: #1f5c38;
+    background: var(--datum-green);
 
     color: white;
 
@@ -258,7 +258,7 @@ body {
 }
 
 .update-button:hover {
-    background: #17472b;
+    background: var(--datum-green-hover);
 }
 
 
