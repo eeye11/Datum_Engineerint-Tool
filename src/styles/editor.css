@@ -2492,6 +2492,22 @@
     stroke-width: 1.5px;
 }
 
+/*
+ * The selected annotation's box: an editor-only outline around the
+ * text of a selected magnitude label. The padded interior is not
+ * filled, so the text stays readable; the pointer-events are off so
+ * the click that selects the label passes to the hit test rather than
+ * to the outline itself.
+ */
+.drawing-annotation-selection-box {
+    fill: none;
+    pointer-events: none;
+    stroke: var(--datum-focus);
+    stroke-dasharray: 4 3;
+    stroke-width: 1.5px;
+    rx: 3px;
+}
+
 .drawing-manipulation-handle.origin {
     fill: #7a3fb5;
 }
