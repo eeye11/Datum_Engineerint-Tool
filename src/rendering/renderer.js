@@ -6557,6 +6557,66 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 class: `drawing-manipulation-handle${kind ? ` ${kind}` : ""}`
             }));
         };
+
+        /*
+         * THE SELECTED ANNOTATION'S BOX.
+         *
+         * A derived magnitude is not a document feature, so its id is
+         * never in `selectedObjectIds` and the per-object loop below
+         * never sees it — yet the spec asks for exactly this: when the
+         * student clicks a value label, a compact box appears around
+         * THE TEXT, not around the feature it belongs to.
+         *
+         * The box is the annotation model's own text bounds — the same
+         * measurement the hit test uses, plus the same padding — so
+         * what is highlighted is what a click selects, and what a drag
+         * grabs. The padding follows the hit test's padding in screen
+         * pixels, so the highlight is never smaller than the click
+         * target it describes.
+         *
+         * Editor-only by construction: the selected set is cleared in
+         * the clean renders that print and export use, so the box can
+         * never reach paper or a file. It disappears on deselect
+         * because it is drawn fresh on every frame from the selection.
+         */
+        const model = enggAnnotationModel;
+
+        if (model && typeof model.derivedAnnotations === "function") {
+            const paddingPx =
+                (state.selection?.annotationPickPaddingPx ?? 5);
+
+            /*
+             * The box is keyed by the DERIVED annotation's id - the same
+             * pseudo-id a click stored - so the highlight follows the
+             * label the student picked, including one label of a
+             * varying load and not its siblings.
+             */
+            state.objects.forEach(object => {
+                (model.derivedAnnotations(object, state) || []).forEach(annotation => {
+                    if (!selected.has(annotation.id)) return;
+
+                    const box = model.annotationTextBounds(annotation, state);
+
+                    if (!box) return;
+
+                    const topLeft = toScreen({ x: box.minX, y: box.minY });
+                    const bottomRight = toScreen({ x: box.maxX, y: box.maxY });
+
+                    const x = topLeft.x - paddingPx;
+                    const y = topLeft.y - paddingPx;
+                    const width = (bottomRight.x - topLeft.x) + paddingPx * 2;
+                    const height = (bottomRight.y - topLeft.y) + paddingPx * 2;
+
+                    svg.appendChild(createSvgElement("rect", {
+                        x,
+                        y,
+                        width,
+                        height,
+                        class: "drawing-annotation-selection-box"
+                    }));
+                });
+            });
+        }
         state.objects.forEach(object => {
             if (!selected.has(object.id)) return;
             const geometry = object.geometry || {};
