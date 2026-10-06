@@ -51,8 +51,48 @@
     }
 
     /*
+     * ========================================================
+     * A POINT HAS AN IDENTITY OF ITS OWN
+     * ========================================================
+     *
+     * A magnitude annotation belongs to a DEFINING POINT, not to a
+     * slot in an array. Storing the link as an array index ties it to
+     * the position the point happened to occupy when the label was
+     * dragged, so reordering, inserting or removing a point silently
+     * reassigns every label after it - a student who moves Point 2's
+     * label finds Point 3's label moved instead.
+     *
+     * So every point carries a stable `id`, minted once when the point
+     * is first created, and an annotation records THAT. The id is
+     * opaque and never shown; it exists only to make the ownership
+     * survive the array changing shape.
+     */
+    function mintPointId() {
+        const generated =
+            globalThis.crypto &&
+            typeof globalThis.crypto.randomUUID === "function"
+                ? globalThis.crypto.randomUUID()
+                : `${Date.now()}-${Math.random()
+                      .toString(16)
+                      .slice(2)}`;
+
+        return `lp-${generated}`;
+    }
+
+    /*
+     * A deterministic id for a point that was saved before points had
+     * one, so a legacy file still develops stable identities rather
+     * than new ones on every read - which would orphan every
+     * annotation position on reload.
+     */
+    function legacyPointId(index, point) {
+        const t = finite(point?.t);
+        return `lp-legacy-${index}-${Math.round(t * 1e6)}`;
+    }
+
+    /*
      * The defining points of a load, as a plain list of
-     * { t, magnitude } sorted along the body.
+     * { id, t, magnitude } sorted along the body.
      *
      * The student's points are stored on the body rather than
      * as absolute world positions, so moving or resizing the
@@ -69,13 +109,28 @@
             : [];
 
         if (stored.length) {
+            /*
+             * The order the points are READ in is by position along
+             * the body, but identity comes from the point itself. The
+             * index is used only to name a legacy point that has no id
+             * yet, and only within this one read - so sorting cannot
+             * swap two annotations' ownership.
+             */
             return stored
-                .filter(point => point && Number.isFinite(point.t))
-                .map(point => ({
-                    t: finite(point.t),
-                    magnitude: Math.max(0, finite(point.magnitude))
-                }))
-                .sort((a, b) => a.t - b.t);
+                .map((point, index) => ({ point, index }))
+                .filter(entry =>
+                    entry.point && Number.isFinite(entry.point.t)
+                )
+                .sort((a, b) => finite(a.point.t) - finite(b.point.t))
+                .map(entry => ({
+                    id:
+                        typeof entry.point.id === "string" &&
+                        entry.point.id.length
+                            ? entry.point.id
+                            : legacyPointId(entry.index, entry.point),
+                    t: finite(entry.point.t),
+                    magnitude: Math.max(0, finite(entry.point.magnitude))
+                }));
         }
 
         /*
@@ -85,8 +140,16 @@
          * still draws and still fits without a migration step.
          */
         return [
-            { t: 0, magnitude: Math.max(0, finite(geometry.intensity)) },
-            { t: 1, magnitude: Math.max(0, finite(geometry.intensity)) }
+            {
+                id: legacyPointId(0, { t: 0 }),
+                t: 0,
+                magnitude: Math.max(0, finite(geometry.intensity))
+            },
+            {
+                id: legacyPointId(1, { t: 1 }),
+                t: 1,
+                magnitude: Math.max(0, finite(geometry.intensity))
+            }
         ];
     }
 
@@ -94,11 +157,23 @@
      * Write a profile back onto the geometry, keeping the
      * derived uniform intensity in step so anything that
      * still reads `intensity` sees the mean of the profile.
+     *
+     * AN EXISTING POINT KEEPS ITS ID. A write is how a magnitude edit
+     * and a position drag both land, and neither is a reason for the
+     * point to become a different point - so the id travels with it.
+     * A point that arrives without one is genuinely new (added by the
+     * panel or by a paste) and is given one here, once, so it can own
+     * an annotation from that moment on.
      */
     function setProfilePoints(geometry, points) {
         const ordered = (points || [])
             .filter(point => point && Number.isFinite(point.t))
             .map(point => ({
+                id:
+                    typeof point.id === "string" &&
+                    point.id.length
+                        ? point.id
+                        : mintPointId(),
                 t: finite(point.t),
                 magnitude: Math.max(0, finite(point.magnitude))
             }))
@@ -125,10 +200,24 @@
      * from +X in world coordinates, which is what atan2
      * already returns.
      *
-     * The default is straight down, which is how a load that
-     * carries no explicit direction has always been drawn.
+     * UNKNOWN IS NOT ZERO, AND IT IS NOT THE DEFAULT EITHER.
+     *
+     * A load whose direction the student has marked unknown has no
+     * authoritative direction, so this reports null rather than falling back
+     * to straight down. The fallback exists for a file written before loads
+     * carried a direction at all - a real value the drawing was using - but
+     * it must never stand in for a direction the student has explicitly
+     * declared unknown, because that draws arrows pointing a way nobody
+     * chose while the panel shows a blank field.
      */
     function loadDirection(geometry) {
+        if (
+            geometry &&
+            geometry.directionUnknown === true
+        ) {
+            return null;
+        }
+
         if (
             geometry &&
             Number.isFinite(Number(geometry.direction)) &&
@@ -730,6 +819,26 @@ function unitVector(degrees) {
             ...point,
             position: pointAlong(geometry, point.t)
         }));
+    }
+
+    /*
+     * One defining point, looked up by its own identity.
+     *
+     * This is how an annotation finds the point it belongs to after
+     * the array has been reordered, shortened or re-embedded on a
+     * moved body: the index is not asked for and not trusted, because
+     * it is exactly the thing that changes underneath a label.
+     */
+    function profilePointById(geometry, pointId) {
+        if (!pointId) {
+            return null;
+        }
+
+        return (
+            profilePointPositions(geometry).find(
+                point => point.id === pointId
+            ) || null
+        );
     }
 
     /*
@@ -1618,8 +1727,10 @@ function unitVector(degrees) {
         loadNormalSide,
         loadStationUnit,
         magnitudeAt,
+        mintPointId,
         peakMagnitude,
         pointAlong,
+        profilePointById,
         profilePointPositions,
         profilePoints,
         reverseForceDirection,

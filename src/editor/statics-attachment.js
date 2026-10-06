@@ -231,23 +231,6 @@ export function applyStaticsManipulation(
         return;
     }
 
-    /*
-     * A couple's separation handle sets how far its two
-     * arrows sit from its centre.
-     */
-    if (kind === "separation") {
-        if (!g.position) {
-            return;
-        }
-
-        g.separation = Math.max(
-            Math.abs(point.y - g.position.y) * 2,
-            1e-6
-        );
-
-        return;
-    }
-
     if (kind === "position" && g.position) {
         /*
          * A SUPPORT IS PINNED TO ITS MEMBER, NOT TO A PLACE.
@@ -385,12 +368,11 @@ export function beginStaticsAttachment(
      * A MOMENT IS NOT ATTACHED TO A BODY FIRST.
      *
      * A support must be propped under something, so it needs a body
-     * before it can go anywhere. A moment does not: a couple is a free
-     * moment, and an applied moment is a moment at a point, and both
-     * are perfectly meaningful on blank sheet. Requiring a body would
-     * mean a student could not put a moment anywhere until they had
-     * drawn something to put it on, which is the opposite of how
-     * moments are used.
+     * before it can go anywhere. A moment does not: an applied moment
+     * is a moment at a point, and is perfectly meaningful on a blank
+     * sheet. Requiring a body would mean a student could not put a
+     * moment anywhere until they had drawn something to put it on,
+     * which is the opposite of how moments are used.
      *
      * So the click goes straight to the application point, and a body
      * is picked up as the parent if there happens to be one under it -
@@ -399,7 +381,7 @@ export function beginStaticsAttachment(
      */
     if (
         drawingState.activeTool ===
-            "applied-moment"
+            "moment"
     ) {
         beginMomentPlacement(
             point,
@@ -740,18 +722,6 @@ function commitStaticsAttachment(
             enggDrawingState.geometryFactories[type](
                 start,
                 end,
-                staticsAttachedStyle(
-                    toolId,
-                    body
-                )
-            );
-    } else if (type === "couple") {
-        object =
-            enggDrawingState.geometryFactories.couple(
-                start,
-                50,
-                40,
-                false,
                 staticsAttachedStyle(
                     toolId,
                     body

@@ -69,6 +69,7 @@
  * associated with anything just by being near it.
  */
 import enggMeasurement from "../../core/geometry/measurement-core.js";
+import enggLoadProfile from "../analysis/load-profile.js";
 
 /*
  * ========================================================
@@ -132,7 +133,7 @@ const KINDS = {
   "moment-value": {
     label: "Moment value",
     generated: true,
-    describes: ["moment", "couple"]
+    describes: ["moment"]
   },
   "load-value": {
     label: "Load value",
@@ -185,7 +186,7 @@ function isGenerated(kind) {
  * that kind describes, and it is what decides whether a box can be produced
  * for a feature at all. A list written anywhere else is a list that can fall
  * behind - and it did, immediately: a list naming "distributed-load" and
- * "applied-moment" would offer the switch to features Datum does not have
+ * "moment" would offer the switch to features Datum does not have
  * (they are "load" and "moment") and so offer it to nothing at all, while
  * omitting the support and connection labels the table does carry.
  *
@@ -595,10 +596,21 @@ function textFor(
     return annotation.text;
   }
 
-  const object = findObject(
-    state,
-    annotation.sourceFeatureId
-  );
+  /*
+   * THE FEATURE, from the state where it is in the document.
+   *
+   * A previewed feature is NOT in the document - it is the load the
+   * student is still building - so it is offered as an override on the
+   * annotation itself by `derivedAnnotations`. That is what lets the
+   * magnitude preview be drawn beside the load the student is about to
+   * commit, rather than only appearing once it exists.
+   */
+  const object =
+    annotation.sourceObject ||
+    findObject(
+      state,
+      annotation.sourceFeatureId
+    );
 
   /*
    * A generated annotation whose feature has gone.
@@ -703,6 +715,35 @@ function isVisible(annotation, state) {
  */
 /*
  * ========================================================
+ * WHICH KIND A FEATURE'S MAGNITUDE IS WRITTEN AS
+ * ========================================================
+ *
+ * One answer per feature type, declared rather than discovered by
+ * probing. A force's magnitude is `force-value`; a moment's is
+ * `moment-value`; a load's is `load-value`. Naming the kind here is what
+ * lets the box stay the SAME box as the value changes - the id it is
+ * keyed by does not move - and what stops it being replaced by a
+ * different kind when the value is momentarily silent.
+ *
+ * Returning null means the feature has no magnitude box of its own. An
+ * annotation kind the student chose by hand (force-components, a support
+ * label) is not this: those are asked for explicitly and are not derived
+ * from a value that can be cleared.
+ */
+const NATURAL_MAGNITUDE_KIND = {
+  force: "force-value",
+  resultant: "resultant-value",
+  moment: "moment-value",
+  load: "load-value",
+  "force-components": "force-components"
+};
+
+function naturalMagnitudeKind(object) {
+  return NATURAL_MAGNITUDE_KIND[object?.type] || null;
+}
+
+/*
+ * ========================================================
  * A VALUE THAT FOLLOWS ITS FEATURE
  * ========================================================
  *
@@ -724,8 +765,47 @@ function isVisible(annotation, state) {
  * is a normal answer for a beam or a circle, not a failure.
  */
 function derivedAnnotation(object, state) {
+  /*
+   * THE FIRST, for a caller that only wants one. A feature with several
+   * magnitude annotations returns its first here; use
+   * `derivedAnnotations` where every one is wanted - which is every
+   * caller that draws, picks or measures.
+   */
+  return derivedAnnotations(object, state)[0] || null;
+}
+
+/*
+ * ========================================================
+ * EVERY MAGNITUDE ANNOTATION A FEATURE OWNS
+ * ========================================================
+ *
+ * A force, a moment and a uniform load have ONE magnitude, so they have
+ * ONE annotation. A VARYING DISTRIBUTED LOAD has one magnitude PER
+ * DEFINING POINT, so it has one annotation per defining point - and
+ * that count is read from the point list rather than assumed to be two.
+ *
+ * The relationship is the one the point carries:
+ *
+ *     VaryingDistributedLoad
+ *     |-- Point 1 -> annotation 1
+ *     |-- Point 2 -> annotation 2
+ *     |-- Point 3 -> annotation 3
+ *     `-- ...
+ *
+ * WHICH POINT IS WHICH IS THE POINT'S OWN ID, not its index in an
+ * array. An array shifts when a point is inserted, removed or
+ * reordered, and an annotation that followed the index would then
+ * silently describe a different point - swapping two labels for no
+ * reason the student could see. The id does not move.
+ *
+ * The list is derived fresh every frame, so it cannot disagree with the
+ * point list: adding a point adds its annotation, and removing a point
+ * removes the annotation with it, with nothing left pointing at a
+ * point that is gone.
+ */
+function derivedAnnotations(object, state) {
   if (!object) {
-    return null;
+    return [];
   }
 
   /*
@@ -733,7 +813,7 @@ function derivedAnnotation(object, state) {
    * opinion. The second defers to the first, and only ever narrows it.
    */
   if (!magnitudeShownFor(object, state)) {
-    return null;
+    return [];
   }
 
   /*
@@ -744,15 +824,57 @@ function derivedAnnotation(object, state) {
   const existing = annotationsFor(state, object.id);
 
   if (existing.some((a) => isGenerated(a.annotationKind))) {
-    return null;
+    return [];
   }
 
-  const kind = kindsFor(object, state).find((k) =>
-    /value|components|profile/.test(k)
-  );
+  /*
+   * A VARYING LOAD'S MAGNITUDE IS ONE PER DEFINING POINT, so its
+   * annotation set is built from the points themselves - never assumed
+   * to be two. Two points give two labels, three give three, and N give
+   * N, because the count IS the number of defined points.
+   *
+   * WHICH LOAD IS A VARYING ONE. A uniform Distributed Load and a
+   * two-point Varying Load are both a `load` object with a point list,
+   * and they genuinely must be told apart: the uniform load states one
+   * average intensity, while the varying load must state one value per
+   * point even when it happens to have just two. The tool that created
+   * the load is what decides, recorded on the feature when it was made;
+   * a profile carrying more than the two points a uniform load ever has
+   * is varying as well, so an older file or a hand-built one still
+   * reads correctly.
+   */
+  if (object.type === "load" || object.type === "varying-load") {
+    const points = profilePointsOf(object);
 
-  if (!kind) {
-    return null;
+    if (isVaryingLoad(object) || points.length > 2) {
+      return points
+        .map((point) =>
+          derivedProfileAnnotation(object, point, state)
+        )
+        .filter(Boolean);
+    }
+  }
+
+  /*
+   * THE KIND THIS FEATURE'S MAGNITUDE BOX IS WRITTEN AS.
+   *
+   * A force's magnitude reads as `force-value`; it does not fall through
+   * to `force-components` ("Fx = ... / Fy = ...") just because the plain
+   * value is momentarily silent. Components are a DIFFERENT statement
+   * about the force, and one the student asks for explicitly through the
+   * annotation tool - not a substitute that appears when the value has
+   * none.
+   *
+   * That is the bug this avoids: with the value marked Unknown and no
+   * label, `force-value` has nothing to say, and taking "the first kind
+   * that produces text" would silently swap the label for the components.
+   * The question is not "which kind can speak" but "is THIS feature's
+   * magnitude to be written" - and when it is not, the answer is no box.
+   */
+  const kind = naturalMagnitudeKind(object);
+
+  if (!kind || !kindsFor(object, state).includes(kind)) {
+    return [];
   }
 
   const annotation = {
@@ -761,6 +883,14 @@ function derivedAnnotation(object, state) {
     sourceFeatureId: object.id,
     annotationKind: kind,
     textMode: TEXT_MODES.generated,
+
+    /*
+     * The feature itself, so a PREVIEWED feature - one not yet in the
+     * document - can still be read for its value. A committed feature is
+     * found through the state as usual; this is the same object either
+     * way, so there is no second description of the source.
+     */
+    sourceObject: object,
   };
 
   /*
@@ -813,12 +943,638 @@ function derivedAnnotation(object, state) {
    * contributes nothing instead of a leader to an empty spot.
    */
   if (!textFor(annotation, state)) {
+    return [];
+  }
+
+  return [annotation];
+}
+
+/*
+ * The defining points of a load, as the shared profile module reads them,
+ * or an empty list when it is not loaded.
+ */
+function profilePointsOf(object) {
+  const shared =
+    typeof enggLoadProfile !== "undefined" &&
+    typeof enggLoadProfile.profilePoints === "function"
+      ? enggLoadProfile.profilePoints(object.geometry)
+      : [];
+
+  const points = shared.length
+    ? shared
+    : Array.isArray(object.geometry?.points)
+      ? object.geometry.points
+      : [];
+
+  /*
+   * EVERY POINT GETS AN IDENTITY, even one read from a list that
+   * carries none. Two labels must be two things, and a point with no id
+   * would give every label on the load the same computed name - so the
+   * identity is filled in here, positionally and deterministically, and
+   * only for as long as the point list says nothing better.
+   */
+  return points.map((point, index) => ({
+    ...point,
+    id:
+      typeof point.id === "string" && point.id.length
+        ? point.id
+        : `lp-index-${index}`
+  }));
+}
+
+/*
+ * Is this load a VARYING one, whose magnitude is stated per point?
+ *
+ * Read from how it was made - the statics tool recorded on the feature
+ * when it was created - so a two-point varying load is not mistaken for
+ * a uniform one. The tool check is the primary answer; a profile with
+ * more points than a uniform load can have is varying regardless, which
+ * keeps a file saved before the tool was recorded reading correctly.
+ */
+const VARYING_LOAD_TOOL = "varying-distributed-load";
+
+function isVaryingLoad(object) {
+  if (!object || object.type === "varying-load") {
+    return Boolean(object);
+  }
+
+  return (
+    object.engineering?.staticsType === VARYING_LOAD_TOOL
+  );
+}
+
+/*
+ * ONE MAGNITUDE ANNOTATION, FOR ONE DEFINING POINT.
+ *
+ * It states that point's magnitude and nothing else: no angle, because
+ * the arrows already carry the direction, and no other point's value,
+ * because each point owns its own number.
+ *
+ * Its POSITION is independent of the load and stays where the student
+ * puts it. The default falls beside the point it describes; a stored
+ * offset for THAT POINT, keyed by the point's id, takes over the moment
+ * the student moves it, and is never recomputed afterwards.
+ */
+function derivedProfileAnnotation(object, point, state) {
+  const annotation = {
+    id: `derived-${object.id}-profile-${point.id}`,
+    type: "annotation",
+    sourceFeatureId: object.id,
+    annotationKind: "load-profile-value",
+    textMode: TEXT_MODES.generated,
+
+    /*
+     * The feature itself, so a previewed load - still being defined and
+     * not yet in the document - can be read for its point's magnitude.
+     */
+    sourceObject: object,
+
+    /*
+     * WHICH PART of the feature this is about. The declaration is
+     * unchanged; `anchorFor` in the loader reads the geometry, so
+     * the annotation model simply carries it.
+     */
+    anchorRef: { pointId: point.id },
+  };
+
+  annotation.placement = suggestProfilePlacement(
+    annotation,
+    object,
+    point
+  );
+
+  /*
+   * A MOVED LABEL KEEPS ITS ABSOLUTE PLACE.
+   *
+   * The stored value is WHERE THE STUDENT PUT IT, not a distance from a
+   * default - because the default is not a fixed point. It is read from
+   * the load's direction, so reversing the load would move a label that
+   * was only ever remembered as "some way off the default". Storing the
+   * place itself makes the student's choice authoritative: nothing about
+   * the source - its direction, its magnitudes, the visual scale of its
+   * arrows - can move it again.
+   */
+  const placed = profilePointPlacement(object, point.id);
+
+  if (placed) {
+    annotation.placement = {
+      x: placed.x,
+      y: placed.y,
+    };
+
+    annotation.moved = true;
+  }
+
+  if (!textFor(annotation, state)) {
     return null;
   }
 
   return annotation;
 }
 
+/*
+ * The student's stored PLACE for ONE defining point, keyed by id.
+ *
+ * This is an absolute drawing-space position, not an offset from a
+ * default: the default follows the load's direction, so an offset would
+ * move a label when the load was reversed. The place is what the
+ * student chose and nothing recomputes it.
+ */
+function profilePointPlacement(object, pointId) {
+  const geometry = object.geometry || {};
+
+  const offsets = geometry.pointOffsets;
+
+  const stored =
+    offsets &&
+    typeof offsets === "object" &&
+    offsets[pointId] &&
+    typeof offsets[pointId] === "object"
+      ? offsets[pointId]
+      : null;
+
+  if (!stored) {
+    return null;
+  }
+
+  const x = Number(stored.x);
+  const y = Number(stored.y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+}
+
+/*
+ * ========================================================
+ * A SUPPORT'S OWN VALUES
+ * ========================================================
+ *
+ * A support carries a small, fixed set of values, decided by what the
+ * support is. A roller resists perpendicular to its surface, so it has one;
+ * a pin resists in both directions, so it has two; a fixed support also
+ * resists rotation, so it has three. A smooth support reacts along the
+ * normal, so it has one, named for the normal force rather than an axis.
+ *
+ * THE TABLE IS THE AUTHORITY, and it is read by BOTH the Features panel
+ * and the annotation model - so the panel cannot offer a field the sheet
+ * will not draw, and the sheet cannot draw a value the panel has no field
+ * for. That single answer is what keeps the two in step.
+ *
+ * NOTHING HERE SOLVES ANYTHING. A value is a number the STUDENT typed,
+ * exactly as a force's magnitude is: it is stated, not computed. There is
+ * no equilibrium, no reaction derivation and no solver - a support value is
+ * blank until the student writes one, and blank means it is not yet known,
+ * which is a normal state and not a failure.
+ *
+ * `id` is stable and is what a value's stored position is keyed by, so a
+ * value's box keeps the place it was put even as the support moves or the
+ * label is edited.
+ */
+const SUPPORT_REACTION_VALUES = {
+  "pin-support": [
+    { id: "fx", label: "Ax", axis: "x", unit: "N" },
+    { id: "fy", label: "Ay", axis: "y", unit: "N" }
+  ],
+  "roller-support": [
+    { id: "fy", label: "Ay", axis: "y", unit: "N" }
+  ],
+  "fixed-support": [
+    { id: "fx", label: "Ax", axis: "x", unit: "N" },
+    { id: "fy", label: "Ay", axis: "y", unit: "N" },
+    { id: "ma", label: "M_A", axis: "moment", unit: "N\u00b7m" }
+  ],
+  "smooth-support": [
+    { id: "n", label: "N", axis: "normal", unit: "N" }
+  ]
+};
+
+/*
+ * Is this feature a SUPPORT whose reactions are stated as annotations?
+ *
+ * Answered from the same table that lists a support's values, so the
+ * branch that builds its annotations and the function that names them
+ * cannot disagree about which types carry reactions.
+ */
+function isSupportType(type) {
+  return Boolean(SUPPORT_REACTION_VALUES[type]);
+}
+
+/*
+ * The values a support has, in the order they are shown and drawn.
+ *
+ * A support with no entry has none: an unrecognised support type states
+ * nothing rather than being given a guessed set of axes.
+ */
+function supportReactionValues(object) {
+  if (!object) {
+    return [];
+  }
+
+  return SUPPORT_REACTION_VALUES[object.type] || [];
+}
+
+/*
+ * WHERE a support's stored values live, and creating the holder on first
+ * use. Kept as one reader so the panel, the annotation model and the drag
+ * all write to the same place.
+ */
+function supportValuesHolder(object, create) {
+  if (!object.geometry || typeof object.geometry !== "object") {
+    if (!create) {
+      return null;
+    }
+
+    object.geometry = {};
+  }
+
+  const existing = object.geometry.supportValues;
+
+  if (existing && typeof existing === "object") {
+    return existing;
+  }
+
+  if (!create) {
+    return null;
+  }
+
+  object.geometry.supportValues = {};
+
+  return object.geometry.supportValues;
+}
+
+/*
+ * ONE SUPPORT VALUE'S STATE, whether it has been filled in or not.
+ *
+ * A value that has never been edited has no entry, and this answers with
+ * the declared defaults - the conventional label, no magnitude, and the
+ * Question Mark OFF. That way an untouched support behaves exactly as a
+ * freshly declared one, without anything having to be written to the
+ * document just to read it.
+ */
+function supportValueState(object, value) {
+  const holder = supportValuesHolder(object, false);
+
+  const stored =
+    holder && holder[value.id] && typeof holder[value.id] === "object"
+      ? holder[value.id]
+      : null;
+
+  const rawLabel =
+    stored && stored.label !== undefined
+      ? stored.label
+      : value.label;
+
+  const rawMagnitude = stored ? stored.magnitude : null;
+
+  const magnitude =
+    rawMagnitude === null || rawMagnitude === undefined || rawMagnitude === ""
+      ? null
+      : Number(rawMagnitude);
+
+  return {
+    id: value.id,
+    unit: value.unit,
+    axis: value.axis,
+
+    /*
+     * THE LABEL IS THE STUDENT'S. An empty string is a real choice - "do
+     * not write a name on this one" - and is kept distinct from "never
+     * touched", which falls back to the conventional label. That is why
+     * the default is only applied when the field is absent.
+     */
+    label: stored && typeof rawLabel === "string" ? rawLabel : value.label,
+
+    magnitude:
+      magnitude !== null && Number.isFinite(magnitude) ? magnitude : null,
+
+    /*
+     * THE QUESTION MARK, read as a real boolean state. Absent means OFF,
+     * and only an explicit true turns it on.
+     */
+    questionMark: stored ? stored.questionMark === true : false
+  };
+}
+
+/*
+ * ========================================================
+ * WHAT A LABELLED QUANTITY READS AS ON THE SHEET
+ * ========================================================
+ *
+ * THE ONE RULE. Every magnitude-bearing feature - a force, a load, a
+ * moment, a support reaction, a varying load's point - states itself by
+ * this function and no other:
+ *
+ *   Question Mark ON   ->  the LABEL alone, never the number and never a
+ *                          literal "?"
+ *   Label + value      ->  "Label = value unit"
+ *   value, no label    ->  "value unit"
+ *   Label, no value    ->  the label alone, with no dangling "="
+ *   neither            ->  nothing at all
+ *
+ * A LITERAL "?" IS NEVER DRAWN. The Question Mark is a state of the value,
+ * shown in the Features panel, and it means "this one is not known yet" -
+ * which on the sheet reads as the name of the unknown quantity and nothing
+ * more. Printing a bare "?" on a drawing would state no quantity at all.
+ *
+ * THE QUESTION MARK ALSO RETIRES THE VALUE. While it is on there is no
+ * authoritative number: the rule below reads `magnitude` as absent, so the
+ * renderer, the analysis system and the annotation cannot fall back to a
+ * number the student has declared unknown. The panel clears the field for
+ * the same reason - a value that is not known must not sit in it looking
+ * like an answer.
+ *
+ * It takes (label, magnitude, unit, questionMark) rather than a packed
+ * state object, because that is the whole of what the rule needs and it is
+ * the same four facts every caller has.
+ */
+function labelledQuantityText(
+  label,
+  magnitude,
+  unit,
+  questionMark
+) {
+  const name = String(label || "").trim();
+
+  if (questionMark) {
+    return name || null;
+  }
+
+  const known =
+    magnitude !== null &&
+    magnitude !== undefined &&
+    magnitude !== "" &&
+    Number.isFinite(Number(magnitude));
+
+  const quantityText = known
+    ? `${formatNumber(Number(magnitude))}${unitSuffix(unit || "")}`
+    : "";
+
+  /*
+   * VALUE WITHOUT A LABEL still reads as the value: a bare "100 N" is a
+   * complete statement about a quantity, and it must not be printed as
+   * "= 100 N".
+   */
+  if (!name) {
+    return quantityText || null;
+  }
+
+  /*
+   * LABEL WITHOUT A VALUE reads as the label: the name of the quantity is
+   * still worth printing, and an "=" with nothing after it would be the
+   * orphan punctuation the shared panel rules exist to prevent.
+   */
+  if (!known) {
+    return name;
+  }
+
+  return `${name} = ${quantityText}`;
+}
+
+/*
+ * What a SUPPORT value reads as, through the shared rule.
+ *
+ * A support keeps its own stored state - see supportValueState - and this
+ * hands that state to the one rule, so a support's box and a force's box
+ * cannot be formatted differently.
+ */
+function supportValueText(state, value, providedUnit) {
+  return labelledQuantityText(
+    state.label,
+    state.magnitude,
+    providedUnit || state.unit || "",
+    state.questionMark
+  );
+}
+
+/*
+ * ========================================================
+ * WHAT A FEATURE'S OWN VALUE READS AS
+ * ========================================================
+ *
+ * A force, a load and a moment carry their magnitude as a plain geometry
+ * field, and their Label and Question Mark in `unknownValues` and
+ * `magnitudeLabel` - the very fields the Features panel edits. This is the
+ * single reader for that state, so the panel and the sheet cannot disagree
+ * about what the student has entered.
+ *
+ *   magnitudeKey  the geometry field holding the number
+ *   defaultLabel  the conventional symbol, used when the student has not
+ *                 typed one of their own
+ *   unit          the engineering unit the quantity is stated in
+ *
+ * THE STUDENT'S LABEL WINS. An explicit empty string means "write no name",
+ * which is a real choice and is kept distinct from "never touched" - only
+ * an absent field falls back to the conventional symbol.
+ *
+ * UNKNOWN IS THE PANEL'S OWN FLAG, read from `unknownValues` - where the
+ * `?` control writes it. When it is on the magnitude is reported as null,
+ * so nothing downstream can keep using a number the student has retired.
+ */
+function featureValueText(object, magnitudeKey, defaultLabel, unit) {
+  const geometry = object?.geometry || {};
+
+  const unknown = object?.unknownValues?.[magnitudeKey] === true;
+
+  const raw = geometry[magnitudeKey];
+
+  const missing = raw === null || raw === undefined || raw === "";
+
+  const magnitude = missing ? null : Number(raw);
+
+  const label =
+    typeof object?.magnitudeLabel === "string"
+      ? object.magnitudeLabel
+      : defaultLabel;
+
+  return labelledQuantityText(
+    label,
+    unknown || magnitude === null || !Number.isFinite(magnitude)
+      ? null
+      : magnitude,
+    unit,
+    unknown
+  );
+}
+
+/*
+ * ONE SUPPORT VALUE, AS AN ANNOTATION.
+ *
+ * Its text is DERIVED every frame from the support's own stored value, so
+ * editing the number moves the number and not the box - the same division
+ * the force magnitudes use. Its POSITION is stored per value, keyed by the
+ * value's id, so moving the vertical value never moves the horizontal one.
+ */
+function derivedSupportAnnotation(object, value, state) {
+  const values = supportValueState(object, value);
+
+  const annotation = {
+    id: `derived-${object.id}-support-${value.id}`,
+    type: "annotation",
+    sourceFeatureId: object.id,
+    annotationKind: "support-value",
+    textMode: TEXT_MODES.generated,
+    sourceObject: object,
+
+    /*
+     * WHICH VALUE of the support this is about. Carried whole so the text
+     * reader and the drag both know exactly which value is meant - a fixed
+     * support has three, and only the id tells them apart.
+     */
+    anchorRef: { supportValueId: value.id },
+
+    /*
+     * The state itself, so the text reader does not have to re-resolve the
+     * feature. It is a plain snapshot; the text is rebuilt from it below.
+     */
+    supportValue: values
+  };
+
+  annotation.placement = suggestSupportValuePlacement(
+    annotation,
+    object,
+    value,
+    state
+  );
+
+  const offset = supportValueOffset(object, value.id);
+
+  if (offset && (offset.x || offset.y)) {
+    annotation.placement = {
+      x: annotation.placement.x + (offset.x || 0),
+      y: annotation.placement.y + (offset.y || 0)
+    };
+
+    annotation.moved = true;
+  }
+
+  if (!supportValueText(values, values, values.unit)) {
+    return null;
+  }
+
+  return annotation;
+}
+
+/*
+ * The student's stored offset for ONE support value, keyed by id.
+ */
+function supportValueOffset(object, valueId) {
+  const geometry = object.geometry || {};
+
+  const offsets = geometry.supportValueOffsets;
+
+  if (
+    offsets &&
+    typeof offsets === "object" &&
+    offsets[valueId] &&
+    typeof offsets[valueId] === "object"
+  ) {
+    return offsets[valueId];
+  }
+
+  return null;
+}
+
+/*
+ * Where a support value's box falls when the student has not moved it.
+ *
+ * BESIDE THE SUPPORT, STACKED BY VALUE, so a pin's two values do not land on
+ * top of one another. The stack is ordered by the value's place in the
+ * declared list, so the vertical value sits above the horizontal one, which
+ * is how a free-body diagram is conventionally annotated.
+ *
+ * IT FALLS ON THE SIDE THE SUPPORT FACES, away from the body it is attached
+ * to, so a label never covers the member. The side is read from the same
+ * `flipped` flag the symbol is drawn with, so the two always agree.
+ */
+function suggestSupportValuePlacement(annotation, object, value, state) {
+  const anchor =
+    object.geometry?.position ||
+    object.geometry?.attachment?.point ||
+    object.geometry?.start ||
+    { x: 0, y: 0 };
+
+  const values = supportReactionValues(object);
+
+  const index = Math.max(
+    0,
+    values.findIndex((candidate) => candidate.id === value.id)
+  );
+
+  /*
+   * The direction the symbol faces. A support is drawn pointing away from
+   * the member, and `flipped` is which side that is - already the stored
+   * fact the renderer draws from, so it is read rather than guessed.
+   */
+  const facing = object.geometry?.flipped ? 1 : -1;
+
+  const standoff = 18;
+  const stackGap = 12;
+
+  return {
+    x: anchor.x + standoff,
+    y: anchor.y + facing * standoff + index * stackGap * facing * -1
+  };
+}
+
+/*
+ * Where a point's annotation falls when the student has not moved it.
+ *
+ * Beside the point it describes, on the side the load pushes towards -
+ * the same side the arrows are drawn on, so a reader's eye connects the
+ * number to the arrow it belongs to.
+ *
+ * THE POINT, NOT THE GRAPHIC. This is worked out from the point's own
+ * world position and the load's direction, never from where an arrowhead
+ * happens to have been drawn after Vector Scale - so changing the visual
+ * size of the arrows cannot shift where a fresh label appears.
+ */
+function suggestProfilePlacement(annotation, object, point) {
+  /*
+   * THE POINT'S OWN WORLD POSITION, from its station along the body.
+   *
+   * `profilePoints` returns each point as a fraction `t` plus its
+   * magnitude; the world point is read from the body with the shared
+   * rule the renderer and the handles use, so a fresh label starts
+   * beside the very point it describes.
+   */
+  const position =
+    point.position ||
+    (
+      typeof enggLoadProfile !== "undefined" &&
+      typeof enggLoadProfile.pointAlong === "function"
+        ? enggLoadProfile.pointAlong(object.geometry, point.t)
+        : null
+    ) ||
+    object.geometry?.start ||
+    { x: 0, y: 0 };
+
+  let direction = { x: 0, y: -1 };
+
+  if (
+    typeof enggLoadProfile !== "undefined" &&
+    typeof enggLoadProfile.unitVector === "function"
+  ) {
+    direction = enggLoadProfile.unitVector(
+      enggLoadProfile.loadDirection(object.geometry)
+    );
+  }
+
+  const standoff = 10;
+
+  return {
+    x: position.x + direction.x * standoff,
+    y: position.y + direction.y * standoff,
+  };
+}
+
+/*
+ * ========================================================
+ * AND THEN THE STUDENT'S OWN MOVE IS APPLIED
+ * ========================================================
+ */
 function kindsFor(object, state) {
   if (!object) {
     return [];
@@ -884,20 +1640,19 @@ function generatedText(
   object
 ) {
   const geometry = object.geometry || {};
-  const type = object.type;
 
   switch (annotation.annotationKind) {
     case "force-value":
-      return forceText(geometry);
+      return forceText(object);
 
     case "force-components":
       return forceComponentText(geometry);
 
     case "moment-value":
-      return momentText(geometry);
+      return momentText(object);
 
     case "load-value":
-      return loadText(geometry);
+      return loadText(object);
 
     case "load-profile-value":
       return profileText(
@@ -908,11 +1663,14 @@ function generatedText(
     case "support-label":
       return supportText(object);
 
+    case "support-value":
+      return supportValueAnnotationText(annotation, object);
+
     case "connection-label":
       return connectionText(object);
 
     case "resultant-value":
-      return resultantText(geometry);
+      return resultantText(object);
 
     case "label":
       return object.name || null;
@@ -932,36 +1690,15 @@ function generatedText(
  * calculation about the drawing. No reaction is involved, because no
  * reaction exists on the force.
  */
-function forceText(geometry) {
-  const magnitude = Number(geometry.magnitude);
-
-  if (!Number.isFinite(magnitude)) {
-    return null;
-  }
-
-  /*
-   * MAGNITUDE ONLY. NO ANGLE, EVER.
-   *
-   * The direction is the ARROW's job, and it is already doing it:
-   * a vector drawn at 30 degrees needs nothing written beside it to
-   * say so, and "F = 100 N / θ = 30°" stated the same fact twice -
-   * once graphically, which is where a reader actually wants it, and
-   * once as text that can disagree with the arrow if either is
-   * edited alone.
-   *
-   * Removing the number also removes a class of bug. The arrow can be
-   * dragged, flipped and re-angled; the text was a snapshot taken
-   * when the annotation was built, so it was only ever a stale copy of
-   * what the drawing already shows.
-   */
-  return quantity("F", magnitude, "N");
+function forceText(object) {
+  return featureValueText(object, "magnitude", "F", "N");
 }
 
 /*
  * A force resolved onto the axes.
  *
  * The components are what the drawing already implies about its own
- * arrow: a force of F at angle θ has those components. Stating them
+ * arrow: a force of F at angle Î¸ has those components. Stating them
  * is a reading of the force, not a new fact about it.
  */
 function forceComponentText(geometry) {
@@ -991,13 +1728,7 @@ function forceComponentText(geometry) {
   ].join("\n");
 }
 
-function momentText(geometry) {
-  const magnitude = Number(geometry.magnitude);
-
-  if (!Number.isFinite(magnitude)) {
-    return null;
-  }
-
+function momentText(object) {
   /*
    * THE SENSE IS NOT WRITTEN DOWN EITHER.
    *
@@ -1007,18 +1738,10 @@ function momentText(geometry) {
    * angle, in a second place that could be stale the moment the
    * moment was flipped.
    */
-  return quantity("M", magnitude, "N·m");
+  return featureValueText(object, "magnitude", "M", "N·m");
 }
 
-function loadText(geometry) {
-  const intensity = Number(geometry.intensity);
-
-  if (!Number.isFinite(intensity)) {
-    return null;
-  }
-
-  const angle = Number(geometry.direction);
-
+function loadText(object) {
   /*
    * The intensity alone. Which way a distributed load pushes is
    * shown by the row of arrows above the member - that is the
@@ -1026,9 +1749,7 @@ function loadText(geometry) {
    * glyph to the label duplicated what the arrows already say
    * while consuming space beside every annotation on the sheet.
    */
-  void angle;
-
-  return quantity("w", intensity, "kN/m");
+  return featureValueText(object, "intensity", "w", "kN/m");
 }
 
 /*
@@ -1044,22 +1765,65 @@ function profileText(
   annotation,
   geometry
 ) {
-  const points = Array.isArray(geometry.points)
-    ? geometry.points
-    : [];
+  /*
+   * THE SHARED POINT LIST, so a point's id is the one the annotation was
+   * built against and the label order matches the drawing's.
+   *
+   * THE RAW LIST IS THE FALLBACK. A varying load may be described with
+   * points that carry no station `t` - a hand-authored or older shape -
+   * and those are read in the order they are written, which is what the
+   * ordering means when there is nothing to sort by.
+   */
+  const shared =
+    typeof enggLoadProfile !== "undefined" &&
+    typeof enggLoadProfile.profilePoints === "function"
+      ? enggLoadProfile.profilePoints(geometry)
+      : [];
+
+  const points = shared.length
+    ? shared
+    : Array.isArray(geometry.points)
+      ? geometry.points
+      : [];
 
   /*
-   * Which point this annotation is about. Without one, the first
-   * point is described - which is the common case when a student
-   * annotates a varying load they have just drawn.
+   * Which point this annotation is about.
+   *
+   * BY ID WHERE THERE IS ONE. The id is what the annotation was built
+   * against and it does not move when the array does, so a point
+   * inserted, removed or reordered cannot make this label describe a
+   * different point. The index is the fallback for an annotation saved
+   * before points had identities - it is only ever used to resolve the
+   * label's own point, never to decide ownership of a stored position.
    */
-  const index = Math.max(
-    0,
-    Math.min(
-      points.length - 1,
-      Number(annotation.anchorRef?.index) || 0
-    )
-  );
+  const wantedId = annotation.anchorRef?.pointId;
+
+  let index = 0;
+
+  if (wantedId) {
+    const found = points.findIndex(
+      (point) => point.id === wantedId
+    );
+
+    /*
+     * A point that is gone has no annotation: the label is dropped
+     * rather than silently re-pointed at a neighbour, which is exactly
+     * the stale label the id exists to prevent.
+     */
+    if (found < 0) {
+      return null;
+    }
+
+    index = found;
+  } else {
+    index = Math.max(
+      0,
+      Math.min(
+        points.length - 1,
+        Number(annotation.anchorRef?.index) || 0
+      )
+    );
+  }
 
   const point = points[index];
 
@@ -1118,6 +1882,36 @@ const SUPPORT_LABELS = {
   "smooth-support": "Smooth Support"
 };
 
+/*
+ * THE TEXT OF ONE SUPPORT VALUE, read from the support itself.
+ *
+ * Which value is meant comes from the annotation's `anchorRef` - the value
+ * id - because a fixed support has three and they share one feature. The
+ * declaration is looked up by id so the wording follows the value the
+ * annotation was built for even if the list order changes.
+ *
+ * A value with no declaration has nothing to say and reports null, which
+ * makes its annotation disappear rather than print a label for a quantity
+ * that no longer exists.
+ */
+function supportValueAnnotationText(annotation, object) {
+  const valueId = annotation.anchorRef?.supportValueId;
+
+  const declared = supportReactionValues(object).find(
+    (value) => value.id === valueId
+  );
+
+  if (!declared) {
+    return null;
+  }
+
+  return supportValueText(
+    supportValueState(object, declared),
+    declared,
+    declared.unit
+  );
+}
+
 function connectionText(object) {
   const label = {
     "pin-connection": "Pin Connection",
@@ -1131,20 +1925,17 @@ function connectionText(object) {
     : label;
 }
 
-function resultantText(geometry) {
-  const magnitude = Number(geometry.magnitude);
-
-  if (!Number.isFinite(magnitude)) {
-    return null;
-  }
-
+function resultantText(object) {
   /*
    * The resultant's MAGNITUDE. Its direction is the drawn arrow,
    * for the same reason the force's is: the vector is the
    * statement of direction, and a number beside it can only ever be
    * a second copy that may disagree with it.
+   *
+   * Read through the shared rule, so a resultant carries the same Label
+   * and Question Mark controls as the force it was derived from.
    */
-  return quantity("R", magnitude, "N");
+  return featureValueText(object, "magnitude", "R", "N");
 }
 
 function humanise(type) {
@@ -1172,7 +1963,7 @@ function formatNumber(value) {
   const number = Number(value);
 
   if (!Number.isFinite(number)) {
-    return "—";
+    return "â€”";
   }
 
   const magnitude = Math.abs(number);
@@ -1247,6 +2038,116 @@ function moveAnnotation(
 }
 
 /*
+ * Record where a MOVED magnitude label sits, on the SOURCE FEATURE.
+ *
+ * The derived label is not a document feature, so there is nowhere on
+ * it to keep a position: the offset lives on the feature it describes.
+ * That is also correct - the label belongs to the feature, and its
+ * offset is meaningless without it.
+ *
+ * A VARYING LOAD STORES ONE OFFSET PER POINT, keyed by the point's own
+ * id. The old single `magnitudeOffset` cannot express that: it would
+ * move every label whenever one was dragged, and its meaning would
+ * shift with the array whenever a point was inserted or removed. So a
+ * point-anchored label writes `geometry.pointOffsets[pointId]`, and a
+ * label with no point (a force, a moment, a uniform load) keeps the
+ * plain single offset.
+ */
+function moveDerivedAnnotation(
+  source,
+  annotation,
+  offset
+) {
+  if (!source || !source.geometry) {
+    return;
+  }
+
+  const pointId = annotation?.anchorRef?.pointId;
+
+  if (pointId) {
+    const offsets =
+      source.geometry.pointOffsets &&
+      typeof source.geometry.pointOffsets === "object"
+        ? source.geometry.pointOffsets
+        : {};
+
+    offsets[pointId] = {
+      x: Number(offset?.x) || 0,
+      y: Number(offset?.y) || 0
+    };
+
+    source.geometry.pointOffsets = offsets;
+
+    return;
+  }
+
+  /*
+   * A SUPPORT VALUE STORES ONE OFFSET PER VALUE, keyed by the value's id -
+   * for exactly the reason a varying load stores one per point. A fixed
+   * support has three values sharing one feature, and a single offset would
+   * drag all three whenever the student moved one.
+   */
+  const supportValueId = annotation?.anchorRef?.supportValueId;
+
+  if (supportValueId) {
+    const offsets =
+      source.geometry.supportValueOffsets &&
+      typeof source.geometry.supportValueOffsets === "object"
+        ? source.geometry.supportValueOffsets
+        : {};
+
+    offsets[supportValueId] = {
+      x: Number(offset?.x) || 0,
+      y: Number(offset?.y) || 0
+    };
+
+    source.geometry.supportValueOffsets = offsets;
+
+    return;
+  }
+
+  source.geometry.magnitudeOffset = {
+    x: Number(offset?.x) || 0,
+    y: Number(offset?.y) || 0
+  };
+}
+
+/*
+ * Return one magnitude label to where it naturally falls.
+ *
+ * Called when a drag is abandoned without moving, so an accidental
+ * nudge does not leave a label a pixel out of place forever. It clears
+ * exactly the slot the label owns - one point, or the whole feature -
+ * and leaves every other label where it was.
+ */
+function resetDerivedAnnotation(
+  source,
+  annotation
+) {
+  if (!source || !source.geometry) {
+    return;
+  }
+
+  const pointId = annotation?.anchorRef?.pointId;
+
+  if (pointId && source.geometry.pointOffsets) {
+    delete source.geometry.pointOffsets[pointId];
+
+    return;
+  }
+
+  const supportValueId = annotation?.anchorRef?.supportValueId;
+
+  if (supportValueId && source.geometry.supportValueOffsets) {
+    delete source.geometry.supportValueOffsets[supportValueId];
+
+    return;
+  }
+
+  source.geometry.magnitudeOffset = null;
+}
+
+/*
  * Hand an annotation back to automatic placement.
  *
  * The explicit act the specification reserves for this: once a
@@ -1259,6 +2160,95 @@ function releaseToAutomaticPlacement(
   annotation.placementMode = "auto";
 
   return annotation;
+}
+
+/*
+ * ========================================================
+ * WHERE THE TEXT ACTUALLY IS - THE BOX A CLICK MUST HIT
+ * ========================================================
+ *
+ * A magnitude label is text, and text has an extent. Picking it by a
+ * single point - the annotaton's anchor, or the source load's bounds -
+ * is what makes a label hard to grab: the student aims at the letters
+ * and the system tests somewhere else.
+ *
+ * So the box is measured from WHAT IS DRAWN: the number of characters
+ * on the longest line, the font size, and the number of lines, laid
+ * out the way the renderer lays them out - centred horizontally on the
+ * placement point, centred vertically over it.
+ *
+ * It is an ESTIMATE of the glyph widths rather than a real measurement,
+ * and deliberately so: it has to give the same answer in the renderer
+ * (which has a DOM), in the hit test and in a headless test with no
+ * font metrics at all. A character-width factor that is slightly
+ * generous is the right side to err on - a label that is a little
+ * easier to hit than it looks is a convenience, while one that is a
+ * little harder is the defect this exists to remove.
+ */
+const TEXT_CHARACTER_WIDTH = 0.62;
+const TEXT_LINE_HEIGHT = 1.2;
+
+function annotationTextBounds(
+  annotation,
+  state
+) {
+  const text = textFor(annotation, state);
+
+  if (!text || !annotation.placement) {
+    return null;
+  }
+
+  const lines = String(text).split("\n");
+
+  const fontSize =
+    Number(annotation.style?.fontSize) || 12;
+
+  const longest = lines.reduce(
+    (max, line) => Math.max(max, line.length),
+    0
+  );
+
+  const width = longest * fontSize * TEXT_CHARACTER_WIDTH;
+  const height = lines.length * fontSize * TEXT_LINE_HEIGHT;
+
+  const cx = Number(annotation.placement.x) || 0;
+  const cy = Number(annotation.placement.y) || 0;
+
+  return {
+    cx,
+    cy,
+    width,
+    height,
+    minX: cx - width / 2,
+    maxX: cx + width / 2,
+    minY: cy - height / 2,
+    maxY: cy + height / 2
+  };
+}
+
+/*
+ * Is a world point inside a drawn label, allowing a small margin?
+ *
+ * The margin is added in WORLD units by the caller - converted from the
+ * pixels a comfortable target needs at the current zoom - so the
+ * forgiveness is the same on screen at any magnification while the
+ * label itself keeps its drawing size.
+ */
+function textBoundsContainPoint(
+  bounds,
+  point,
+  padding = 0
+) {
+  if (!bounds || !point) {
+    return false;
+  }
+
+  return (
+    point.x >= bounds.minX - padding &&
+    point.x <= bounds.maxX + padding &&
+    point.y >= bounds.minY - padding &&
+    point.y <= bounds.maxY + padding
+  );
 }
 
 /*
@@ -1656,6 +2646,7 @@ const enggAnnotationModel = {
   annotationsFor,
   createAnnotation,
   derivedAnnotation,
+  derivedAnnotations,
   displaySettingsOf,
   findObject,
   formatNumber,
@@ -1665,12 +2656,33 @@ const enggAnnotationModel = {
   isVisible,
   magnitudeShownFor,
   annotatableTypes,
+  annotationTextBounds,
+  featureValueText,
+  labelledQuantityText,
+  textBoundsContainPoint,
   leaderFor,
   moveAnnotation,
+  moveDerivedAnnotation,
   onSourceDeleted,
   releaseToAutomaticPlacement,
+  resetDerivedAnnotation,
   suggestPlacement,
-  textFor
+  textFor,
+
+  /*
+   * THE SUPPORT VALUE SYSTEM, shared with the Features panel.
+   *
+   * The panel reads the same table and the same state accessors the
+   * annotation model uses, so a support's fields and the boxes on the
+   * sheet cannot disagree about which values exist, what they say, or
+   * whether the Question Mark is on.
+   */
+  SUPPORT_REACTION_VALUES,
+  supportReactionValues,
+  supportValueState,
+  supportValueText,
+  supportValuesHolder,
+  isSupportValueType: isSupportType
 };
 
 export default enggAnnotationModel;

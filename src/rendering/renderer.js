@@ -943,44 +943,73 @@ import enggDimensionModel from "../features/dimensions/dimension-model.js";
 function appendDerivedMagnitude(svg, entity, state, toScreen, style) {
     const model = enggAnnotationModel;
 
-    if (!model || entity.isPreview) {
+    if (!model) {
         return;
     }
-
-    const derived = model.derivedAnnotation(entity, state);
-
-    if (!derived) {
-        return;
-    }
-
-    const group = createSvgElement("g");
 
     /*
-     * A REAL ID, so the box is picked as the box.
+     * A PREVIEW DRAWS ITS MAGNITUDES TOO.
      *
-     * `derived-<feature>-<kind>` - stable across frames, so the same box is
-     * the same thing to a click every time, and distinct from the feature's
-     * own id so picking one never selects the other. The id is NOT in the
-     * document: it is computed, and a document feature is not created by
-     * looking at a force with magnitudes on.
+     * While a varying load's points are being defined, each one shows
+     * its own magnitude beside it, updating as the cursor moves - so the
+     * student sees the load and its values taking shape together, not the
+     * geometry now and the numbers only once it is committed. The labels
+     * follow their points, which follow the cursor.
      *
-     * The group's own data-feature-id is what the hit test reads, and the
-     * text inside it has pointer-events disabled so the click lands on the
-     * group rather than on the glyph - a glyph is not a shape to aim at, and
-     * hit-testing text measures the letters rather than the box.
+     * A preview's labels are not selectable: the hit test reads the
+     * document's own objects, and a preview is not one.
      */
-    group.setAttribute(
-      "data-feature-id",
-      derived.id,
-    );
 
-    group.classList.add("drawing-derived-magnitude");
+    /*
+     * EVERY ANNOTATION THE FEATURE OWNS, not just one.
+     *
+     * A force has one magnitude, so it has one box. A VARYING
+     * DISTRIBUTED LOAD has one magnitude PER DEFINING POINT, so it has
+     * one box per point - and the list is derived from the points
+     * themselves, so the drawn count can never disagree with the number
+     * of points the student defined.
+     */
+    const derived =
+        model.derivedAnnotations(entity, state);
 
-    appendAnnotationEntity(group, derived, state, toScreen, style);
-
-    if (group.childNodes.length) {
-        svg.appendChild(group);
+    if (!derived || !derived.length) {
+        return;
     }
+
+    derived.forEach((annotation) => {
+        const group = createSvgElement("g");
+
+        /*
+         * A REAL ID, so the box is picked as the box.
+         *
+         * `derived-<feature>-<kind>` - stable across frames, so the same box is
+         * the same thing to a click every time, and distinct from the feature's
+         * own id so picking one never selects the other. The id is NOT in the
+         * document: it is computed, and a document feature is not created by
+         * looking at a force with magnitudes on.
+         *
+         * A profile point's box carries its point id too, so the two boxes
+         * on a two-point load are two different things to a click rather
+         * than one thing drawn twice.
+         *
+         * The group's own data-feature-id is what the hit test reads, and the
+         * text inside it has pointer-events disabled so the click lands on the
+         * group rather than on the glyph - a glyph is not a shape to aim at, and
+         * hit-testing text measures the letters rather than the box.
+         */
+        group.setAttribute(
+          "data-feature-id",
+          annotation.id,
+        );
+
+        group.classList.add("drawing-derived-magnitude");
+
+        appendAnnotationEntity(group, annotation, state, toScreen, style);
+
+        if (group.childNodes.length) {
+            svg.appendChild(group);
+        }
+    });
 }
 
 function appendAnnotationEntity(svg, entity, state, toScreen, style) {
@@ -1715,7 +1744,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          *
          * A point force and the support and connection symbols
          * all draw from one anchor point, so they are handled
-         * in this single pass. An applied moment, a couple, a
+         * in this single pass. An applied moment, a
          * distributed load and a varying distributed load are
          * drawn by their own blocks further down.
          */
@@ -2154,9 +2183,8 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         /*
          * A MOMENT.
          *
-         * A curved rotational arrow, drawn by the shared renderer that
-         * also draws a Couple Moment - one symbol, one place that knows
-         * how a moment looks, so the two cannot disagree.
+         * A curved rotational arrow, drawn by the shared renderer, so
+         * there is one place that knows how a moment looks.
          *
          * The direction arrives as the word "CCW" or "CW" and is
          * converted in exactly one function, so the renderer, the hit
@@ -2263,48 +2291,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             }
 
             appendAnnotationEntity(svg, entity, state, toScreen, style);
-            parentSvg.appendChild(svg);
-            return;
-        }
-
-        /*
-         * COUPLE
-         *
-         * A couple is one feature drawn as the two equal and
-         * opposite forces that make it up. The arrows belong
-         * to that one object and are never selectable on their
-         * own.
-         */
-        if (entity.type === "couple") {
-            const position = geometry.position;
-
-            if (
-                !position ||
-                !Number.isFinite(position.x) ||
-                !Number.isFinite(position.y)
-            ) {
-                return;
-            }
-
-            /*
-             * A Couple Moment is a FREE moment: the same rotational
-             * symbol as a Moment, in the same renderer, with no
-             * supporting body and therefore no connection marker of
-             * any kind. Drawing it as a pair of straight forces was
-             * a physical construction that happened to be two
-             * features' worth of ink, and it read as a force pair
-             * rather than as a moment - which is the opposite of
-             * what a free moment is.
-             */
-            appendRotationalArrow(
-                svg,
-                toScreen(position),
-                momentIsClockwise(geometry),
-                style,
-                geometry.arcRadius
-            );
-
-            appendDerivedMagnitude(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -3444,11 +3430,40 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 return;
             }
 
+            /*
+             * NO DIRECTION, NO LOAD DRAWN.
+             *
+             * `loadDirection` reports null when the student has marked the
+             * direction unknown. There is no authoritative angle then, so
+             * drawing arrows would assert one - a load pointing straight
+             * down while its panel shows a blank field. The span and the
+             * body are still drawn above, so the feature is still visible
+             * and selectable; only the arrows wait for a direction.
+             */
+            const storedDirection =
+                enggLoadProfile.loadDirection(
+                    geometry
+                );
+
+            if (
+                !Number.isFinite(
+                    Number(storedDirection)
+                )
+            ) {
+                appendDerivedMagnitude(
+                    svg,
+                    entity,
+                    state,
+                    toScreen,
+                    style
+                );
+                parentSvg.appendChild(svg);
+                return;
+            }
+
             const direction =
                 enggLoadProfile.unitVector(
-                    enggLoadProfile.loadDirection(
-                        geometry
-                    )
+                    storedDirection
                 );
 
             /*
@@ -4913,13 +4928,21 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
      *   far        - the other end of the drawn line. It is a fixed
      *                 piece of geometry, and it must not move either.
      *
-     * The far end is placed from the body's own outward NORMAL, not
-     * from the force direction. That is the whole point: reversing
-     * the force direction cannot move the far end, because the
-     * normal is not derived from the direction at all. A load
-     * pointing down and the same load pointing up draw over exactly
-     * the same length of line, in exactly the same place, and differ
-     * only in which end the head sits on.
+     * ========================================================
+     * THE LINE IS THE LOAD; THE HEAD IS WHICH WAY IT PUSHES
+     * ========================================================
+     *
+     * The shaft is drawn ALONG THE FORCE DIRECTION itself, so an arrow
+     * points the way the load acts - up, down, left, right or any diagonal -
+     * and a load at 45 degrees on a level beam genuinely appears at 45
+     * degrees rather than being snapped onto the body's normal.
+     *
+     * `bodyNormal` is still handed in, and still decides which SIDE of the
+     * body the arrow is drawn FROM when the direction is square to the span
+     * (the ordinary case, where the two agree). The direction is what places
+     * the far end; the normal only tells the renderer which of the direction
+     * and its opposite is the side the load acts from, so a "down" load hangs
+     * below a level beam rather than lying along it.
      */
     function forceEndpoints(
         application,
@@ -4928,27 +4951,32 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         bodyNormal
     ) {
         /*
-         * The outward normal, falling back to the force direction
-         * only when the body has no usable one. The fallback keeps
-         * a force on a degenerate body - a zero-length span, or one
-         * drawn without a body at all - from collapsing to nothing.
+         * THE DIRECTION IS THE LINE. Its screen projection is the only thing
+         * that decides where the far end sits, so two loads that differ only
+         * in direction draw two different lines - which is the whole point of
+         * a direction being a real vector.
          */
-        const away =
-            bodyNormal &&
-            (Math.abs(bodyNormal.x) > 1e-9 ||
-             Math.abs(bodyNormal.y) > 1e-9)
-                ? bodyNormal
-                : direction;
+        const screenDirection = {
+            x: direction.x,
+            y: -direction.y
+        };
 
         /*
-         * Screen Y grows downward, so the world normal is carried
-         * through with its Y flipped exactly as the force direction
-         * is.
+         * A DEGENERATE DIRECTION - one that could not be read from the
+         * pointer - falls back to the span's own normal, so a load that lost
+         * its direction still draws the field of arrows it always drew rather
+         * than collapsing to a point.
          */
-        const screenAway = {
-            x: away.x,
-            y: -away.y
-        };
+        const usable =
+            Math.abs(screenDirection.x) > 1e-9 ||
+            Math.abs(screenDirection.y) > 1e-9;
+
+        const screenAway =
+            usable
+                ? screenDirection
+                : bodyNormal
+                    ? { x: bodyNormal.x, y: -bodyNormal.y }
+                    : { x: 0, y: 1 };
 
         return {
             application,
@@ -5219,21 +5247,10 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
     }
 
     /*
-     * A couple: two equal, opposite, parallel forces
-     * separated by the stored distance, which is what makes
-     * a couple physically meaningful. The pair is the visual
-     * output of the one Couple feature, not two forces.
-     */
-    /*
      * THE ROTATIONAL ARROW.
      *
-     * One curved arrow, drawn for a Moment and for a Couple Moment,
-     * because the two are the same symbol: a centre it turns about, a
-     * radius, a sense of rotation, and a head ON the curve. Giving
-     * each its own routine is how they came to disagree - the Moment
-     * was a pair of half-arcs with a hand-placed head and a radius
-     * typed into the middle of it, and the Couple was two straight
-     * forces - and two symbols for one idea is worse than either.
+     * One curved arrow, drawn for a Moment: a centre it turns about, a
+     * radius, a sense of rotation, and a head ON the curve.
      *
      * The geometry itself - the sweep, the gap, the tangent and the
      * head - is asked of enggDrawingRotationalArrow rather than being
@@ -7689,7 +7706,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         "fixed-connection",
         "slider-connection",
         "moment",
-        "couple",
         "pin-support",
         "roller-support",
         "fixed-support",

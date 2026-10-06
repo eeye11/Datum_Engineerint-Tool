@@ -4,6 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDimensions from "../core/scale/dimensions.js";
+import enggQuantities from "../core/units/quantities.js";
 import enggCreationDimension from "../features/dimensions/creation-dimension.js";
 import enggCreationDimensioning from "../features/dimensions/creation-dimensioning.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
@@ -67,43 +68,51 @@ function showSizingPreview(
         JSON.parse(JSON.stringify(object));
 
     /*
-     * THE PREVIEW MUST BE WHAT THE COMMIT WILL PRODUCE.
+     * THE PREVIEW MUST BE WHAT THE COMMIT WILL PRODUCE, SO IT GOES
+     * THROUGH THE SAME DOOR.
      *
-     * On a CALIBRATED sheet the typed length is converted through the
-     * document's scale, which is the ordinary case.
+     * `updateFeatureProperty` is the ONE property setter, and its contract
+     * is MILLIMETRES: it performs the single conversion into world units
+     * itself. The commit does exactly this - it normalises the typed value
+     * to millimetres with the unit the student chose, then hands it over - so
+     * the preview normalises it the same way, and a value typed in metres
+     * previews at the same size it will commit at.
      *
-     * On an UNCALIBRATED sheet there is no scale to convert through -
-     * and that is not a gap to work around, it is what calibration
-     * MEANS. The first length defines the scale by declaring that
-     * the geometry already drawn is that long, so the member's model
-     * geometry is deliberately left exactly as drawn and it is the
-     * interpretation that changes. Converting the number here would
-     * have shown the member shrinking to half a world unit, and then
-     * committed it at its original length: a preview that disagreed
-     * with the answer.
+     * IT USED TO CONVERT TO WORLD UNITS FIRST AND HAND THOSE OVER. That
+     * crossed the scale twice - once here and once inside the setter - and
+     * the error compounded on every keystroke, because each preview was built
+     * from the previous preview's already-converted geometry. A beam typed at
+     * 300000 mm came out tens of billions of millimetres long and could no
+     * longer be edited. One conversion, in the setter, is what keeps the
+     * preview and the commit identical.
      *
-     * The conversion is therefore taken through the document scale
-     * only when there is one, and the drawn geometry is shown as it
-     * stands when there is not.
+     * ON AN UNCALIBRATED SHEET the drawn value is passed through unchanged,
+     * for the reason the commit does the same: the first length DEFINES the
+     * scale by declaring that the geometry already drawn is that long, so it
+     * is the interpretation that changes rather than the geometry.
      */
     const calibrated =
         enggDimensions?.isCalibrated?.(
             drawingState
         ) === true;
 
-    const world = calibrated
-        ? enggDimensions.fromEngineering(
-              drawingState,
-              Number(value),
-              unit || "mm"
-          )
-        : Number(field.worldValue);
+    if (calibrated) {
+        const millimetres =
+            Number(value) *
+            (enggQuantities?.LENGTH_UNITS?.[unit || "mm"]?.mm ?? 1);
 
-    if (Number.isFinite(world)) {
+        if (Number.isFinite(millimetres)) {
+            updateFeatureProperty(
+                preview,
+                field.key,
+                millimetres
+            );
+        }
+    } else if (Number.isFinite(Number(field.worldValue))) {
         updateFeatureProperty(
             preview,
             field.key,
-            world
+            Number(field.worldValue)
         );
     }
 

@@ -1,13 +1,10 @@
 /* Engineering drawing rotational arrow geometry - the ONE curved arrow. */
 /*
- * A Moment and a Couple Moment are the same drawing: a centre, a
- * radius, a direction of sweep, and an arrowhead sitting on the
- * curve. Before this module each of them grew its own arc, its own
- * hardcoded radius and its own idea of which way the head pointed,
- * and the two drifted apart until a Moment read as a circle and a
- * Couple read as a pair of straight forces.
+ * The ONE curved arrow: a centre, a radius, a direction of sweep, and
+ * an arrowhead sitting on the curve.
  *
- * So the geometry is derived once, here, and both features read it.
+ * The geometry is derived once, here, and every rotational feature
+ * reads it.
  * Nothing in this file draws: it answers questions about an arc, and
  * the renderer turns those answers into SVG. That split is what lets
  * the hit test in drawing.js measure the SAME curve the student can
@@ -209,9 +206,9 @@ function arcPath(arc) {
      * It was omitted here, so the large-arc flag landed in the
      * rotation slot and the sweep flag landed in the large-arc slot.
      * The emitted command was therefore malformed, the browser
-     * rejected the path, and neither an Applied Moment nor a Couple
-     * Moment drew anything at all: the tools were armed and created
-     * their features correctly, and every one of them was invisible.
+     * rejected the path, and an Applied Moment drew nothing at all:
+     * the tool was armed and created its feature correctly, and it
+     * was invisible.
      *
      * The curve is drawn in the canvas's own screen space with no
      * elliptical tilt, so the rotation is 0. Stating it explicitly

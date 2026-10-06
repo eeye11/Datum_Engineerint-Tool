@@ -41,7 +41,6 @@ export const FEATURE_TYPES = Object.freeze({
     load: { attachable: true, vector: true },
     "varying-load": { attachable: true, vector: true },
     moment: { attachable: true },
-    couple: { attachable: true },
 
     "pin-support": { attachable: true, support: true },
     "roller-support": { attachable: true, support: true },

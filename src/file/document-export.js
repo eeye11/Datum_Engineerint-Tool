@@ -48,6 +48,20 @@ const MIN_OUTPUT_PX = 600;
 const DEFAULT_OUTPUT_PX = 1600;
 
 /*
+ * The size of the page a Print is composed onto, in CSS pixels at the
+ * nominal print resolution.
+ *
+ * It is NOT the editor canvas and NOT the screen: it is the paper the
+ * browser print dialog is given. A4 landscape at 96 CSS pixels per
+ * inch (1123 x 794) is the office default, and a drawing scaled to it
+ * proportionally is what a printer receives. Because the camera is
+ * computed from this rectangle rather than from anything on screen,
+ * the printed page is the same whatever the window, the monitor and
+ * the zoom were.
+ */
+const PRINT_PAGE_PX = { width: 1123, height: 794 };
+
+/*
  * The world-space extent of the drawing as it is DRAWN, not as it
  * is stored.
  *
@@ -338,6 +352,23 @@ function renderClean(state, bounds) {
   const previousSelection = [...state.selection.selectedObjectIds];
   const previousHovered = state.selection.hoveredObjectId;
 
+  /*
+   * THE CONSTRUCTION IS SUPPRESSED WITH THE SELECTION.
+   *
+   * The renderer reads the live interaction to draw the half-built
+   * thing: the tool's preview, the snap marker, the guide line, the
+   * box being dragged. None of that is drawing content, and an output
+   * taken while a feature is being created must show only what is
+   * committed. An idle interaction is what the editor holds between
+   * tools, so a blank one is the honest "nothing is being drawn" state.
+   *
+   * It is restored with the camera and the selection, so a Print taken
+   * mid-construction returns the user exactly where they were.
+   */
+  const previousInteraction = state.interaction;
+
+  state.interaction = { phase: "idle" };
+
   state.camera.zoom = camera.zoom;
   state.camera.panX = camera.panX;
   state.camera.panY = camera.panY;
@@ -381,6 +412,7 @@ function renderClean(state, bounds) {
   } finally {
     host.remove();
 
+    state.interaction = previousInteraction;
     state.camera.zoom = previousCamera.zoom;
     state.camera.panX = previousCamera.panX;
     state.camera.panY = previousCamera.panY;
@@ -495,6 +527,7 @@ const enggDrawingExport = {
   FIT_MARGIN_RATIO,
   MARGIN_RATIO,
   MIN_OUTPUT_PX,
+  PRINT_PAGE_PX,
 
   /*
    * The shared fit engine. Exposed so Fit Whole Page, Fit

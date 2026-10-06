@@ -168,7 +168,7 @@ console.log("\n  a Varying Distributed Load can be built\n");
 
   check(
     "and the uniform load's steps still are",
-    ["distributed-load-start", "distributed-load-end", "distributed-load-magnitude", "distributed-load-direction"]
+    ["distributed-load-start", "distributed-load-end", "distributed-load-vector"]
       .every((phase) => isLoadBuildPhase({ phase })),
   );
 }

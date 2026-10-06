@@ -129,7 +129,7 @@ const features = [
     },
   ],
   [
-    "applied-moment",
+    "moment",
     {
       id: "moment-1",
       type: "moment",

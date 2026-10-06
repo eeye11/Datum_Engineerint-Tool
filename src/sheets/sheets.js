@@ -201,7 +201,22 @@ function createSheet(collection, options = {}) {
     objectSnap: content.objectSnap,
     styleDefaults: content.styleDefaults,
     viewport: content.viewport,
-    grid: content.grid
+    grid: content.grid,
+
+    /*
+     * THE SHEET'S CALIBRATION TRAVELS WITH IT.
+     *
+     * It is listed here for the same reason the grid and the viewport
+     * are: a sheet is created from its content, and a field left out of
+     * this object is a field the sheet does not have. Omitting it
+     * silently discarded the scale of every duplicated sheet - and, more
+     * seriously, of every sheet read back from a saved file, so a
+     * reopened drawing measured with the 1:1 default instead of the
+     * scale it was calibrated to.
+     */
+    scale: content.scale
+      ? JSON.parse(JSON.stringify(content.scale))
+      : null
   };
 
   /*
@@ -297,7 +312,21 @@ function createCollection(input) {
       objectSnap: content.objectSnap,
       styleDefaults: content.styleDefaults,
       viewport: content.viewport,
-      grid: content.grid
+      grid: content.grid,
+
+      /*
+       * THE SAVED CALIBRATION, RESTORED WITH THE SHEET.
+       *
+       * A reopened file must measure exactly as it did before it was
+       * closed. Leaving this field off the reconstructed sheet dropped
+       * the scale on every load, so the drawing silently fell back to
+       * one millimetre per unit and every length in every Features panel
+       * came back wrong - with no indication that anything had been
+       * lost.
+       */
+      scale: content.scale
+        ? JSON.parse(JSON.stringify(content.scale))
+        : null
     };
   });
 
@@ -472,7 +501,17 @@ function duplicateSheet(collection, sheetId, options = {}) {
         JSON.stringify(source.styleDefaults)
       ),
       viewport: { ...source.viewport },
-      grid: { ...source.grid }
+      grid: { ...source.grid },
+
+      /*
+       * A DUPLICATE IS CALIBRATED LIKE ITS ORIGINAL. The copy is the
+       * same drawing, so a copy that arrived uncalibrated would show
+       * every length at the 1:1 default while the sheet it came from
+       * showed the truth.
+       */
+      scale: source.scale
+        ? JSON.parse(JSON.stringify(source.scale))
+        : null
     }
   });
 

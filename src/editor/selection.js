@@ -6,6 +6,7 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggScaleCalibration from "../core/scale/scale-calibration.js";
 import enggCreationDimension from "../features/dimensions/creation-dimension.js";
 import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggPlotEditor from "../ui/editors/plot-editor.js";
 import { commitAnalysisAxis } from "./analysis-tools.js";
 import { objectIntersectsSelection } from "./box-selection.js";
@@ -91,10 +92,27 @@ export function beginSelectionDrag(
                 /*
                  * The magnitude being moved, kept apart from `box` so the
                  * marquee code does not try to draw one.
+                 *
+                 * WHICH MAGNITUDE is carried whole - the derived
+                 * annotation itself, which knows its own point. A varying
+                 * load has one label per point, so "the magnitude" is not
+                 * enough to identify what is being dragged: two of them
+                 * answer to the same source feature, and only the anchor
+                 * tells them apart.
                  */
                 derived: {
                     sourceFeatureId:
                         picked.sourceFeatureId,
+
+                    annotation:
+                        picked.annotation,
+
+                    /*
+                     * The position the grab started from, so the pointer's
+                     * travel is added to where the label already is rather
+                     * than snapping it to the cursor - the grab offset the
+                     * student began with is preserved.
+                     */
                     natural:
                         picked.annotation
                             .placement,
@@ -202,20 +220,34 @@ export function updateSelectionDrag(
         editorState.selectionDrag.derived.offsetY =
             point.y - start.y;
 
+        const derivation =
+            editorState.selectionDrag.derived;
+
         const source =
             objectsByIds([
-                editorState.selectionDrag.derived
-                    .sourceFeatureId,
+                derivation.sourceFeatureId,
             ])[0];
 
         if (source) {
             source.geometry =
                 source.geometry || {};
 
-            source.geometry.magnitudeOffset = {
-                x: editorState.selectionDrag.derived.offsetX,
-                y: editorState.selectionDrag.derived.offsetY
-            };
+            /*
+             * THE OFFSET IS STORED ON THE FEATURE, KEYED TO THIS LABEL.
+             *
+             * A varying load has one label per point, so the move is
+             * written against the point this label belongs to - not as a
+             * single offset for the whole load, which would drag every
+             * label with the one the student grabbed.
+             */
+            enggAnnotationModel.moveDerivedAnnotation(
+                source,
+                derivation.annotation,
+                {
+                    x: derivation.offsetX,
+                    y: derivation.offsetY
+                }
+            );
 
             renderCurrentDrawing();
         }
@@ -351,8 +383,16 @@ export function finishSelectionDrag(
                 ])[0];
 
             if (source?.geometry) {
-                source.geometry.magnitudeOffset =
-                    null;
+                /*
+                 * Only THIS label's slot is cleared - one point of a
+                 * varying load, or the whole feature for a single-magnitude
+                 * one - so abandoning a nudge on one label cannot reset the
+                 * positions of the others.
+                 */
+                enggAnnotationModel.resetDerivedAnnotation(
+                    source,
+                    currentSelection.derived.annotation
+                );
             }
 
             setToolMessage(

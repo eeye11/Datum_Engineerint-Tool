@@ -571,26 +571,9 @@ export function objectAtPoint(
                 }
 
                 /*
-                 * A Couple is drawn as two opposing arrows.
-                 * Clicking either one selects the couple,
-                 * because the two arrows are renderer
-                 * output of that one feature.
+                 * A Moment is a curved arrow, so it is picked along its
+                 * curve.
                  */
-                if (object.type === "couple") {
-                    /*
-                     * A Couple Moment is a curved arrow, so it is
-                     * picked along its curve - and this branch runs
-                     * BEFORE the moment branch below, so the two
-                     * rotational features are answered by one piece
-                     * of code rather than by two that could drift.
-                     */
-                    return rotationalArrowHit(
-                        object,
-                        point,
-                        tolerance
-                    );
-                }
-
                 if (object.type === "moment") {
                     return rotationalArrowHit(
                         object,
@@ -1326,7 +1309,7 @@ function analysisObjectHit(
 }
 
 /*
- * Is a point on a Moment's or a Couple Moment's curved arrow?
+ * Is a point on a Moment's curved arrow?
  *
  * THE SAME ARC THAT IS DRAWN.
  *
@@ -1472,6 +1455,31 @@ export function pickDerivedMagnitude(
         return null;
     }
 
+    /*
+     * THE MARGIN, IN WORLD UNITS.
+     *
+     * A box of text is not a comfortable thing to hit with a pointer, and
+     * a label that cannot be clicked cannot be moved. So the hit box is
+     * the rendered text PLUS a few pixels of slack - converted to world
+     * units at the current zoom, so the forgiveness is the same to aim at
+     * however far the sheet is zoomed while the label keeps its drawing
+     * size.
+     */
+    const padding =
+        ANNOTATION_PICK_PADDING_PIXELS /
+        Math.max(
+            drawingState.camera.zoom,
+            0.25
+        );
+
+    let best = null;
+
+    /*
+     * Newest feature first, so where two labels overlap the one drawn on
+     * top is the one picked - what a click on the topmost thing should
+     * do. A plain magnitude box and a profile point's box are handled
+     * identically here; only the number of boxes differs.
+     */
     for (
         let i =
             drawingState.objects.length -
@@ -1482,62 +1490,72 @@ export function pickDerivedMagnitude(
         const object =
             drawingState.objects[i];
 
-        const derived =
-            model.derivedAnnotation(
+        const annotations =
+            model.derivedAnnotations(
                 object,
                 drawingState
             );
 
-        if (
-            !derived ||
-            !derived.placement
-        ) {
-            continue;
-        }
+        for (const derived of annotations || []) {
+            if (!derived || !derived.placement) {
+                continue;
+            }
 
-        /*
-         * The same widened target an annotation gets, and for the same
-         * reason: a box of text is not a comfortable thing to hit with a
-         * pointer, and a label that cannot be clicked cannot be moved.
-         *
-         * Measured in world units, so the box stays the same size to aim at
-         * as the student zooms.
-         */
-        const reach =
-            DIMENSION_PICK_TOLERANCE_PIXELS /
-            Math.max(
-                drawingState.camera.zoom,
-                0.25
-            ) /
-            4;
+            /*
+             * THE TEXT'S OWN BOX, from the shared measurement the
+             * renderer lays the label out with - never the source load's
+             * bounds and never a bare anchor point. Aiming at the letters
+             * has to be what selects the letters.
+             */
+            const bounds =
+                model.annotationTextBounds(
+                    derived,
+                    drawingState
+                );
 
-        if (
-            distance(
-                point,
-                derived.placement
-            ) < reach
-        ) {
-            return {
-                id: derived.id,
-                type:
-                    "derived-magnitude",
+            if (
+                !model.textBoundsContainPoint(
+                    bounds,
+                    point,
+                    padding
+                )
+            ) {
+                continue;
+            }
 
-                /*
-                 * The feature it belongs to and what it is called there -
-                 * both needed by the drag and by the status line, and both
-                 * read from the model rather than rebuilt here.
-                 */
-                sourceFeatureId:
-                    object.id,
-                annotationKind:
-                    derived.annotationKind,
-                annotation: derived
-            };
+            /*
+             * The smallest box wins, so a short label lying inside the
+             * slack of a long one is still reachable.
+             */
+            const area = bounds
+                ? bounds.width * bounds.height
+                : 0;
+
+            if (!best || area < best.area) {
+                best = {
+                    area,
+                    id: derived.id,
+                    type: "derived-magnitude",
+                    sourceFeatureId: object.id,
+                    annotationKind:
+                        derived.annotationKind,
+                    annotation: derived
+                };
+            }
         }
     }
 
-    return null;
+    return best;
 }
+
+/*
+ * The slack around a magnitude label's text that still counts as a hit.
+ *
+ * A few pixels, and deliberately not more: a label should be easy to
+ * grab, but a hit box so large that it steals clicks from the geometry
+ * beside it would make the drawing harder to work on, not easier.
+ */
+const ANNOTATION_PICK_PADDING_PIXELS = 5;
 
 /*
  * The wider, invisible target a dimension and an annotation are picked

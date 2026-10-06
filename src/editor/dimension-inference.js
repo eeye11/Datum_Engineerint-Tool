@@ -356,7 +356,8 @@ function compositeSegmentReference(object, point) {
 
     if (
         object.type !== "polyline" &&
-        object.type !== "rectangle"
+        object.type !== "rectangle" &&
+        object.type !== "triangle"
     ) {
         return null;
     }
@@ -412,6 +413,36 @@ function compositeSegmentPoints(object) {
                     Number.isFinite(entry.x) &&
                     Number.isFinite(entry.y)
             );
+    }
+
+    /*
+     * A TRIANGLE IS THREE SEGMENTS, NOT A RECTANGLE.
+     *
+     * It used to fall through to the rectangle branch below, so a triangle's
+     * "corners" were asked of `rectangleCorners` - which does not describe a
+     * triangle and returned nothing usable. The nearest-edge test then had no
+     * edges to test, and every click on the shape resolved through the
+     * feature's own `start`/`end` instead: the same two points whatever the
+     * student clicked, which is why one side always won.
+     *
+     * The chain is CLOSED, so the third side exists. An open chain of three
+     * points describes only two edges, and the side that was missing is
+     * exactly the one a student would try to click.
+     */
+    if (object.type === "triangle") {
+        const points = (object.geometry?.points || [])
+            .filter(
+                (entry) =>
+                    entry &&
+                    Number.isFinite(entry.x) &&
+                    Number.isFinite(entry.y)
+            );
+
+        if (points.length < 3) {
+            return [];
+        }
+
+        return [points[0], points[1], points[2], { ...points[0] }];
     }
 
     try {

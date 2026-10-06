@@ -5,6 +5,7 @@
 import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import enggDrawingExport from "../file/document-export.js";
 import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
@@ -51,7 +52,7 @@ import { setToolMessage } from "./toolbar-render.js";
  * DRAWING", and the grid is not the drawing - it is the paper it is
  * drawn on.
  */
-function isFittableObject(object) {
+export function isFittableObject(object) {
     if (!object) {
         return false;
     }
@@ -82,7 +83,7 @@ function isFittableObject(object) {
  * The grid is never consulted, and the selection is never consulted -
  * both are the caller's business.
  */
-function renderableBoundsOf(objects) {
+export function renderableBoundsOf(objects) {
     const points = [];
 
     objects.forEach(object => {
@@ -374,6 +375,84 @@ export function renderedBounds(
     object,
     measuredAtZoom
 ) {
+    /*
+     * THE FEATURE'S OWN EXTENT, and then the labels it carries.
+     *
+     * A magnitude annotation is drawing content: the student can move it
+     * far from the feature it describes, and once moved it is often the
+     * outermost thing on the sheet. Measuring only the source geometry
+     * is what let a Fit crop the very label the student was looking at,
+     * and what let an image export cut one off.
+     *
+     * So the label's own box joins the feature's extent. The box is the
+     * TEXT's bounds - not the placement point alone - measured by the same
+     * shared function the hit test uses, so what Fit reserves space for
+     * and what a click can reach cannot disagree.
+     */
+    const points = geometryRenderedBounds(
+        object,
+        measuredAtZoom
+    );
+
+    annotationBoundsPoints(object).forEach((point) =>
+        points.push(point)
+    );
+
+    return points;
+}
+
+/*
+ * The four corners of every magnitude label this feature carries.
+ *
+ * A label's placement is its centre and the box extends around it, so
+ * all four corners are contributed rather than the centre alone - a label
+ * whose centre is on the sheet can still have its text hanging off the
+ * edge, and the corners are what keep it whole.
+ */
+function annotationBoundsPoints(object) {
+    const model = enggAnnotationModel;
+
+    if (!model || typeof model.derivedAnnotations !== "function") {
+        return [];
+    }
+
+    /*
+     * The annotation model reads its text from the state's feature list,
+     * so it is handed the live state - the same one the renderer draws
+     * from. A label with nothing to say contributes no box.
+     */
+    const annotations = model.derivedAnnotations(
+        object,
+        drawingState
+    );
+
+    const points = [];
+
+    for (const annotation of annotations || []) {
+        const bounds = model.annotationTextBounds(
+            annotation,
+            drawingState
+        );
+
+        if (!bounds) {
+            continue;
+        }
+
+        points.push(
+            { x: bounds.minX, y: bounds.minY },
+            { x: bounds.maxX, y: bounds.minY },
+            { x: bounds.maxX, y: bounds.maxY },
+            { x: bounds.minX, y: bounds.maxY }
+        );
+    }
+
+    return points;
+}
+
+function geometryRenderedBounds(
+    object,
+    measuredAtZoom
+) {
     const geometry = object?.geometry;
 
     if (!geometry) {
@@ -447,18 +526,15 @@ export function renderedBounds(
         ];
     }
 
-    if (object.type === "couple" || object.type === "moment") {
+    if (object.type === "moment") {
         /*
          * A rotational symbol is a circle about its application
          * point, so its extent is that circle - the whole swept arc
          * plus the arrowhead standing off its end.
          *
-         * The couple used to be measured as a box around two straight
-         * arrows spaced by its old `separation`, which described a
-         * shape that is no longer drawn. The radius is read from the
-         * same shared default the renderer falls back to, so an
-         * unresized symbol and the rectangle that selects it cannot
-         * disagree about how big it is.
+         * The radius is read from the same shared default the renderer
+         * falls back to, so an unresized symbol and the rectangle that
+         * selects it cannot disagree about how big it is.
          */
         const position = geometry.position;
 
@@ -579,6 +655,32 @@ export function renderedBounds(
                 y: geometry.origin.y + axisLength
             }
         ];
+    }
+
+    /*
+    * THE SHARED GEOMETRY REGISTRY AS THE LAST RESORT.
+    *
+    * A Point, a Particle, a support or a connection has a real
+    * position the drawing shows, but no dedicated branch above.
+    * Falling straight through to hit-testing's objectPoints returned
+    * nothing for them, which made a sheet whose only content was a
+    * lone point appear EMPTY to Fit, to Print and to the exports:
+    * the one feature on the sheet could not be included in the
+    * bounds because nobody measured it.
+    *
+    * The registry knows every feature's defining points — it is the
+    * same table the geometry editing uses — so it is asked before
+    * giving up. Only if it too knows nothing does the hit-test
+    * fallback run, so nothing that previously worked changes.
+    */
+    const registered =
+        enggFeatureGeometry.definingPoints(
+            geometry,
+            object.type
+        );
+
+    if (registered && registered.length) {
+        return registered;
     }
 
     return objectPoints(object);

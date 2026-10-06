@@ -289,23 +289,6 @@ export function createStaticsFeature(
                 "CCW",
                 style
             );
-    } else if (type === "couple") {
-        /*
-         * A couple moment starts at 50 N-m, turning ANTICLOCKWISE.
-         *
-         * The third argument is the old `separation` and is passed on
-         * only so a value already on the sheet is not lost; nothing
-         * reads it now that a couple is drawn as a curved arrow rather
-         * than as a pair of forces.
-         */
-        object =
-            enggDrawingState.geometryFactories.couple(
-                position,
-                50,
-                20,
-                "CCW",
-                style
-            );
     } else if (type === "connection") {
         /*
          * A connection is drawn as a short link so it is

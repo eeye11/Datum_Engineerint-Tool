@@ -221,11 +221,6 @@ const placed = [
     "25",
   ],
   [
-    "couple",
-    factories.couple({ x: 0, y: 0 }, 40, false),
-    "40",
-  ],
-  [
     "load",
     factories.load({ x: 0, y: 0 }, { x: 100, y: 0 }, 5),
     "5",
@@ -372,7 +367,7 @@ console.log("\n  the value follows the feature, and only the feature\n");
  * copy anywhere that could disagree.
  */
 const liveCases = [
-  ["a load", placed[3][1], "intensity", 5, 12],
+  ["a load", placed[2][1], "intensity", 5, 12],
   ["a moment", placed[1][1], "magnitude", 25, 60],
 ];
 

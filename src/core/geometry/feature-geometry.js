@@ -302,17 +302,11 @@ function definingPoints(
         ]);
     }
 
-    if (
-        type === "moment" ||
-        type === "couple"
-    ) {
+    if (type === "moment") {
         /*
-         * Both rotational features are defined by the single
-         * point they turn about. They used to contribute their
-         * two arrow heads as well, from the straight-force
-         * shape a couple was drawn as; that shape is gone, so
-         * those points are gone, and the position is now the
-         * whole of what a move has to carry.
+         * A rotational feature is defined by the single point it
+         * turns about, which is the whole of what a move has to
+         * carry.
          */
         return valid([
             g.position

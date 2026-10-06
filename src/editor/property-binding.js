@@ -12,6 +12,7 @@ import { drawingState, editorState } from "./editor-state.js";
 import { forcePanelModes, trianglePanelModes } from "./feature-panel-markup.js";
 import { renderProperties } from "./feature-panel.js";
 import { openAnalysisEditorFor } from "./feature-tree.js";
+import enggDimensions from "../core/scale/dimensions.js";
 import { currentPropertyValue, setRigidBodyShape } from "./property-inputs.js";
 import { updateFeatureProperty } from "./property-update.js";
 import { setToolMessage } from "./toolbar-render.js";
@@ -571,7 +572,7 @@ export function bindFeaturePropertyControls(object) {
             });
 
         /*
-     * The arc radius of a Moment or a Couple Moment.
+     * The arc radius of a Moment.
      *
      * This is a PRESENTATION control and is written as its own field
      * on the geometry rather than as a style, so that it can never be
@@ -663,6 +664,15 @@ export function bindFeaturePropertyControls(object) {
      * field is cleared and the old one is not kept as a
      * hidden fallback. Only this one quantity is affected,
      * so the rest of the feature stays fully editable.
+     *
+     * AND THE NUMBER ITSELF IS DELETED, not merely hidden. The panel
+     * refusing to draw it is one thing; the magnitude still sitting on
+     * the geometry is another, and it is the dangerous one - the
+     * renderer, the annotation model and anything reading the feature
+     * would keep finding a real 100 N behind a box that says the value
+     * is unknown. So the geometry field is cleared as well. Turning the
+     * mark off then reveals an empty field, which is exactly what the
+     * student asked for: the value has to be entered again.
      */
     drawingProperties.querySelectorAll('[data-known]').forEach(button => {
         button.addEventListener('click', () => {
@@ -681,8 +691,63 @@ export function bindFeaturePropertyControls(object) {
 
             if (wasKnown) {
                 object.unknownValues[key] = true;
+
+                /*
+                 * The value is gone. An empty field is the honest
+                 * state, and it stops anything downstream reading a
+                 * number the student has just declared unknown.
+                 */
+                if (
+                    object.geometry &&
+                    key in object.geometry
+                ) {
+                    delete object.geometry[key];
+                }
+
+                /*
+                 * A LOAD'S MAGNITUDE IS ITS INTENSITY, so the flag is
+                 * stored under the panel's key but the number it retires
+                 * lives under the model's. Clearing the intensity is what
+                 * makes the magnitude field blank rather than showing a
+                 * stale value behind an Unknown mark.
+                 */
+                if (
+                    object.type === "load" &&
+                    key === "magnitude" &&
+                    object.geometry
+                ) {
+                    delete object.geometry.intensity;
+                    delete object.geometry.points;
+                }
+
+                /*
+                 * A LOAD'S DIRECTION, MARKED UNKNOWN, IS NOT THE DEFAULT.
+                 *
+                 * Deleting `geometry.direction` alone would leave the
+                 * renderer falling back to its straight-down default, so a
+                 * load whose direction the student had just declared unknown
+                 * still drew arrows pointing down. The unknown state is
+                 * recorded explicitly on the geometry as well, which is what
+                 * `loadDirection` reads to report that there is no
+                 * authoritative direction - so nothing draws one.
+                 */
+                if (
+                    (object.type === "load" ||
+                        object.type === "varying-load") &&
+                    key === "direction" &&
+                    object.geometry
+                ) {
+                    object.geometry.directionUnknown = true;
+                }
             } else {
                 delete object.unknownValues[key];
+
+                if (
+                    object.geometry &&
+                    key === "direction"
+                ) {
+                    delete object.geometry.directionUnknown;
+                }
             }
 
             enggDrawingState.commitDrawingChange(
@@ -691,6 +756,63 @@ export function bindFeaturePropertyControls(object) {
             );
 
             renderProperties();
+            renderCurrentDrawing();
+        });
+    });
+
+    /*
+     * THE LABEL A MAGNITUDE IS WRITTEN UNDER.
+     *
+     * Typed onto the feature as `magnitudeLabel`, which is the single
+     * field the annotation model reads - so the letter on the sheet is
+     * the letter the student typed, and there is no second copy for it
+     * to disagree with.
+     *
+     * AN EMPTY STRING IS KEPT. "Write the number with no symbol in front
+     * of it" is a real choice, and storing null instead would let the
+     * conventional letter come back - which is not what the student
+     * asked for.
+     *
+     * IT IS A TEXT FIELD, NOT A QUANTITY, so it does not go through
+     * `updateFeatureProperty`: that path parses a number and rejects a
+     * blank, and this field is defined by accepting both words and the
+     * empty string.
+     *
+     * THE SHEET FOLLOWS THE TYPING; THE HISTORY FOLLOWS THE EDIT. The
+     * canvas is redrawn on every keystroke so the student sees the label
+     * change as they write it, but one committed action is recorded per
+     * completed edit - on change, when the field is left - rather than one
+     * per character, which would bury every other action in the undo
+     * stack behind the letters of a single word.
+     */
+    drawingProperties.querySelectorAll('[data-magnitude-label]').forEach(input => {
+        let historyBefore = null;
+
+        input.addEventListener('input', () => {
+            if (!historyBefore) {
+                historyBefore =
+                    enggDrawingState.snapshotDrawing(
+                        drawingState
+                    );
+            }
+
+            object.magnitudeLabel = input.value;
+
+            renderCurrentDrawing();
+        });
+
+        input.addEventListener('change', () => {
+            object.magnitudeLabel = input.value;
+
+            if (historyBefore) {
+                enggDrawingState.commitDrawingChange(
+                    drawingState,
+                    historyBefore
+                );
+            }
+
+            historyBefore = null;
+
             renderCurrentDrawing();
         });
     });
@@ -894,6 +1016,16 @@ export function bindFeaturePropertyControls(object) {
 
             applied = raw;
 
+            /*
+             * THE SETTER PERFORMS THE CONVERSION, SO NOTHING IS DONE HERE.
+             *
+             * A physical coordinate is shown in the sheet's millimetres and
+             * stored in world units, and `updateFeatureProperty` is the one
+             * place that converts - for the panel's coordinate fields and
+             * for the lengths it owns (see SETTER_OWNED_LENGTHS). Converting
+             * again on the way in would be a different length, so the typed
+             * number is handed over exactly as it was entered.
+             */
             return updateFeatureProperty(
                 object,
                 input.dataset.property,

@@ -144,8 +144,8 @@ function build(options) {
             </select>
 
             <p class="drawing-scale-dialog-note">
-                This scale applies to the whole
-                document. You will not be asked again.
+                This scale applies to this sheet.
+                Other sheets keep their own scale.
             </p>
 
             <div class="drawing-scale-dialog-actions">

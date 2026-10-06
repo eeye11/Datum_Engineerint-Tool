@@ -589,6 +589,20 @@ export function setupColourControl() {
         return;
     }
 
+    /*
+     * Already built: this function may run more than once (a second
+     * install, or a dev-server re-evaluation). Rebuilding it would
+     * move the input again and re-attach the listeners, so the
+     * second run is a no-op.
+     */
+    if (
+        drawingColor.classList.contains(
+            "drawing-colour-native"
+        )
+    ) {
+        return;
+    }
+
     loadRecentColours();
 
     drawingColor.classList.add(
@@ -638,6 +652,23 @@ export function setupColourControl() {
     const label =
         drawingColor.closest("label");
 
+    /*
+     * Where the control is to be placed, worked out BEFORE the
+     * input is moved into it. Once drawingColor is appended to
+     * control, drawingColor.parentNode IS control, so inserting
+     * control next to drawingColor afterwards would be inserting
+     * an element before its own child - a HierarchyRequestError
+     * that leaves the toolbar half-built and stops the app from
+     * starting.
+     */
+    const parent =
+        (label && label.parentNode) ||
+        drawingColor.parentNode;
+
+    const reference =
+        (label && label.nextSibling) ||
+        drawingColor;
+
     control.appendChild(
         drawingColor
     );
@@ -646,15 +677,10 @@ export function setupColourControl() {
         swatch
     );
 
-    if (label && label.parentNode) {
-        label.parentNode.insertBefore(
+    if (parent) {
+        parent.insertBefore(
             control,
-            label.nextSibling
-        );
-    } else if (drawingColor.parentNode) {
-        drawingColor.parentNode.insertBefore(
-            control,
-            drawingColor
+            reference
         );
     }
 

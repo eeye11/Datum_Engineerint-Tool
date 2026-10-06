@@ -979,10 +979,37 @@ function registerPolygons() {
       "vertical",
       "coordinate"
     ],
+    /*
+     * THE THREE VERTICES AND THE THREE EDGES.
+     *
+     * A triangle is ONE feature, but it has three measurable sides, and a
+     * student dimensioning a triangle means a SIDE - not the whole shape.
+     * Publishing each edge as its own named segment is what lets a click
+     * near one side resolve to that side, and what makes the reference
+     * PERSISTENT: the anchors are re-derived from the triangle's current
+     * points every time, so the dimension keeps measuring the same side
+     * after the triangle is edited.
+     *
+     * The edges are named `segment0..2Start/End/Mid` - the same vocabulary
+     * a polyline and a rectangle publish - so the existing segment hit
+     * test, the existing reference resolution and the existing drawing all
+     * work on a triangle without a triangle-specific rule.
+     *
+     * The loop CLOSES (C back to A), so all three sides are present. Without
+     * the closure a triangle would expose only AB and BC, and the side a
+     * student clicked could be the missing one.
+     */
+    /*
+     * Three edges, so three segments: `segment0Start/End/Mid` through
+     * `segment2Start/End/Mid`. Named from a closed three-point chain, which
+     * is the same shape the anchors resolve from, so the names and the
+     * points cannot disagree about how many sides a triangle has.
+     */
     anchorNames: () => [
       "a",
       "b",
-      "c"
+      "c",
+      ...segmentAnchorNames([0, 1, 2, 0])
     ],
     anchors: (object) => {
       const points =
@@ -997,7 +1024,8 @@ function registerPolygons() {
       return {
         a: points[0],
         b: points[1],
-        c: points[2]
+        c: points[2],
+        ...segmentAnchors(triangleEdgePoints(object))
       };
     }
   });
@@ -1064,6 +1092,31 @@ function rectangleEdgePoints(object) {
   }
 
   return points;
+}
+
+/*
+ * A TRIANGLE'S THREE EDGES, AS A CLOSED CHAIN OF POINTS.
+ *
+ * The three vertices in order, then the first repeated - so the chain runs
+ * A to B, B to C, C back to A. A triangle is a closed shape and all three of
+ * its sides are real, so the fourth point is what gives the third side
+ * somewhere to end.
+ *
+ * The ORDER IS THE SHAPE'S, not a preference: `segment0` is the edge between
+ * the first two stored points, and which edge a student means is decided by
+ * where they clicked (see the segment hit test), never by position in this
+ * list.
+ */
+function triangleEdgePoints(object) {
+  const points = (object?.geometry?.points || [])
+    .map(normalisePoint)
+    .filter(Boolean);
+
+  if (points.length < 3) {
+    return [];
+  }
+
+  return [points[0], points[1], points[2], { ...points[0] }];
 }
 
 function segmentAnchorNames(points) {

@@ -224,8 +224,8 @@ function rigidBodyShapeMarkup(
     `);
 
     rows.push(section("POSITION"));
-    rows.push(coordinate("Centre X", "rigidCentre.x", centre.x));
-    rows.push(coordinate("Centre Y", "rigidCentre.y", centre.y));
+    rows.push(coordinate("Centre X", "rigidCentre.x", centre.x, "mm", true));
+    rows.push(coordinate("Centre Y", "rigidCentre.y", centre.y, "mm", true));
 
     if (shape === "circle") {
         rows.push(section("SIZE"));
@@ -233,12 +233,22 @@ function rigidBodyShapeMarkup(
             scalar(
                 "Radius",
                 "rigidRadius",
-                Number(geometry.radius) ||
-                    Math.max(
-                        Number(geometry.width) || 0,
-                        Number(geometry.height) || 0
-                    ) / 2,
-                "mm"
+                mmOf(
+                    Number(geometry.radius) ||
+                        Math.max(
+                            Number(geometry.width) || 0,
+                            Number(geometry.height) || 0
+                        ) / 2
+                ).value,
+                mmOf(
+                    Number(geometry.radius) ||
+                        Math.max(
+                            Number(geometry.width) || 0,
+                            Number(geometry.height) || 0
+                        ) / 2
+                ).unit,
+                true,
+                true
             )
         );
     } else if (shape === "triangle") {
@@ -252,14 +262,18 @@ function rigidBodyShapeMarkup(
                         coordinate(
                             `Point ${index + 1} X`,
                             `points.${index}.x`,
-                            point.x
+                            point.x,
+                            "mm",
+                            true
                         )
                     );
                     rows.push(
                         coordinate(
                             `Point ${index + 1} Y`,
                             `points.${index}.y`,
-                            point.y
+                            point.y,
+                            "mm",
+                            true
                         )
                     );
                 }
@@ -278,8 +292,10 @@ function rigidBodyShapeMarkup(
             scalar(
                 "Radius",
                 "rigidRadius",
-                Number(geometry.radius) || 0,
-                "mm"
+                mmOf(Number(geometry.radius) || 0).value,
+                mmOf(Number(geometry.radius) || 0).unit,
+                true,
+                true
             )
         );
     } else {
@@ -288,16 +304,20 @@ function rigidBodyShapeMarkup(
             scalar(
                 "Width",
                 "rigidWidth",
-                Number(geometry.width) || 0,
-                "mm"
+                mmOf(Number(geometry.width) || 0).value,
+                mmOf(Number(geometry.width) || 0).unit,
+                true,
+                true
             )
         );
         rows.push(
             scalar(
                 "Height",
                 "rigidHeight",
-                Number(geometry.height) || 0,
-                "mm"
+                mmOf(Number(geometry.height) || 0).value,
+                mmOf(Number(geometry.height) || 0).unit,
+                true,
+                true
             )
         );
     }
@@ -405,13 +425,29 @@ export function featurePropertyMarkup(object) {
     `;
 
     /*
-     * Known / Unknown applies to statics quantities, which
-     * are the values a student may still have to solve
-     * for. Geometry dimensions stay plain numbers.
+     * Known / Unknown applies to a stated engineering quantity - the
+     * magnitudes a student writes onto a force, a load or a moment.
+     * Those are the values whose being-unknown is a real engineering
+     * state rather than a missing number: a reaction the student has
+     * still to solve for, a load not yet determined.
+     *
+     * IT IS TESTED BY WHAT THE QUANTITY IS, NOT BY ITS DISCIPLINE. The
+     * old test was `discipline === "statics"`, which refused the `?` to
+     * a force while offering it to a support - and a force's magnitude
+     * is exactly the quantity a student marks unknown first, because it
+     * is the one they are still working out.
      */
+    const MAGNITUDE_BEARING = new Set([
+        "force",
+        "load",
+        "varying-load",
+        "moment",
+        "resultant"
+    ]);
+
     const showKnown =
-        object.engineering?.discipline ===
-        "statics";
+        MAGNITUDE_BEARING.has(object.type) ||
+        object.engineering?.discipline === "statics";
 
     /*
      * Compact horizontal row: label, one numeric
@@ -428,7 +464,8 @@ export function featurePropertyMarkup(object) {
         key,
         value,
         unit = "",
-        editable = true
+        editable = true,
+        isLength = false
     ) => {
         const isUnknown =
             showKnown &&
@@ -439,25 +476,63 @@ export function featurePropertyMarkup(object) {
         }
 
         /*
+         * A LENGTH IS CONVERTED; A QUANTITY IS NOT.
+         *
+         * The geometry holds world units, which are meaningless until the
+         * sheet's scale gives them a size, so a field captioned "mm" must
+         * be given millimetres - not the raw number. `isLength` marks the
+         * fields that are a physical length; the rest are quantities
+         * exactly as they say they are.
+         */
+        const converts = isLength && unit === "mm";
+
+        const shown = converts ? mmOf(value).value : value;
+
+        /*
          * An unknown value has no number to state, so the value slot is left
          * empty deliberately - which is a real, meaningful state, not the
          * "absent value" the shared module refuses. It is passed through as
          * an empty string so the field still renders, disabled.
          */
-        return panels.scalar({
+        let field = panels.scalar({
             label,
             key,
-            value: isUnknown ? "" : value,
-            unit,
+            value: isUnknown ? "" : shown,
+            unit: converts ? mmOf(value).unit : unit,
             disabled: !editable || isUnknown || fixed(key),
+            /*
+             * TWO CONTROLS, TWO SLOTS - AND NEITHER WITHOUT THE OTHER.
+             *
+             * The `?` Unknown toggle belongs to the VALUE: it says something
+             * about the number itself, so it is handed to the unit cell and
+             * renders immediately beside the value, on the same line -
+             * `[ Value ] [ ? ]`. The constraint tick belongs to the ROW: it
+             * says "do not let me edit this", so it stays in the trailing
+             * state track - `[✓]`.
+             *
+             * The old code put both into the state track. Two controls in a
+             * 14px column pushed each other sideways or wrapped the `?` onto
+             * a second line, and the reading order could come out as
+             * `[ Value ] [✓] [ ? ]` - the Unknown marker stranded at the far
+             * end of the row, no longer attached to the value it describes.
+             *
+             * AN UNKNOWN VALUE SHOWS ONLY THE QUESTION MARK: the tick would
+             * pin a number that deliberately does not exist.
+             */
+            unitExtra:
+                showKnown
+                    ? knownBox(key, label)
+                    : "",
             state:
-                editable && !isUnknown
+                !isUnknown && editable
                     ? fixBox(key, label)
                     : "",
             classes: isUnknown
                 ? "drawing-property-unknown"
                 : "",
         });
+
+        return field;
     };
 
     /*
@@ -480,20 +555,41 @@ export function featurePropertyMarkup(object) {
         label,
         key,
         value,
-        unit = "mm"
+        unit = "mm",
+        isLength = false
     ) => {
         if (!panels || !panels.scalar) {
             return "";
         }
 
-        return panels.scalar({
+        /*
+         * A COORDINATE IS A PHYSICAL LENGTH TOO.
+         *
+         * A position is stored in WORLD units, so a field captioned "mm"
+         * has to be given millimetres - exactly as a Length does. Without
+         * this, every X and Y in the application printed the raw world
+         * number under a "mm" tag, so on any calibrated sheet the value
+         * was wrong by the scale factor while still looking plausible.
+         *
+         * `isLength` marks the fields that are a physical distance. It
+         * defaults to false so an angular coordinate - an angle in degrees
+         * - is never converted, because a degree is not a length and
+         * passing it through the scale would be a different angle.
+         */
+        const converts = isLength && unit === "mm";
+
+        const shown = converts ? mmOf(value).value : value;
+
+        let field = panels.scalar({
             label,
             key,
-            value,
-            unit,
+            value: shown,
+            unit: converts ? mmOf(value).unit : unit,
             disabled: fixed(key),
             state: fixed(key) ? "" : fixBox(key, label),
         });
+
+        return field;
     };
 
     /*
@@ -513,8 +609,8 @@ export function featurePropertyMarkup(object) {
         unit = "mm"
     ) => [
         section(heading),
-        coordinate("X", xKey, x, unit),
-        coordinate("Y", yKey, y, unit),
+        coordinate("X", xKey, x, unit, true),
+        coordinate("Y", yKey, y, unit, true),
     ];
 
     /*
@@ -619,6 +715,75 @@ export function featurePropertyMarkup(object) {
     };
 
     /*
+     * THE SYMBOL A MAGNITUDE IS WRITTEN UNDER.
+     *
+     * A force's magnitude reads "F = 100 N", a load's "w = 5 kN/m", a
+     * moment's "M = 25 N·m" - and the letter in front is the student's to
+     * choose, because on a real sheet a force is as often R_A or W as it
+     * is F. This is the field that letter is typed into.
+     *
+     * IT IS NOT THE FEATURE'S NAME. The name is what the feature is called
+     * in a schedule ("Point Force 3"); this is what is printed on the
+     * drawing, and the two are genuinely different pieces of information.
+     *
+     * AN EMPTY FIELD IS A REAL CHOICE - "write the number with no symbol
+     * in front of it" - and is kept distinct from "never touched", which
+     * falls back to the conventional letter. That distinction is why the
+     * input shows the raw stored value and the canvas applies the default
+     * only when the field is absent.
+     *
+     * THE SYMBOL A MAGNITUDE IS WRITTEN UNDER.
+     *
+     * A force's magnitude reads "F = 100 N", a load's "w = 5 kN/m", a
+     * moment's "M = 25 N·m" - and the letter in front is the student's to
+     * choose, because on a real sheet a force is as often R_A or W as it
+     * is F. This is the field that letter is typed into.
+     */
+    const magnitudeLabelRow = props => {
+        if (!panels || !panels.row) {
+            return "";
+        }
+
+        const object = props.object;
+
+        const stored = object.magnitudeLabel;
+
+        const value =
+            typeof stored === "string"
+                ? stored
+                : props.defaultLabel || "";
+
+        /*
+         * STANDALONE MEANS NO HEADING. The label is a property of the
+         * feature, so it is one row, emitted where the caller asks for it -
+         * not a section of its own.
+         */
+        if (props.standalone) {
+            return panels.row({
+                label: "Label",
+                control: `<input type="text"
+                    data-magnitude-label
+                    class="drawing-property-input"
+                    aria-label="Label"
+                    placeholder="${escapeHtmlText(props.defaultLabel || "")}"
+                    value="${escapeHtmlText(value)}">`,
+            });
+        }
+
+        return panels.section("ANNOTATION", [
+            panels.row({
+                label: "Label",
+                control: `<input type="text"
+                    data-magnitude-label
+                    class="drawing-property-input"
+                    aria-label="Label"
+                    placeholder="${escapeHtmlText(props.defaultLabel || "")}"
+                    value="${escapeHtmlText(value)}">`,
+            }),
+        ]);
+    };
+
+    /*
      * The children of a body, grouped by the role they play on it.
      *
      * Counts rather than lists, because a beam with nine supports has
@@ -657,7 +822,7 @@ export function featurePropertyMarkup(object) {
      * This function takes only the object, so `helpers` is not in
      * scope: referring to it threw a ReferenceError as soon as any
      * feature called this, which is why the Moments, supports,
-     * forces, particles, couples and loads never reached their
+     * forces, particles and loads never reached their
      * editing page while a Beam - which does not use them - worked
      * fine. The two controls the relative rows need are already
      * defined above, so they are handed over explicitly.
@@ -717,33 +882,42 @@ export function featurePropertyMarkup(object) {
         const dx = geometry.end.x - geometry.start.x;
         const dy = geometry.end.y - geometry.start.y;
         rows.push(section("START POINT"));
-        rows.push(coordinate("X", "start.x", geometry.start.x));
-        rows.push(coordinate("Y", "start.y", geometry.start.y));
+        rows.push(coordinate("X", "start.x", geometry.start.x, "mm", true));
+        rows.push(coordinate("Y", "start.y", geometry.start.y, "mm", true));
         rows.push(section("END POINT"));
-        rows.push(coordinate("X", "end.x", geometry.end.x));
-        rows.push(coordinate("Y", "end.y", geometry.end.y));
+        rows.push(coordinate("X", "end.x", geometry.end.x, "mm", true));
+        rows.push(coordinate("Y", "end.y", geometry.end.y, "mm", true));
         rows.push(section("MEASUREMENTS"));
-        rows.push(scalar("Length", "length", Math.hypot(dx, dy), "mm"));
+        rows.push(
+            scalar(
+                "Length",
+                "length",
+                mmOf(Math.hypot(dx, dy)).value,
+                mmOf(Math.hypot(dx, dy)).unit,
+                true,
+                true
+            )
+        );
         rows.push(scalar("Angle", "angle", Math.atan2(dy, dx) * 180 / Math.PI, "°"));
     } else if (object.type === "point") {
         const position =
             geometry.position || geometry.point || geometry;
 
         rows.push(section("POSITION"));
-        rows.push(coordinate("X", "position.x", position.x));
-        rows.push(coordinate("Y", "position.y", position.y));
+        rows.push(coordinate("X", "position.x", position.x, "mm", true));
+        rows.push(coordinate("Y", "position.y", position.y, "mm", true));
         rows.push(section("APPEARANCE"));
         rows.push(pointSizeMarkup(object));
 
         return finaliseRows(rows);
     } else if (object.type === "circle") {
         rows.push(section("CENTER"));
-        rows.push(coordinate("X", "center.x", geometry.center.x));
-        rows.push(coordinate("Y", "center.y", geometry.center.y));
+        rows.push(coordinate("X", "center.x", geometry.center.x, "mm", true));
+        rows.push(coordinate("Y", "center.y", geometry.center.y, "mm", true));
     } else if (object.type === "arc") {
         rows.push(section("CENTER"));
-        rows.push(coordinate("X", "center.x", geometry.center.x));
-        rows.push(coordinate("Y", "center.y", geometry.center.y));
+        rows.push(coordinate("X", "center.x", geometry.center.x, "mm", true));
+        rows.push(coordinate("Y", "center.y", geometry.center.y, "mm", true));
         rows.push(section("GEOMETRY"));
         rows.push(scalar("Radius", "radius",
             mmOf(geometry.radius).value, mmOf(geometry.radius).unit));
@@ -767,8 +941,8 @@ export function featurePropertyMarkup(object) {
          */
         rows.push(section("POSITION"));
         rows.push(relativeRows("POSITION"));
-        rows.push(coordinate("X", "position.x", geometry.position.x));
-        rows.push(coordinate("Y", "position.y", geometry.position.y));
+        rows.push(coordinate("X", "position.x", geometry.position.x, "mm", true));
+        rows.push(coordinate("Y", "position.y", geometry.position.y, "mm", true));
 
         rows.push(section("MASS"));
         rows.push(scalar("Mass", "mass",
@@ -897,12 +1071,22 @@ export function featurePropertyMarkup(object) {
                     "Length",
                     "length",
                     mmOf(length).value,
-                    mmOf(length).unit
+                    mmOf(length).unit,
+                    true,
+                    true
                 )
             );
 
-            rows.push(scalar("Height", "height",
-                Number(geometry.height) || 0, "mm"));
+            rows.push(
+                scalar(
+                    "Height",
+                    "height",
+                    mmOf(Number(geometry.height) || 0).value,
+                    mmOf(Number(geometry.height) || 0).unit,
+                    true,
+                    true
+                )
+            );
 
             rows.push(section("JOINTS"));
             rows.push(derivedCount("Joint Count",
@@ -938,9 +1122,10 @@ export function featurePropertyMarkup(object) {
              * first and keeps its attitude.
              */
             rows.push(scalar("Length", "length",
-                mmLength.value, mmLength.unit));
+                mmLength.value, mmLength.unit, true, true));
             rows.push(scalar("Height", "depth",
-                Number(geometry.depth) || 0, "mm"));
+                mmOf(Number(geometry.depth) || 0).value,
+                mmOf(Number(geometry.depth) || 0).unit, true, true));
         } else if (object.type === "cable") {
             /*
              * Span and Length are both the spec's own fields, and for
@@ -978,7 +1163,9 @@ export function featurePropertyMarkup(object) {
                     "Length",
                     "length",
                     mmOf(length).value,
-                    mmOf(length).unit
+                    mmOf(length).unit,
+                    true,
+                    true
                 )
             );
 
@@ -1020,10 +1207,10 @@ export function featurePropertyMarkup(object) {
          * make.
          */
         rows.push(section("POSITION"));
-        rows.push(coordinate("Start X", "start.x", geometry.start.x));
-        rows.push(coordinate("Start Y", "start.y", geometry.start.y));
-        rows.push(coordinate("End X", "end.x", geometry.end.x));
-        rows.push(coordinate("End Y", "end.y", geometry.end.y));
+        rows.push(coordinate("Start X", "start.x", geometry.start.x, "mm", true));
+        rows.push(coordinate("Start Y", "start.y", geometry.start.y, "mm", true));
+        rows.push(coordinate("End X", "end.x", geometry.end.x, "mm", true));
+        rows.push(coordinate("End Y", "end.y", geometry.end.y, "mm", true));
 
         rows.push(section("ORIENTATION"));
         rows.push(derived("Angle",
@@ -1076,6 +1263,23 @@ export function featurePropertyMarkup(object) {
             enggLoadProfile.forceVector(
                 geometry
             );
+
+        /*
+         * THE LABEL IS A FEATURE PROPERTY, AND IT SITS WITH THE NAME.
+         *
+         * "Feature Name, then Label" is the order the student reasons in: first
+         * what this thing is called in a schedule, then what its magnitude is
+         * written under on the sheet. There is no ANNOTATION section holding
+         * it - a separate heading would imply the label belongs to the
+         * drawing's presentation rather than to the force itself.
+         */
+        rows.push(
+            magnitudeLabelRow({
+                object,
+                defaultLabel: "F",
+                standalone: true,
+            })
+        );
 
         rows.push(section("FORCE"));
 
@@ -1152,29 +1356,18 @@ export function featurePropertyMarkup(object) {
             coordinate(
                 "X",
                 "start.x",
-                vector.x
+                vector.x,
+                "mm",
+                true
             )
         );
         rows.push(
             coordinate(
                 "Y",
                 "start.y",
-                vector.y
-            )
-        );
-
-        /*
-         * WHETHER THE MAGNITUDE IS WRITTEN BESIDE THE FORCE.
-         *
-         * Placed after the engineering half on purpose. The magnitude above
-         * is what the force IS; this is whether that number is also written
-         * on the sheet, which is a separate decision about presentation and
-         * does not belong beside the value it would duplicate.
-         */
-        rows.push(
-            annotationSectionMarkup(
-                object,
-                MAGNITUDE_BEARING_TYPES
+                vector.y,
+                "mm",
+                true
             )
         );
     } else if (object.type === "moment") {
@@ -1198,6 +1391,11 @@ export function featurePropertyMarkup(object) {
         rows.push(scalar("Magnitude", "magnitude",
             Number(geometry.magnitude) || 0, geometry.unit || "N·m"));
 
+        rows.push(magnitudeLabelRow({
+            object,
+            defaultLabel: "M",
+        }));
+
         rows.push(section("DIRECTION"));
         rows.push(`
             <div class="drawing-property-grid drawing-property-grid-value">
@@ -1235,120 +1433,48 @@ export function featurePropertyMarkup(object) {
          * shortcut.
          */
 
+        /*
+         * RELATIVE TO THE FEATURE THE MOMENT IS ON.
+         *
+         * A moment attached to a body reports its position the same
+         * way a support does — the shared relative-coordinates rows,
+         * which name the parent and give the position along it in the
+         * sheet's units. When there is no parent the rows render
+         * nothing and the absolute coordinates below are the only
+         * placement the panel offers, which is the honest state for a
+         * moment in free space.
+         */
+        rows.push(relativeRows("RELATIONSHIP"));
+
         rows.push(section("POSITION"));
-        rows.push(coordinate("Application Point X", "position.x", geometry.position.x));
-        rows.push(coordinate("Application Point Y", "position.y", geometry.position.y));
+        rows.push(coordinate("Application Point X", "position.x", geometry.position.x, "mm", true));
+        rows.push(coordinate("Application Point Y", "position.y", geometry.position.y, "mm", true));
 
         rows.push(section("APPEARANCE"));
         rows.push(arcRadiusRow(geometry));
-    } else if (object.type === "couple") {
-        /*
-         * A Couple Moment is a FREE moment, so this panel has no
-         * "Relative to" row at all. It used to show one, and it also
-         * showed a "Separation" - the distance between the two lines
-         * of action it used to be drawn as. Both implied a parent and
-         * a pair of forces, neither of which is part of a free
-         * moment, and neither of which is drawn any more.
-         *
-         * What is here instead is the position it was placed at, the
-         * sense it turns, its magnitude, and the presentation
-         * controls the shared curved arrow reads.
-         */
-        rows.push(section("COUPLE MOMENT"));
-        rows.push(section("VALUE"));
-        rows.push(scalar("Magnitude", "magnitude",
-            Number(geometry.magnitude) || 0, geometry.unit || "N·m"));
-
-        rows.push(section("DIRECTION"));
-        rows.push(`
-            <div class="drawing-property-grid drawing-property-grid-value">
-                <span class="drawing-property-grid-label">Direction</span>
-                <select data-property="direction" aria-label="Direction">
-                    <option value="CCW"${
-                        momentDirectionOf(geometry) === "CCW"
-                            ? " selected"
-                            : ""
-                    }>Counterclockwise</option>
-                    <option value="CW"${
-                        momentDirectionOf(geometry) === "CW"
-                            ? " selected"
-                            : ""
-                    }>Clockwise</option>
-                </select>
-                <span class="drawing-property-unit"></span>
-                <span></span>
-            </div>
-        `);
-
-        /*
-         * NO FLIP BUTTON HERE, DELIBERATELY.
-         *
-         * The Direction dropdown immediately above already offers both
-         * senses, so a "Switch Direction" control on a Moment would be a
-         * second way of doing what the dropdown does - and a second way
-         * is a second place for the two to disagree about what the moment
-         * currently is.
-         *
-         * The load and force tools keep their flip button because their
-         * direction is an ANGLE they type, and flipping is a shortcut
-         * across a continuous range. A moment has only two senses, CW and
-         * CCW, both named in the list; there is nothing for a button to
-         * shortcut.
-         */
-
-            rows.push(section("POSITION"));
-            rows.push(coordinate("Position X", "position.x", geometry.position.x));
-            rows.push(coordinate("Position Y", "position.y", geometry.position.y));
-            rows.push(section("APPEARANCE"));
-            rows.push(arcRadiusRow(geometry));
-
-            /*
-             * WHETHER THE MOMENT'S MAGNITUDE IS WRITTEN BESIDE ITS SYMBOL.
-             *
-             * Last, because this is presentation and the value further up is
-             * engineering. The panel reads in the order the student reasons in:
-             * how much, which way, where, how it is drawn, and finally whether
-             * its number is also written on the sheet.
-             */
-            rows.push(
-                annotationSectionMarkup(
-                    object,
-                    MAGNITUDE_BEARING_TYPES
-                )
-            );
-        } else if (
+    } else if (
         object.type === "load" ||
         object.type === "varying-load"
     ) {
-        /*
-         * A Distributed Load and a Varying Distributed Load share ONE
-         * panel.
-         *
-         * They are the same feature with a different distribution: both
-         * act over a region of a body, both point the same way, and both
-         * store their intensity as defining points along that region. The
-         * only real difference is that a varying profile has points of
-         * different magnitude, which is a property of the PROFILE, and
-         * profilePointPositions already reads whatever points the feature
-         * actually has.
-         *
-         * So one function builds both, and the two cannot drift apart.
-         * They did once. This branch handled only the uniform case, while
-         * a second varying-load branch below took priority - so a Varying
-         * Distributed Load silently lost its Direction and its Switch
-         * Direction control, the very controls that make a varying load
-         * usable, while the richer code sat unreachable beneath it.
-         *
-         * Every control here writes straight to the model the renderer
-         * reads, so a change is visible immediately and the load never has
-         * to be deleted and rebuilt.
-         */
-        rows.push(
-            distributedLoadPanelMarkup(
-                object,
-                { coordinate, scalar, section }
-            )
-        );
+       /*
+        * A Distributed Load and a Varying Distributed Load share ONE
+        * panel.
+        *
+        * They are the same feature with a different distribution: both
+        * act over a region of a body and both point the same way. The
+        * load's panel itself states the ONE uniform magnitude of the
+        * region - see `distributedLoadPanelMarkup`.
+        *
+        * Every control here writes straight to the model the renderer
+        * reads, so a change is visible immediately and the load never has
+        * to be deleted and rebuilt.
+        */
+       rows.push(
+           distributedLoadPanelMarkup(
+               object,
+               { coordinate, scalar, section }
+           )
+       );
     } else if (
         object.type === "pin-support" ||
         object.type === "roller-support" ||
@@ -1373,16 +1499,16 @@ export function featurePropertyMarkup(object) {
          * named for itself rather than as a generic connection.
          */
         rows.push(section(staticsConnectionSection(object.type)));
-        rows.push(coordinate("Start X", "start.x", geometry.start.x));
-        rows.push(coordinate("Start Y", "start.y", geometry.start.y));
-        rows.push(coordinate("End X", "end.x", geometry.end.x));
-        rows.push(coordinate("End Y", "end.y", geometry.end.y));
+        rows.push(coordinate("Start X", "start.x", geometry.start.x, "mm", true));
+        rows.push(coordinate("Start Y", "start.y", geometry.start.y, "mm", true));
+        rows.push(coordinate("End X", "end.x", geometry.end.x, "mm", true));
+        rows.push(coordinate("End Y", "end.y", geometry.end.y, "mm", true));
     } else if (object.type === "connection") {
         rows.push(section("CONNECTION"));
-        rows.push(coordinate("Start X", "start.x", geometry.start.x));
-        rows.push(coordinate("Start Y", "start.y", geometry.start.y));
-        rows.push(coordinate("End X", "end.x", geometry.end.x));
-        rows.push(coordinate("End Y", "end.y", geometry.end.y));
+        rows.push(coordinate("Start X", "start.x", geometry.start.x, "mm", true));
+        rows.push(coordinate("Start Y", "start.y", geometry.start.y, "mm", true));
+        rows.push(coordinate("End X", "end.x", geometry.end.x, "mm", true));
+        rows.push(coordinate("End Y", "end.y", geometry.end.y, "mm", true));
         rows.push(scalar("Reaction", "reaction",
             Number(geometry.reaction) || 0, "N"));
     } else if (
@@ -1395,8 +1521,8 @@ export function featurePropertyMarkup(object) {
                 : "BODY"
         ));
         rows.push(relativeRows("POSITION"));
-        rows.push(coordinate("Position X", "position.x", geometry.position.x));
-        rows.push(coordinate("Position Y", "position.y", geometry.position.y));
+        rows.push(coordinate("Position X", "position.x", geometry.position.x, "mm", true));
+        rows.push(coordinate("Position Y", "position.y", geometry.position.y, "mm", true));
     } else if (object.type === "polygon") {
         /*
          * The definition is remembered from creation so
@@ -1429,8 +1555,8 @@ export function featurePropertyMarkup(object) {
                 <span></span>
             </div>
         `);
-        rows.push(coordinate("Centre X", "center.x", geometry.center.x));
-        rows.push(coordinate("Centre Y", "center.y", geometry.center.y));
+        rows.push(coordinate("Centre X", "center.x", geometry.center.x, "mm", true));
+        rows.push(coordinate("Centre Y", "center.y", geometry.center.y, "mm", true));
         rows.push(scalar("Radius", "radius",
             mmOf(geometry.radius).value, mmOf(geometry.radius).unit));
         rows.push(scalar("Rotation", "rotation",
@@ -1451,8 +1577,8 @@ export function featurePropertyMarkup(object) {
          * working.
          */
         rows.push(section("ORIGIN"));
-        rows.push(coordinate("X", "origin.x", geometry.origin.x));
-        rows.push(coordinate("Y", "origin.y", geometry.origin.y));
+        rows.push(coordinate("X", "origin.x", geometry.origin.x, "mm", true));
+        rows.push(coordinate("Y", "origin.y", geometry.origin.y, "mm", true));
         rows.push(section("GEOMETRY"));
         rows.push(scalar("Axis Length", "axisLength",
             mmOf(Number(geometry.axisLength) || 25).value,
@@ -1463,8 +1589,8 @@ export function featurePropertyMarkup(object) {
             y: geometry.position.y - geometry.height / 2
         };
         rows.push(section("GEOMETRY"));
-        rows.push(coordinate("Centre X", "centre.x", center.x));
-        rows.push(coordinate("Centre Y", "centre.y", center.y));
+        rows.push(coordinate("Centre X", "centre.x", center.x, "mm", true));
+        rows.push(coordinate("Centre Y", "centre.y", center.y, "mm", true));
         rows.push(scalar("Width", "width",
                 mmOf(geometry.width).value, mmOf(geometry.width).unit));
         rows.push(scalar("Height", "height",
@@ -1473,8 +1599,8 @@ export function featurePropertyMarkup(object) {
     } else if (object.type === "polyline") {
         rows.push(section("GEOMETRY"));
         (geometry.points || []).forEach((p, index) => {
-            rows.push(coordinate(`Point ${index + 1} X`, `points.${index}.x`, p.x));
-            rows.push(coordinate(`Point ${index + 1} Y`, `points.${index}.y`, p.y));
+            rows.push(coordinate(`Point ${index + 1} X`, `points.${index}.x`, p.x, "mm", true));
+            rows.push(coordinate(`Point ${index + 1} Y`, `points.${index}.y`, p.y, "mm", true));
         });
     } else if (object.type === "triangle") {
         /*
@@ -1489,8 +1615,8 @@ export function featurePropertyMarkup(object) {
          * Editing any one value changes only that side.
          */
         rows.push(section("ORIGIN"));
-        rows.push(coordinate("Origin X", "origin.x", geometry.origin.x));
-        rows.push(coordinate("Origin Y", "origin.y", geometry.origin.y));
+        rows.push(coordinate("Origin X", "origin.x", geometry.origin.x, "mm", true));
+        rows.push(coordinate("Origin Y", "origin.y", geometry.origin.y, "mm", true));
         rows.push(section("AXIS EXTENSIONS"));
 
         /*

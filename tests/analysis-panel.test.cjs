@@ -55,6 +55,13 @@ global.window = {};
 loadModule("diagram-equations.js");
 
 /*
+ * The World Scale module is loaded for real too, so a plot's Range is
+ * converted by the same code the application uses rather than by a stub
+ * that would agree with a broken panel.
+ */
+loadModule("dimensions.js");
+
+/*
  * THE PANEL'S OWN BUILDER, extracted and run.
  *
  * analysisPanelRows is a pure function of the object - it reads geometry and
@@ -79,6 +86,16 @@ const sandbox = {
   enggAnalysisDependencies: {
     sourceIdsOf: () => ["beam-1"],
   },
+  /*
+   * THE PANEL MEASURES IN THE SHEET'S UNITS.
+   *
+   * A plot's Range is a physical length, so the panel converts it through
+   * the document's World Scale - the same conversion every other length
+   * uses. The real module is supplied here rather than a stub, so the
+   * number this test reads is the number the panel would really print, and
+   * an uncalibrated document (the case below) still converts one to one.
+   */
+  enggDimensions: global.window.enggDimensions,
   drawingState: {
     objects: [{ id: "beam-1", name: "Beam 1", type: "beam" }],
   },

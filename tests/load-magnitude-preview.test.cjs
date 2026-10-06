@@ -64,72 +64,37 @@ const section = (startMarker, endMarker) => {
 console.log("load magnitude + preview");
 
 /* ---------------------------------------------------------------- */
-/* 1. The intensity field must commit however the value is left.    */
+/* 1. The vector step asks for the magnitude and the direction.      */
 /* ---------------------------------------------------------------- */
 
-const magnitudeField = section(
-  'id="drawingLoadMagnitude"',
-  "function renderComponentTree",
+/*
+ * THE OLD FIELD IS GONE, ON PURPOSE.
+ *
+ * The load tool used to have a separate "distributed-load-magnitude"
+ * phase with its own text field (`drawingLoadMagnitude`) and its own
+ * commit function (`takeDistributedLoadMagnitude`). The load now asks
+ * for the whole vector in one gesture: drag to set magnitude and
+ * direction together, then click - the same vector the panel later
+ * edits. There is no magnitude step to test any more.
+ */
+
+const vectorStep = section(
+  "function loadVectorUnderPointer(",
+  "function constantLoadDraft(",
 );
 
 check(
-  "the intensity field is rendered on the magnitude step",
-  magnitudeField.length > 0,
-  "no markup for drawingLoadMagnitude was found",
+  "a zero-length drag yields no vector",
+  /return null/.test(vectorStep) &&
+    /<\s*1e-9/.test(vectorStep),
+  "a load with no magnitude must not be created",
 );
 
 check(
-  "the intensity field listens for change, not only Enter",
-  /addEventListener\(\s*"change"/.test(magnitudeField),
-  "a number left by tab, click or blur is still discarded",
-);
-
-check(
-  "the intensity field still accepts Enter",
-  /"Enter"/.test(magnitudeField),
-  "Enter is the one path a student will try first",
-);
-
-check(
-  "the intensity field takes focus so it can be typed into",
-  /input\.focus\(\)/.test(magnitudeField),
-  "the student is told to specify a magnitude but has to go and find the box",
-);
-
-/* ---------------------------------------------------------------- */
-/* 2. A rejected value must not advance the tool.                   */
-/* ---------------------------------------------------------------- */
-
-const takeMagnitude = section(
-  "function takeDistributedLoadMagnitude(",
-  "function takeDistributedLoadDirection(",
-);
-
-check(
-  "a magnitude at or below zero is refused",
-  /value\s*<=\s*0/.test(takeMagnitude),
-  "a zero or negative intensity would be a load that does nothing",
-);
-
-check(
-  "a non-numeric magnitude is refused",
-  /Number\.isFinite\(value\)/.test(takeMagnitude),
-  "text in a numeric field must not become NaN intensity",
-);
-
-check(
-  "a refused magnitude leaves the tool on the magnitude step",
-  /return false/.test(takeMagnitude) &&
-    !/"distributed-load-direction"/.test(
-      takeMagnitude.slice(0, takeMagnitude.indexOf("return false") + 40),
-    ),
-  "the tool advanced past a value it rejected",
-);
-
-check(
-  "an accepted magnitude moves on to direction",
-  /"distributed-load-direction"/.test(takeMagnitude),
-  "an accepted intensity should advance the workflow",
+  "the drag yields ONE magnitude with its direction",
+  /magnitude:\s*length/.test(vectorStep) &&
+    /degrees:/.test(vectorStep),
+  "the magnitude the student chose must reach the committed load",
 );
 
 /* ---------------------------------------------------------------- */
@@ -138,7 +103,7 @@ check(
 
 const previewBlock = section(
   '"preview-constant-load"',
-  "setToolMessage(",
+  "THE PREVIEW IS THE FINAL LOAD",
 );
 
 check(
@@ -162,20 +127,38 @@ check(
 
 check(
   "the preview takes its direction from the pointer",
-  /direction:\s*loadDirectionUnderPointer\(\)/.test(
-    previewBlock,
-  ),
+  /constant\.direction/.test(previewBlock) &&
+    /loadVectorUnderPointer\(/.test(code),
   "the previewed arrows do not turn while a direction is being chosen",
+);
+
+/*
+ * AND FROM THE ACTUAL POINTER, NOT THE SNAPPED POINT.
+ *
+ * The direction vector must be measured to the raw (or H/V-constrained)
+ * cursor. Feeding it the resolved construction point - which is snapped onto
+ * the span end near an end - made the direction swing to the fixed
+ * midpoint-to-endpoint diagonal as the cursor crossed the span.
+ */
+check(
+  "and from the actual cursor, not the snapped endpoint",
+  /distributedLoadDirectionCursor\(\s*resolution,?\s*\)/.test(
+    previewBlock,
+  ) ||
+    /distributedLoadDirectionCursor\([\s\S]{0,80}resolution/.test(
+      previewBlock,
+    ),
+  "the preview measures its direction to the snapped construction point",
 );
 
 const previewDirection = section(
   "function loadDirectionUnderPointer(",
-  "function startDistributedLoadBuild(",
+  "export function startDistributedLoadBuild(",
 );
 
 check(
   "the previewed direction is only read while choosing one",
-  /distributed-load-direction/.test(previewDirection),
+  /distributed-load-vector/.test(previewDirection),
   "a direction is being invented for steps that have not reached one",
 );
 
@@ -205,10 +188,9 @@ check(
 /* ---------------------------------------------------------------- */
 
 const commitDirection = section(
-  "function takeDistributedLoadDirection(",
+  "function takeDistributedLoadVector(",
   "function constantLoadDraft(",
 );
-
 const sharedOrigin = (() => {
   const previewOrigin = previewDirection.indexOf(
     "distributedLoadRegionMidpoint()",
@@ -228,15 +210,18 @@ check(
 );
 
 check(
-  "the committed direction is a unit vector too",
-  /dx:\s*dx\s*\/\s*length/.test(commitDirection) &&
-    /dy:\s*dy\s*\/\s*length/.test(commitDirection),
-  "the stored direction must be the same shape as the previewed one",
+  "the committed vector carries the drag's magnitude and angle",
+  /Math\.atan2\(dy,\s*dx\)\s*\*\s*180\s*\/\s*Math\.PI/.test(
+    commitDirection,
+  ) &&
+    /length/.test(commitDirection) &&
+    /return false/.test(commitDirection),
+  "the stored load must be the same reading of the drag the preview used",
 );
 
 check(
   "a click on the origin is refused rather than committed",
-  /Math\.hypot\(dx,\s*dy\)\s*<\s*1e-6/.test(commitDirection) &&
+  /<\s*1e-6/.test(commitDirection) &&
     /return false/.test(commitDirection),
   "a load with no direction is not a load",
 );

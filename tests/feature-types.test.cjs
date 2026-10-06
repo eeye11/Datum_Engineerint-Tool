@@ -50,7 +50,7 @@ same(
 same(
   "attachable Statics features",
   members(types.attachableStaticsType),
-  ["couple", "fixed-support", "force", "load", "moment", "pin-support", "roller-support", "smooth-support", "varying-load"],
+  ["fixed-support", "force", "load", "moment", "pin-support", "roller-support", "smooth-support", "varying-load"],
 );
 
 same(

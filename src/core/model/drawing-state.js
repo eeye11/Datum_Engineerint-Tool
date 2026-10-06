@@ -431,7 +431,6 @@ function createGeometryObject(type, geometry, options = {}) {
         "bending-moment-diagram": "BMD",
         "axial-force-diagram": "AFD",
         moment: "Applied Moment",
-        couple: "Couple",
         load: "Distributed Load",
         "varying-load": "Varying Distributed Load",
         "pin-support": "Pin Support",
@@ -870,59 +869,6 @@ const geometryFactories = {
             { start, end },
             options
         ),
-
-    /*
-     * A Couple Moment is a FREE moment: a rotational action that
-     * needs no body, no support and no attachment point, and is
-     * therefore stored exactly as a Moment is - a centre, a
-     * magnitude and a sense of rotation.
-     *
-     * It used to be stored as a separation between two lines of
-     * action, because it was DRAWN as two straight forces. That
-     * was the wrong shape for the feature as well as for the
-     * drawing: a free moment has no pair of forces on the sheet,
-     * and a "separation" implied a spacing between things that
-     * were never drawn. `separation` is still written here so a
-     * drawing saved before this change keeps loading, but nothing
-     * reads it any more.
-     */
-    couple: (position, magnitude, separation, direction, options) => {
-        const geometry = {
-            position,
-            magnitude: Number(magnitude) || 0,
-
-            /*
-             * The same sense-of-rotation word a Moment uses, and
-             * read by the same renderer. A Couple Moment is a
-             * Moment that happens to need no body, and the two are
-             * indistinguishable in the drawing - so the one fact
-             * that distinguishes them, which is the body, must not
-             * be smuggled in as a difference in how direction is
-             * stored.
-             */
-            direction:
-                String(direction) === "CW"
-                    ? "CW"
-                    : "CCW",
-
-            unit: "N·m",
-
-            /*
-             * Legacy field, carried so a drawing saved before the
-             * couple became a curved arrow still opens. Nothing
-             * reads it: a free moment has no pair of lines of
-             * action, and a "separation" between them would imply a
-             * spacing between things that are no longer drawn.
-             */
-            separation
-        };
-
-        return createGeometryObject(
-            "couple",
-            geometry,
-            options
-        );
-    },
 
     /*
      * A varying distributed load carries an intensity at
@@ -2511,6 +2457,18 @@ function clearInteraction(state) {
     state.interaction.loadEnd = null;
     state.interaction.loadDirection = null;
     state.interaction.loadMagnitude = 0;
+
+    /*
+     * THE FIXED ORIGIN FOR THE MAGNITUDE/DIRECTION VECTOR.
+     *
+     * It is captured when the loaded region is completed and read back
+     * unchanged while the student aims, so it is temporary construction state
+     * exactly like the span beside it. Clearing it here is what makes the
+     * NEXT load establish a fresh reference point: a stale one would measure
+     * the new load's direction from the previous load's midpoint, and the
+     * student would see their arrows turn for no reason they could point to.
+     */
+    state.interaction.loadReferencePoint = null;
 
     state.interaction.snapCandidate = null;
     state.interaction.hoveredEntity = null;

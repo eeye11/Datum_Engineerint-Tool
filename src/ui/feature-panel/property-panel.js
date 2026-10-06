@@ -199,6 +199,21 @@ const row = ({
   unit = "",
   state = "",
   classes = "",
+  /**
+   * THE VALUE-ADJACENT CONTROL GROUP.
+   *
+   * Some rows carry a small control that belongs to the VALUE, not to the
+   * row's trailing state column - the `?` Unknown toggle is the one: it says
+   * something about the number itself, so it sits immediately beside the
+   * unit, in the same cell, on the same line.
+   *
+   * This slot is trusted HTML: callers hand over a control they built with
+   * the panel's own helpers. It is deliberately distinct from `state`, which
+   * holds the row's trailing checkbox in its own fixed track - the two
+   * tracks are laid out independently, and a control in the wrong one gets
+   * pushed out of line or wrapped to a second row.
+   */
+  unitExtra = "",
 }) => {
   const caption = text(label);
 
@@ -217,7 +232,7 @@ const row = ({
         <div class="drawing-property-grid drawing-property-grid-value${classes ? ` ${classes}` : ""}">
             <span class="drawing-property-grid-label">${escape(caption)}</span>
             ${control}
-            <span class="drawing-property-unit">${escape(text(unit) || "")}</span>
+            <span class="drawing-property-unit">${escape(text(unit) || "")}${unitExtra || ""}</span>
             ${state || "<span></span>"}
         </div>
     `;
@@ -296,6 +311,7 @@ const scalar = ({
   disabled = false,
   state = "",
   classes = "",
+  unitExtra = "",
 }) => {
   if (!key) {
     return null;
@@ -335,6 +351,7 @@ const scalar = ({
     label,
     control,
     unit,
+    unitExtra,
     state: disabled ? state || "" : state,
     classes,
   });

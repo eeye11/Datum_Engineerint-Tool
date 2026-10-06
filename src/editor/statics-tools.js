@@ -22,11 +22,11 @@ export const STATICS_TOOL_MENUS = {
         { id: "shaft", label: "Shaft" }
     ],
 
-    moment: [
-        { id: "applied-moment", label: "Applied Moment" },
-        { id: "couple", label: "Couple" }
-    ],
-
+    /*
+     * NO MOMENTS SUBMENU. A Moment is a single tool, like Point Force:
+     * the category id 'moment' IS the tool, and there is no Applied
+     * Moment layer to pass through and no Couple variant to choose.
+     */
     load: [
         { id: "distributed-load", label: "Distributed Load" },
         {
@@ -91,8 +91,7 @@ export const STATICS_CHILD_TOOLS = {
         type: "axial-force-diagram"
     },
 
-    "applied-moment": { label: "Applied Moment", type: "moment" },
-    couple: { label: "Couple", type: "couple" },
+    "moment": { label: "Moment", type: "moment" },
 
     "distributed-load": { label: "Distributed Load", type: "load" },
     "varying-distributed-load": {
@@ -340,8 +339,7 @@ export const STATICS_BODY_ATTACHED_TOOLS = [
      */
     "distributed-load",
     "varying-distributed-load",
-    "applied-moment",
-    "couple",
+    "moment",
     "pin-support",
     "roller-support",
     "fixed-support",
@@ -357,8 +355,7 @@ export const STATICS_BODY_ATTACHED_TOOLS = [
  *
  * A moment is a free-standing action at a point rather than something
  * that only means something against a body: an applied moment is a
- * moment at a point and a couple is two opposite moments acting on the
- * same rigid body, and both are perfectly meaningful on blank sheet.
+ * moment at a point, and is perfectly meaningful on a blank sheet.
  * Requiring a body first would mean a student could not place a moment
  * anywhere until they had drawn something to put it on - which is the
  * opposite of how moments are used in statics, where they are applied
@@ -368,15 +365,9 @@ export const STATICS_BODY_ATTACHED_TOOLS = [
  * body still goes through the attachment path, so the moment is parented
  * to the body it was drawn on and the Features panel can show it
  * relative to that body.
- *
- * Both tools are listed because both are moments. Couple was missing
- * from the free-space rule even though the rule's own comment claimed it
- * was covered, so a Couple could not be drawn at all until some other
- * body already existed on the sheet.
  */
 const STATICS_FREE_MOMENT_TOOLS = [
-    "applied-moment",
-    "couple"
+    "moment"
 ];
 
 export function isFreeMomentTool(toolId) {
@@ -398,8 +389,7 @@ export function isFreeMomentTool(toolId) {
 const STATICS_TOOL_POINT_COUNT = {
     "distributed-load": 2,
     "varying-distributed-load": 2,
-    "applied-moment": 1,
-    "couple": 1,
+    "moment": 1,
     "pin-support": 1,
     "roller-support": 1,
     "fixed-support": 1,
@@ -447,7 +437,7 @@ export function staticsBodyMessage(
         staticsToolPointCount(toolId);
 
     if (step === 0) {
-        return toolId === "applied-moment"
+        return toolId === "moment"
             ? "Click a body to apply to, or empty space for a free moment"
             : "Select body";
     }
@@ -630,8 +620,7 @@ export function staticsInstruction(
             "distributed-load": "Specify loading start point",
             "varying-distributed-load": "Specify loading start point",
 
-            "applied-moment": "Specify moment location",
-            couple: "Specify couple location",
+            "moment": "Specify moment location",
 
             "pin-support": "Specify support location",
             "roller-support": "Specify support location",
@@ -855,7 +844,6 @@ export function openCoordinateSystemMenu(button) {
 const STATICS_SINGLE_CLICK_TOOLS = [
     "particle",
     "rigid-body",
-    "couple",
     "pin-support",
     "roller-support",
     "fixed-support",
@@ -879,8 +867,8 @@ export const STATICS_PLACEMENT_TOOLS = {
      *
      * The tool reaches this table from the free-moment rule in
      * beginOrCompleteGeometry: a click in empty space places the moment
-     * straight away, exactly as a couple does, rather than refusing and
-     * demanding a body to apply it to.
+     * straight away rather than refusing and demanding a body to apply it
+     * to.
      *
      * It was missing here, and the table was built from the single-click
      * list alone - so the lookup returned undefined and
@@ -898,7 +886,7 @@ export const STATICS_PLACEMENT_TOOLS = {
      * body-attached branch is still what runs first, so the two-stage
      * flow on a body is unaffected.
      */
-    "applied-moment": STATICS_CHILD_TOOLS["applied-moment"]
+    "moment": STATICS_CHILD_TOOLS["moment"]
 };
 
 /*

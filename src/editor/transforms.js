@@ -368,7 +368,6 @@ export function mirrorObjectAcrossLine(
 
     if (
         object.type === "moment" ||
-        object.type === "couple" ||
         isSupportType(object.type) ||
         isConnectionType(object.type) ||
         object.type === "support" ||

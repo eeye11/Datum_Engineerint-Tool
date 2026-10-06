@@ -13,7 +13,7 @@ import { beginCreationDimensioning, commitCreatedFeature } from "./creation-sizi
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { objectAtPoint } from "./hit-testing.js";
-import { LOAD_BUILD_PHASES, beginDistributedLoadConstruction, continueDistributedLoadBuild, distributedLoadPointOnBody, distributedLoadRegionMidpoint, isVaryingLoadTool, startDistributedLoadBuild, takeDistributedLoadDirection, takeDistributedLoadEnd, takeDistributedLoadStart } from "./load-tool.js";
+import { LOAD_BUILD_PHASES, beginDistributedLoadConstruction, continueDistributedLoadBuild, distributedLoadDirectionCursor, distributedLoadPointOnBody, distributedLoadRegionMidpoint, isVaryingLoadTool, startDistributedLoadBuild, takeDistributedLoadEnd, takeDistributedLoadStart, takeDistributedLoadVector } from "./load-tool.js";
 import { commitMomentPlacement } from "./preview.js";
 import { beginStaticsAttachment, continueStaticsAttachment, staticsBodyAtPoint } from "./statics-attachment.js";
 import { createStaticsFeature } from "./statics-creation.js";
@@ -532,7 +532,7 @@ export function beginOrCompleteGeometry(
             /*
              * A Moment is a free-standing action on a point, not
              * something that only means anything against a body:
-             * an applied couple can be drawn anywhere, and in
+             * an applied moment can be drawn anywhere, and in
              * statics that is the common case - moments are applied
              * at joints and at points in free space as often as
              * anywhere else.
@@ -1006,29 +1006,33 @@ export function beginOrCompleteGeometry(
 
         if (
             phase ===
-            "distributed-load-magnitude"
-        ) {
-            setToolMessage(
-                "Specify load magnitude"
-            );
-
-            renderProperties();
-
-            return;
-        }
-
-        if (
-            phase ===
-            "distributed-load-direction"
+            "distributed-load-vector"
         ) {
             /*
-             * The direction is taken from the pointer's direction about
-             * the MIDPOINT of the loaded region - a temporary origin, so
-             * that the choice is about direction and cannot move the load.
+             * ONE DRAG FIXES THE MAGNITUDE AND THE DIRECTION TOGETHER.
+             *
+             * Both are read from the same cursor vector about the MIDPOINT
+             * of the loaded region - a FIXED origin, so that aiming cannot
+             * move the load - and the vector's own angle is what the feature
+             * stores. There is no typed magnitude and no angle field in this
+             * step, because the vector IS both values.
+             *
+             * THE CURSOR IS THE ACTUAL POINTER, NOT THE SNAPPED POINT.
+             *
+             * `point` is the resolved construction point, so near an end of
+             * the span it IS that end exactly. Handing it to the vector made
+             * the direction jump to the midpoint-to-endpoint diagonal as the
+             * cursor crossed the span, which is the rotation this fixes.
+             * `distributedLoadDirectionCursor` gives the raw (or
+             * H/V-constrained) pointer instead, and it is the same reading
+             * the preview uses - so the committed load is the one shown.
              */
-            takeDistributedLoadDirection(
+            takeDistributedLoadVector(
                 distributedLoadRegionMidpoint(),
-                point
+                point,
+                distributedLoadDirectionCursor(
+                    resolution
+                )
             );
 
             return;
@@ -1076,26 +1080,60 @@ export function beginOrCompleteGeometry(
         } else {
             /*
              * TRACED IN EMPTY SPACE. There is no body, so the two clicks
-             * ARE the loaded region - the student is drawing the interval
-             * itself rather than choosing it on a member.
+             * ARE the loaded region.
+             *
+             * THE TWO CLICKS ARE ALSO THE START AND THE END, so the
+             * load moves straight on to its MAGNITUDE AND DIRECTION.
+             *
+             * It used to step into `distributed-load-start` here and ask
+             * for the start and the end again, so a load traced in empty
+             * space cost four point clicks and two of them discarded the
+             * span the student had just drawn. On a body the ends must be
+             * asked for, because the click only names the member; in empty
+             * space the clicks ARE the ends, and there is nothing left to
+             * ask for.
+             *
+             * `resolution` is spread in rather than replaced so the snap
+             * and inference this click produced survive into the step that
+             * reads the pointer for the vector.
              */
             enggDrawingState.setInteraction(
                 drawingState,
                 {
                     ...resolution,
-                    phase: "distributed-load-start",
+                    phase: "distributed-load-vector",
                     loadSourceId: null,
                     loadStart: {
-                        ...interaction.points[0],
+                        ...span.start,
                     },
-                    loadEnd: null,
+                    loadEnd: {
+                        ...span.end,
+                    },
+
+                    /*
+                     * THE FIXED ORIGIN FOR THE DIRECTION, captured the
+                     * moment the region is complete. Both ends are known
+                     * here and neither moves again, so the vector that
+                     * sets the direction always runs from this one point.
+                     */
+                    loadReferencePoint: {
+                        x:
+                            (span.start.x +
+                                span.end.x) /
+                            2,
+                        y:
+                            (span.start.y +
+                                span.end.y) /
+                            2
+                    },
+
                     loadDirection: null,
                     loadMagnitude: 0
                 }
             );
 
             setToolMessage(
-                "Specify end point"
+                "Move to set magnitude and direction, then click"
             );
 
             renderProperties();

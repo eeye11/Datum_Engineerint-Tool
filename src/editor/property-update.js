@@ -8,12 +8,73 @@ import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
 import { moveRigidBodyTo, resizeRigidBody, setRigidBodyRadius } from "./property-inputs.js";
 import { isLoadGeometry, pointAtStation, relativeParentOf } from "./relative-coordinates.js";
+import { worldLengthOf } from "./handles.js";
 import { applyTriangleSidesAndAngles } from "./triangle-editing.js";
 
 export function updateFeatureProperty(object, key, value) {
     const g = object.geometry;
     const fixed = name => Boolean(object.constraints?.[name]);
     const positive = value > 0;
+
+    /*
+     * ========================================================
+     * A COORDINATE THE PANEL SHOWS IN MILLIMETRES
+     * ========================================================
+     *
+     * Every X and Y the Features panel shows is a PHYSICAL POSITION, so
+     * the panel states it in the sheet's units and the geometry stores it
+     * in world units. The two are related by the ONE document scale, and
+     * this is where the typed millimetres become world units.
+     *
+     * It has to happen on the way IN as well as on the way OUT: the panel
+     * now converts for display (see `coordinate` in feature-panel-markup),
+     * so a writer that copied the typed number straight into the geometry
+     * would move a feature to the wrong place on any calibrated sheet -
+     * typing 500 on a 1 unit = 4 mm sheet would put it 500 world units
+     * away, which is 2 m, not 500 mm.
+     *
+     * The keys are matched by shape rather than by type, because the same
+     * coordinate is called `position`, `start`, `end`, `center`, `centre`,
+     * `origin` or an indexed point depending on the feature - and a list
+     * of types would be a list to forget one from.
+     *
+     * ANGLES ARE NOT CONVERTED. A degree is not a length, and running one
+     * through the scale would produce a different angle.
+     */
+    const LENGTH_AXIS = /\.(x|y)$/;
+
+    const isLengthCoordinate =
+        LENGTH_AXIS.test(key) &&
+        (key.startsWith('position.') ||
+            key.startsWith('start.') ||
+            key.startsWith('end.') ||
+            key.startsWith('center.') ||
+            key.startsWith('centre.') ||
+            key.startsWith('origin.') ||
+            key.startsWith('rigidCentre.') ||
+            key.startsWith('points.'));
+
+    const worldValue = isLengthCoordinate
+        ? worldLengthOf(value)
+        : value;
+
+    /*
+     * NOTHING NON-FINITE REACHES THE GEOMETRY.
+     *
+     * A typed value arrives from a number input, and a half-typed one is
+     * `NaN`. `fromEngineering` reports 0 for a non-finite input, so without
+     * this guard a bad value would be WRITTEN as zero - collapsing a feature
+     * to nothing rather than being refused, which is the more destructive of
+     * the two outcomes and the harder one to notice.
+     *
+     * `worldValue` is what every coordinate branch below writes, so refusing
+     * here covers all of them at once. Infinity is refused for the same
+     * reason: it is finite-looking in a field and produces an unusable
+     * feature.
+     */
+    if (isLengthCoordinate && !Number.isFinite(worldValue)) {
+        return false;
+    }
 
     /*
      * A RELATIVE coordinate is an offset from the parent the
@@ -61,6 +122,16 @@ export function updateFeatureProperty(object, key, value) {
      */
     if (key === "length" && positive && g.start && g.end) {
         if (fixed("length")) return false;
+
+        /*
+         * A LENGTH MUST BE A FINITE NUMBER BEFORE IT MOVES ANYTHING.
+         *
+         * `positive` admits Infinity, and a member stretched to Infinity
+         * has no usable geometry left - every dependent value becomes
+         * Infinity or NaN and the feature can no longer be edited back.
+         * A non-finite length is refused rather than applied.
+         */
+        if (!Number.isFinite(Number(value))) return false;
 
         const dx = g.end.x - g.start.x;
         const dy = g.end.y - g.start.y;
@@ -240,16 +311,109 @@ export function updateFeatureProperty(object, key, value) {
                 return false;
             }
 
+            /*
+             * A TRIANGLE VERTEX IS A PHYSICAL POSITION, so the typed value
+             * crosses the document scale once, here. Writing the raw number
+             * would put the vertex four times too far on a 1 unit = 4 mm
+             * sheet and the panel would read the same wrong number back.
+             */
             g.points[index][axis] =
-                value;
+                worldValue;
 
             return true;
         }
 
-        if (
-            key.startsWith('side') ||
-            key.startsWith('angle')
-        ) {
+        /*
+         * ========================================================
+         * A TRIANGLE EDGE, REFERENCED BY ITS OWN NAME
+         * ========================================================
+         *
+         * Smart Dimension identifies a clicked side as `segment{i}Start` /
+         * `segment{i}End`, so a dimension on a triangle side names THAT side
+         * rather than the feature. The value it carries is the side's
+         * LENGTH, so the edit is applied to the triangle's own `side{i}`
+         * property - which already knows how to move the far vertex and
+         * leave the rest of the triangle's relationships standing.
+         *
+         * `side{i}` is the vertex that OPENS the edge, matching the closed
+         * chain the edges are derived from: segment0 is A-B so side0 is A,
+         * segment1 is B-C so side1 is B, segment2 is C-A so side2 is C. The
+         * index is therefore read straight from the key and the two
+         * vocabularies cannot drift.
+         *
+         * THIS IS WHY THE EDGE NEEDS A NAME AT ALL. Without it a triangle
+         * side had no key to write, so the dimension could measure a side but
+         * never set one - and the "edit" would silently do nothing.
+         */
+        const segmentMatch =
+            /^segment(\d)(Start|End|Mid)$/.exec(key);
+
+        if (segmentMatch) {
+            const index = Number(segmentMatch[1]);
+
+            if (fixed(`segment${index}`)) {
+                return false;
+            }
+
+            /*
+             * `side{N}` IS ONE-BASED; `segment{N}` IS ZERO-BASED.
+             *
+             * segment0 is the edge A-B, which the sides-and-angles solver
+             * calls side1. Passing the segment index straight through would
+             * edit the NEXT edge round - so a dimension on AB would resize BC.
+             * The two vocabularies are related here, once, and nowhere else.
+             */
+            const sideKey = `side${index + 1}`;
+
+            /*
+             * THE SOLVER WORKS IN WORLD UNITS, so the typed millimetres are
+             * converted first. It compares the new length against the other
+             * two sides, which are world lengths, so handing it millimetres
+             * would both break that triangle inequality test and stretch the
+             * edge by the scale factor.
+             */
+            const world = worldLengthOf(value);
+
+            if (!Number.isFinite(world)) {
+                return false;
+            }
+
+            return applyTriangleSidesAndAngles(
+                object,
+                sideKey,
+                world
+            );
+        }
+
+        /*
+         * SIDES ARE LENGTHS, SO THEY CROSS THE SCALE; ANGLES ARE NOT.
+         *
+         * The solver works entirely in WORLD units: it compares the new
+         * length against the other two sides, which are world lengths, and
+         * then rebuilds the points from them. Handing it the typed number
+         * unconverted therefore did two wrong things at once - it broke the
+         * triangle-inequality test, and it stretched the edge by the scale
+         * factor. On a 1 unit = 4 mm sheet a side typed as 200 came out at
+         * 800 mm.
+         *
+         * An angle is a degree, not a length, so it is passed through as it
+         * was typed.
+         */
+        if (key.startsWith('side')) {
+            const world = worldLengthOf(value);
+
+            if (!Number.isFinite(world)) {
+                return false;
+            }
+
+            return applyTriangleSidesAndAngles(
+                object,
+                key,
+                world
+            );
+        }
+
+        if (key.startsWith('angle')) {
             return applyTriangleSidesAndAngles(
                 object,
                 key,
@@ -263,7 +427,7 @@ export function updateFeatureProperty(object, key, value) {
     if (key.startsWith('points.')) {
         const [, index, axis] = key.split('.');
         if (fixed(`points.${index}`) || !g.points?.[index]) return false;
-        g.points[index][axis] = value;
+        g.points[index][axis] = worldValue;
         return true;
     }
 
@@ -280,7 +444,15 @@ export function updateFeatureProperty(object, key, value) {
             const point = g[pointKey];
             const otherKey = pointKey === 'start' ? 'end' : 'start';
             const other = g[otherKey];
-            const next = { ...point, [axis]: value };
+            /*
+             * A LINE'S ENDPOINT IS A PHYSICAL POSITION, so the typed value
+             * arrives in millimetres and becomes world units once, here.
+             * Writing the raw number would place the end four times too far
+             * on a 1 unit = 4 mm sheet, and the panel would then read the
+             * same wrong number back - a feature that agreed with itself
+             * while disagreeing with the sheet.
+             */
+            const next = { ...point, [axis]: worldValue };
             if (fixed('length') || fixed('angle')) {
                 if (fixed(otherKey)) {
                     // A single coordinate cannot be changed independently when
@@ -295,11 +467,11 @@ export function updateFeatureProperty(object, key, value) {
                 const direction = fixed('angle') ? angle : proposedAngle;
                 const extent = fixed('length') ? length :
                     Math.hypot(next.x - other.x, next.y - other.y);
-                point[axis] = value;
+                point[axis] = worldValue;
                 other.x = next.x + sign * extent * Math.cos(direction);
                 other.y = next.y + sign * extent * Math.sin(direction);
             } else {
-                point[axis] = value;
+                point[axis] = worldValue;
             }
             return true;
         }
@@ -322,13 +494,7 @@ export function updateFeatureProperty(object, key, value) {
              * length typed at creation and the same length typed in
              * the panel move the beam by the same amount.
              */
-            const world = enggDimensions?.fromEngineering
-                ? enggDimensions.fromEngineering(
-                    drawingState,
-                    value,
-                    'mm'
-                )
-                : value;
+            const world = worldLengthOf(value, 'mm');
 
             const target = fixed('end') ? start : end;
             const anchor = fixed('end') ? end : start;
@@ -375,10 +541,41 @@ export function updateFeatureProperty(object, key, value) {
 
             const axis = key.split('.')[1];
 
-            g.start[axis] = value;
+            g.start[axis] = worldValue;
             g.position = {
                 x: g.start.x,
                 y: g.start.y
+            };
+
+            return true;
+        }
+
+        /*
+         * THE APPLICATION POINT IS THE SAME PLACE AS THE START.
+         *
+         * A force is positioned by `position`, and `start` is kept in step
+         * with it - `setForceVector` writes both. The panel offers the
+         * application point, so the panel's key has to be answered here
+         * rather than falling through to the generic position handler,
+         * which this branch never reaches: it returns false for anything it
+         * does not recognise.
+         *
+         * It was missing, so typing an application point on a calibrated
+         * sheet did nothing at all - the field looked editable and silently
+         * refused the edit.
+         */
+        if (
+            key === 'position.x' ||
+            key === 'position.y'
+        ) {
+            if (fixed('position') || !g.position) return false;
+
+            const axis = key.split('.')[1];
+
+            g.position[axis] = worldValue;
+            g.start = {
+                x: g.position.x,
+                y: g.position.y
             };
 
             return true;
@@ -452,7 +649,7 @@ export function updateFeatureProperty(object, key, value) {
 
             const [pointKey, axis] = key.split('.');
 
-            g[pointKey][axis] = value;
+            g[pointKey][axis] = worldValue;
 
             return true;
         }
@@ -466,6 +663,29 @@ export function updateFeatureProperty(object, key, value) {
         if (key === 'interval') {
             if (fixed('interval')) return false;
             enggLoadProfile.setLoadInterval(g, value);
+            return true;
+        }
+
+        if (key === 'magnitude') {
+            if (fixed('magnitude')) return false;
+
+            /*
+             * ONE MAGNITUDE FOR THE ENTIRE LOADED REGION.
+             *
+             * A Distributed Load is a single uniform load, so a magnitude
+             * typed into its panel is the intensity of the whole region -
+             * not one arrow's share of it. The profile is written as two
+             * points of the same value, which is exactly what a uniform
+             * load is, and the derived intensity follows from them.
+             */
+            enggLoadProfile.setProfilePoints(
+                g,
+                [
+                    { t: 0, magnitude: value },
+                    { t: 1, magnitude: value }
+                ]
+            );
+
             return true;
         }
 
@@ -583,7 +803,6 @@ export function updateFeatureProperty(object, key, value) {
         object.type === "body" ||
         object.type === "particle" ||
         object.type === "moment" ||
-        object.type === "couple" ||
         object.type === "load" ||
         object.type === "varying-load" ||
         object.type === "pin-support" ||
@@ -602,7 +821,7 @@ export function updateFeatureProperty(object, key, value) {
          */
         if (key.startsWith('position.')) {
             if (fixed('position')) return false;
-            g.position[key.split('.')[1]] = value;
+            g.position[key.split('.')[1]] = worldValue;
             return true;
         }
 
@@ -866,7 +1085,7 @@ export function updateFeatureProperty(object, key, value) {
         if (key.startsWith('points.')) {
             const [, index, axis] = key.split('.');
             if (fixed(`points.${index}`) || !g.points?.[index]) return false;
-            g.points[index][axis] = value;
+            g.points[index][axis] = worldValue;
             return true;
         }
 
@@ -889,7 +1108,7 @@ export function updateFeatureProperty(object, key, value) {
         ) {
             const [pointKey, axis] = key.split('.');
             if (fixed(pointKey)) return false;
-            g[pointKey][axis] = value;
+            g[pointKey][axis] = worldValue;
             return true;
         }
 
@@ -908,6 +1127,29 @@ export function updateFeatureProperty(object, key, value) {
             return true;
         }
 
+        /*
+         * A TRUSS'S HEIGHT IS A PHYSICAL LENGTH, SO IT CROSSES THE SCALE.
+         *
+         * It is the envelope the structure stands in - read live off the
+         * drawn members - and the panel captions it in millimetres like every
+         * other length. It was not handled here at all, so typing a height
+         * silently did nothing while the field looked editable.
+         *
+         * `depth` and `diameter` above are NOT converted, because they are
+         * not lengths the student measures: they are cross-section and
+         * rendering parameters that never appear as a dimension.
+         */
+        if (key === 'height') {
+            if (fixed(key)) return false;
+
+            const worldHeight = worldLengthOf(value);
+
+            if (!Number.isFinite(worldHeight)) return false;
+
+            g.height = worldHeight;
+            return true;
+        }
+
         return false;
     }
 
@@ -923,7 +1165,7 @@ export function updateFeatureProperty(object, key, value) {
     if (object.type === 'circle' || object.type === 'arc') {
         if (key.startsWith('center.')) {
             if (fixed('center')) return false;
-            g.center[key.split('.')[1]] = value;
+            g.center[key.split('.')[1]] = worldValue;
             return true;
         }
         if ((key === 'radius' || key === 'diameter') && positive && !fixed(key) && !fixed(key === 'radius' ? 'diameter' : 'radius')) {
@@ -968,7 +1210,7 @@ export function updateFeatureProperty(object, key, value) {
         if (key.startsWith('centre.')) {
             if (fixed('centre')) return false;
             const axis = key.split('.')[1];
-            g.position[axis] = axis === 'x' ? value - g.width / 2 : value + g.height / 2;
+            g.position[axis] = axis === 'x' ? worldValue - g.width / 2 : worldValue + g.height / 2;
             return true;
         }
         if ((key === 'width' || key === 'height') && positive && !fixed(key)) {
@@ -1005,7 +1247,7 @@ export function updateFeatureProperty(object, key, value) {
          */
         if (key.startsWith('center.')) {
             if (fixed('center')) return false;
-            g.center[key.split('.')[1]] = value;
+            g.center[key.split('.')[1]] = worldValue;
             return true;
         }
         if (key === 'sides') {
@@ -1052,7 +1294,7 @@ export function updateFeatureProperty(object, key, value) {
          */
         if (key.startsWith('origin.')) {
             if (fixed('origin')) return false;
-            g.origin[key.split('.')[1]] = value;
+            g.origin[key.split('.')[1]] = worldValue;
             return true;
         }
         if (key === 'axisLength') {
@@ -1090,7 +1332,7 @@ export function updateFeatureProperty(object, key, value) {
          */
         if (key.startsWith('origin.')) {
             if (fixed('origin')) return false;
-            g.origin[key.split('.')[1]] = value;
+            g.origin[key.split('.')[1]] = worldValue;
             return true;
         }
 

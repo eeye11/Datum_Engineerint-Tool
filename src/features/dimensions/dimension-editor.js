@@ -74,14 +74,14 @@ function isAngular(dimensionType) {
 
 function build(options) {
     const {
-        dimension,
         dimensionType,
         measuredText,
         drawingLength,
         unit,
         precision,
         sourceName,
-        angular
+        angular,
+        editable
     } = options;
 
     const dialog = document.createElement("div");
@@ -127,6 +127,7 @@ function build(options) {
                     Display
                 </legend>
 
+                <label class="drawing-dimension-dialog-label"
                     for="dimPrecision">
                     Decimal places
                 </label>
@@ -135,6 +136,43 @@ function build(options) {
                     type="number" min="0" max="6" step="1"
                     value="${precision}">
             </fieldset>
+
+            ${
+                editable
+                    ? `
+            <fieldset class="drawing-dimension-dialog-group">
+                <legend>
+                    Set the size
+                </legend>
+
+                <p class="drawing-dimension-dialog-note">
+                    The sheet already has a scale, so
+                    this value <strong>changes the
+                    geometry</strong> to match it.
+                </p>
+
+                <label class="drawing-dimension-dialog-label"
+                    for="dimNewValue">
+                    New length
+                </label>
+                <input id="dimNewValue"
+                    class="drawing-dimension-dialog-input"
+                    type="number" min="0" step="any"
+                    inputmode="decimal"
+                    placeholder="leave blank to keep">
+
+                <label class="drawing-dimension-dialog-label"
+                    for="dimNewUnit">
+                    Unit
+                </label>
+                <select id="dimNewUnit"
+                    class="drawing-dimension-dialog-select">
+                    ${optionList(unit)}
+                </select>
+            </fieldset>
+            `
+                    : ""
+            }
 
             <fieldset class="drawing-dimension-dialog-group">
                 <legend>
@@ -227,7 +265,8 @@ function open(options = {}) {
         precision: options.precision ?? 2,
         sourceName:
             options.sourceName || "unknown source",
-        angular
+        angular,
+        editable: options.editable === true
     });
 
     openDialog = dialog;
@@ -238,6 +277,15 @@ function open(options = {}) {
     };
 
     closeCurrent = closeIt;
+
+    /*
+     * The sheet's working unit, for the resize field's default.
+     *
+     * Captured here because the dialog's markup is built in `build` but the
+     * answer is read in `apply`, and a fallback the two disagree about would
+     * be a unit silently dropped from a typed size.
+     */
+    const sheetUnit = options.unit || "mm";
 
     const apply = () => {
         const changes = {};
@@ -258,6 +306,40 @@ function open(options = {}) {
                 precision <= 6
             ) {
                 changes.precision = precision;
+            }
+
+            /*
+             * A NEW PHYSICAL SIZE, requested only when one was typed.
+             *
+             * This is the field that changes the GEOMETRY, and it is
+             * offered only on a sheet that already has a scale - because
+             * on an uncalibrated sheet there is nothing to convert
+             * through, and the real-length field below is what calibrates
+             * it instead.
+             */
+            const newValueInput =
+                dialog.querySelector(
+                    "#dimNewValue"
+                );
+
+            if (newValueInput) {
+                const newValue = Number(
+                    newValueInput.value
+                );
+
+                if (
+                    newValueInput.value.trim() !== "" &&
+                    Number.isFinite(newValue) &&
+                    newValue > 0
+                ) {
+                    changes.resize = {
+                        value: newValue,
+                        unit:
+                            dialog.querySelector(
+                                "#dimNewUnit"
+                            )?.value || sheetUnit
+                    };
+                }
             }
 
             /*

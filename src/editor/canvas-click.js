@@ -4,8 +4,12 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDimensions from "../core/scale/dimensions.js";
+import enggQuantities from "../core/units/quantities.js";
+import enggDimensionEdit from "../features/dimensions/dimension-edit.js";
 import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
+import enggNoteEditor from "../ui/editors/note-editor.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import { commitAnalysisAxis } from "./analysis-tools.js";
 import { handleAnnotationClick, isAnnotationTool } from "./annotation-tool.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
@@ -524,10 +528,31 @@ export function openDimensionEditorFor(object) {
             ? `${Number(measurement.value).toFixed(2)} drawing units`
             : "";
 
+    /*
+     * WHETHER A TYPED VALUE MAY MOVE THE GEOMETRY.
+     *
+     * On a sheet with a scale, a dimension is an instruction: make the
+     * geometry this size, through that scale. On an UNCALIBRATED sheet there
+     * is nothing to convert through - the first length DEFINES the scale - so
+     * the value calibrates instead and the geometry is left alone. That is
+     * the one case where the two acts differ, and it is decided here, once,
+     * rather than being guessed at in the dialog.
+     */
+    const calibrated =
+        enggDimensions.isCalibrated(drawingState);
+
+    const resizable =
+        calibrated &&
+        enggDimensionEdit.dimensionEditable(
+            object,
+            drawingState
+        );
+
     enggDimensionEditor.open({
         dimensionType: object.dimensionType,
         measuredText,
         drawingLength,
+        editable: resizable,
         unit:
             enggDimensions.readScale(
                 drawingState
@@ -548,6 +573,34 @@ export function openDimensionEditorFor(object) {
                     ...(object.style || {}),
                     precision: changes.precision
                 };
+            }
+
+            /*
+             * A NEW PHYSICAL SIZE: THE GEOMETRY MOVES.
+             *
+             * The typed value is normalised to millimetres with the unit the
+             * student chose, then handed to the one property setter - which
+             * performs the single conversion into world units through the
+             * sheet's World Scale. Nothing is converted here, so the value
+             * cannot cross the scale twice.
+             *
+             * This is deliberately NOT reachable on an uncalibrated sheet:
+             * the dialog does not offer the field until a scale exists.
+             */
+            let resized = null;
+
+            if (changes.resize) {
+                const millimetres =
+                    changes.resize.value *
+                    (enggQuantities?.LENGTH_UNITS?.[
+                        changes.resize.unit
+                    ]?.mm ?? 1);
+
+                resized = enggDimensionEdit.applyDimensionValue(
+                    object,
+                    drawingState,
+                    millimetres
+                );
             }
 
             /*
@@ -586,9 +639,11 @@ export function openDimensionEditorFor(object) {
             );
 
             setToolMessage(
-                changes.calibration
-                    ? "Scale updated - every dimension on this sheet now uses it"
-                    : "Dimension display updated"
+                resized?.ok
+                    ? "Size updated - the geometry now matches"
+                    : changes.calibration
+                        ? "Scale updated - every dimension on this sheet now uses it"
+                        : "Dimension display updated"
             );
 
             renderProperties();
@@ -603,6 +658,58 @@ export function openDimensionEditorFor(object) {
             renderCurrentDrawing();
         }
     });
+}
+
+/*
+ * OPEN THE NOTE EDITOR FOR A WRITTEN ANNOTATION.
+ *
+ * A Note is the student's own words, so double-clicking it (or double-
+ * clicking its entry in the Features tree) opens the note editor here,
+ * the same "open this thing" gesture the dimension uses.
+ *
+ * A GENERATED annotation is refused one: its text is a reading of the
+ * feature it describes and the next redraw would overwrite anything
+ * typed, so there is deliberately no path from here to the editor for
+ * one. The guard is the model's own `isGenerated`, so a new generated
+ * kind is refused automatically rather than by remembering to list it.
+ */
+export function openNoteEditorFor(object) {
+    if (
+        object?.type !== "annotation" ||
+        enggAnnotationModel.isGenerated(object.annotationKind)
+    ) {
+        return false;
+    }
+
+    enggNoteEditor?.open({
+        text: object.text || "",
+
+        onApply: (text) => {
+            const previousObjects = enggDrawingState.snapshotDrawing(
+                drawingState
+            );
+
+            object.text = text;
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previousObjects
+            );
+
+            setToolMessage("Note updated");
+
+            renderProperties();
+            renderCurrentDrawing();
+        },
+
+        onCancel: () => {
+            setToolMessage("Note edit cancelled");
+
+            renderCurrentDrawing();
+        }
+    });
+
+    return true;
 }
 
 /*

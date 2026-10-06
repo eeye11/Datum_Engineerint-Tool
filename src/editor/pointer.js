@@ -21,6 +21,65 @@ import { canvasPointFromEvent } from "./tool-activation.js";
 import { isArcTool } from "./tool-menus.js";
 import { setToolMessage } from "./toolbar-render.js";
 
+/*
+ * The positional reference of each SELECTED force, for horizontal alignment.
+ *
+ * A force feature acts at one point: a Point Force at its `position`, an
+ * applied moment at its `position`, a distributed load at the midpoint of its
+ * span. Those are the places a student means when they line a new load up
+ * with an existing one, so they are the points offered to the shared H/V
+ * inference.
+ *
+ * Offering them as ordinary inference references is what makes "snap
+ * horizontally to another selected force" work through the EXISTING system:
+ * the resolver aligns the cursor to the reference's row, and the direction
+ * vector built from the load's own reference then comes out exactly 0 or 180
+ * degrees rather than a degree or two off.
+ *
+ * Only SELECTED features are read, so this is the ordinary "align to what I
+ * have chosen" gesture rather than a rule that reaches into the whole sheet.
+ */
+function selectedForceAnchorPoints() {
+    const selection =
+        drawingState.selection?.selectedObjectIds || [];
+
+    if (!selection.length) {
+        return [];
+    }
+
+    return selection
+        .map(id =>
+            drawingState.objects.find(object => object.id === id)
+        )
+        .filter(Boolean)
+        .map(object => {
+            const geometry = object.geometry;
+
+            if (!geometry) {
+                return null;
+            }
+
+            /*
+             * A span-shaped load or force aligns on the midpoint of the
+             * region it acts on; a point feature aligns on the point.
+             */
+            if (geometry.start && geometry.end) {
+                return {
+                    x: (geometry.start.x + geometry.end.x) / 2,
+                    y: (geometry.start.y + geometry.end.y) / 2
+                };
+            }
+
+            return geometry.position || null;
+        })
+        .filter(
+            point =>
+                point &&
+                Number.isFinite(point.x) &&
+                Number.isFinite(point.y)
+        );
+}
+
 function resolvePointerPoint(
     rawPoint
 ) {
@@ -289,7 +348,8 @@ function resolvePointerPoint(
 
     /*
      * The distribution points already placed on the load being
-     * built, as world positions along its span.
+     * built, as world positions along its span - their TAILS and their
+     * TIPS.
      *
      * Defining a second point square to the first is the same act
      * as drawing a truss member square to a joint it meets, and it
@@ -297,32 +357,198 @@ function resolvePointerPoint(
      * rule of the load's own: a point of a load is a place in the
      * drawing, so the next point can align with it exactly as it
      * aligns with a joint.
+     *
+     * The TAIL is where the force acts on the body, so aligning with it
+     * puts the next point at the same station. The TIP is the head of the
+     * force - the tail carried out along the load's direction by the
+     * magnitude - so aligning with THAT puts the next point at the same
+     * magnitude. Both are real, visible places in the drawing, and both
+     * go through the same inference every other alignment uses.
      */
     const loadPointAnchors =
         isLoadBuildPhase(interaction)
-            ? (interaction.distributedLoadPoints || [])
-                  .map((point) =>
-                      enggLoadProfile.pointAlong(
-                          {
-                              start:
-                                  interaction.distributedLoadStart ||
-                                  interaction.loadStart,
-                              end:
-                                  interaction.distributedLoadEnd ||
-                                  interaction.loadEnd
-                          },
-                          point.t
-                      )
-                  )
-                  .filter(Boolean)
+            ? (() => {
+                  const loadStart =
+                      interaction.distributedLoadStart ||
+                      interaction.loadStart;
+
+                  const loadEnd =
+                      interaction.distributedLoadEnd ||
+                      interaction.loadEnd;
+
+                  if (!loadStart || !loadEnd) {
+                      return [];
+                  }
+
+                  /*
+                   * The direction the force lines are drawn in: the one
+                   * the student chose at an end of the span, or the
+                   * span's own PERPENDICULAR when none has been chosen
+                   * yet. That is the direction the varying load actually
+                   * draws its arrows in, so a tip lines up with the arrow
+                   * the student can see rather than with an arbitrary
+                   * world axis.
+                   */
+                  const stored =
+                      interaction.distributedLoadDirection;
+
+                  const chosen =
+                      stored !== null &&
+                      stored !== undefined;
+
+                  let degrees = null;
+
+                  if (chosen) {
+                      degrees = Number(stored);
+                  } else {
+                      const dx =
+                          loadEnd.x - loadStart.x;
+
+                      const dy =
+                          loadEnd.y - loadStart.y;
+
+                      if (
+                          Math.hypot(dx, dy) >=
+                          1e-9
+                      ) {
+                          degrees =
+                              Math.atan2(
+                                  dx,
+                                  -dy
+                              ) *
+                              180 /
+                              Math.PI;
+                      }
+                  }
+
+                  const direction =
+                      enggLoadProfile.unitVector(
+                          Number.isFinite(degrees)
+                              ? degrees
+                              : enggLoadProfile
+                                    .DEFAULT_LOAD_DIRECTION
+                      );
+
+                  return (interaction.distributedLoadPoints || [])
+                      .flatMap((point) => {
+                          const along =
+                              enggLoadProfile.pointAlong(
+                                  {
+                                      start: loadStart,
+                                      end: loadEnd
+                                  },
+                                  point.t
+                              );
+
+                          if (!along) {
+                              return [];
+                          }
+
+                          const magnitude =
+                              Math.max(
+                                  0,
+                                  Number(point.magnitude) || 0
+                              );
+
+                          if (magnitude <= 0) {
+                              return [along];
+                          }
+
+                          return [
+                              along,
+                              {
+                                  x:
+                                      along.x +
+                                      direction.x *
+                                          magnitude,
+                                  y:
+                                      along.y +
+                                      direction.y *
+                                          magnitude
+                              }
+                          ];
+                      });
+              })()
             : [];
+
+    /*
+     * The fixed point the load's direction is measured from, offered to the
+     * shared H/V inference so the direction can be squared to world vertical
+     * or horizontal.
+     *
+     * It is the midpoint of the loaded region - the same reference
+     * `distributedLoadRegionMidpoint` (constant load) and
+     * `distributedLoadDirectionReference` (varying load) read the direction
+     * from - and it exists only once the span is frozen. Before that there
+     * is no region to measure a direction from, so there is nothing to
+     * align to and the list is empty.
+     *
+     * A later enrichment of this list is where alignment to another
+     * SELECTED force's reference would be offered; the mechanism is the
+     * same one point of reference per alignment, so nothing here is
+     * specific to the load.
+     */
+    const loadDirectionAnchors = (() => {
+        if (!isLoadBuildPhase(interaction)) {
+            return [];
+        }
+
+        const loadStart =
+            interaction.distributedLoadStart || interaction.loadStart;
+
+        const loadEnd =
+            interaction.distributedLoadEnd || interaction.loadEnd;
+
+        if (!loadStart || !loadEnd) {
+            return [];
+        }
+
+        /* The stored reference when there is one, the midpoint otherwise. */
+        const stored = interaction.loadReferencePoint;
+
+        const reference =
+            stored &&
+            Number.isFinite(stored.x) &&
+            Number.isFinite(stored.y)
+                ? stored
+                : {
+                      x: (loadStart.x + loadEnd.x) / 2,
+                      y: (loadStart.y + loadEnd.y) / 2
+                  };
+
+        return [reference, ...selectedForceAnchorPoints()];
+    })();
 
     const inferenceReferences = [
         ...(multiPointAnchor
             ? [interaction.points[0], interaction.points[1]]
             : []),
         ...(loadSpanEndAnchor ? [loadSpanEndAnchor] : []),
-        ...loadPointAnchors
+        ...loadPointAnchors,
+
+        /*
+         * THE LOAD'S OWN DIRECTION REFERENCE.
+         *
+         * The direction vector runs FROM the fixed reference point of the
+         * loaded region TO the cursor, so the cursor being directly above
+         * (or level with) that reference is what makes the load exactly
+         * vertical (or horizontal).
+         *
+         * Adding the reference here is what lets the EXISTING horizontal /
+         * vertical inference reach the direction: the resolver already
+         * aligns the cursor to any reference point it is given, so the
+         * cursor is pulled to the reference's column or row and the vector
+         * built from it comes out exactly ±90 or 0 degrees rather than
+         * 88.9 or 1.4.
+         *
+         * It is added ONLY while the direction is being defined - the span
+         * is already frozen by then, so this can never move Start, End or
+         * the loaded region. The reference is the SAME value the direction
+         * is measured from, so the alignment it offers is precisely the one
+         * the direction needs, and no rule of the load's own is introduced:
+         * it is one more point for the shared alignment, nothing more.
+         */
+        ...(loadDirectionAnchors)
     ];
 
     return drawingSnap.resolveConstructionPoint(
@@ -335,6 +561,22 @@ function resolvePointerPoint(
             lineStart,
 
             inferenceReferences,
+
+            /*
+             * A LOAD ALIGNS TO ITS OWN GEOMETRY EVEN OVER THE BODY.
+             *
+             * A load's points go ON the member, and the member's own
+             * geometry always answers the snap search first - so without
+             * this, a point could never be put level with a span end or an
+             * earlier force while the cursor was on the beam, which is
+             * everywhere a load's point ever is. This asks the shared
+             * resolver to consider the alignment guide alongside the snap,
+             * so horizontal and vertical alignment work for the load tools
+             * exactly as they do for every other tool.
+             */
+            preferInference:
+                isLoadBuildPhase(interaction) ||
+                isLoadSpanPhase(interaction),
 
             /*
              * Treat arc endpoint placement

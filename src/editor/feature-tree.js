@@ -12,7 +12,6 @@ import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingProperties } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
-import { takeDistributedLoadMagnitude } from "./load-tool.js";
 import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
 import { finaliseRows, section } from "./feature-panel-markup.js";
 
@@ -378,17 +377,20 @@ function componentRowMarkup(
  * THE PANEL FOR A LOAD BEING BUILT
  * ========================================================
  *
- * What has been established so far, and the one thing still being asked
- * for. The magnitude step is the only one with a field: the region and the
- * direction are both chosen by clicking the canvas, which is the right
- * instrument for both, while an intensity is a number and typing one is
- * faster and more accurate than dragging for it.
+ * What has been established so far, and the one thing still being asked for.
  *
- * TYPING IT IS NOT COMMITTING IT. The value goes onto the interaction and
- * the preview redraws from it, and the tool moves to the direction step.
- * Nothing is written to the document until the direction is chosen - so a
- * student who types a magnitude and then presses Escape has not created a
- * load.
+ * THERE ARE NO FIELDS HERE, and there deliberately are none. Every question a
+ * Distributed Load asks is a place on the sheet or a distance from one - which
+ * body, which two ends of the loaded region, how hard and which way - and every
+ * one of those is answered by pointing at the canvas. A numeric box for the
+ * magnitude would be a second way to answer a question whose real answer is a
+ * gesture, and an Angle box would let the student describe a direction no
+ * arrow on the sheet is pointing.
+ *
+ * So the panel STATES what the tool has so far - the source body and the region
+ * - and names the one action still outstanding. Nothing is written to the
+ * document until the vector is given, so a student who presses Escape before
+ * then has not created a load.
  */
 export function renderLoadBuildPanel(
     interaction
@@ -463,143 +465,27 @@ export function renderLoadBuildPanel(
     });
 
     /*
-     * THE ONE FIELD. Only on the magnitude step - on any other step it
-     * would be a field the tool is not listening to, which is worse than no
-     * field because it looks editable.
+     * THE ONE ACTION STILL OUTSTANDING, once the region exists. The vector
+     * step is the only step with anything left to say, and it says it in
+     * words rather than in a field - because the magnitude and the direction
+     * are one gesture on the canvas, not two numbers in a panel.
      */
     if (
         interaction.phase ===
-            "distributed-load-magnitude"
+            "distributed-load-vector"
     ) {
-        rows.push(section("INTENSITY"));
-
-        rows.push(`
-            <div class="drawing-property-grid">
-                <span class="drawing-property-grid-label">
-                    Intensity
-                </span>
-                <input type="number" step="any" min="0"
-                    id="drawingLoadMagnitude"
-                    class="drawing-property-input"
-                    data-load-magnitude
-                    value="${
-                        Number.isFinite(
-                            Number(
-                                interaction.loadMagnitude
-                            )
-                        ) &&
-                        Number(
-                            interaction.loadMagnitude
-                        ) > 0
-                            ? number(
-                                  interaction.loadMagnitude
-                              )
-                            : ""
-                    }"/>
-                <span class="drawing-property-unit">
-                    N/m
-                </span>
-                <span></span>
-            </div>
-        `);
+        rows.push(section("LOAD"));
 
         rows.push(`
             <div class="drawing-property-hint">
-                Enter an intensity above zero, then press Enter.
-            </div>
-        `);
-    }
-
-    if (
-        interaction.phase ===
-            "distributed-load-direction"
-    ) {
-        rows.push(section("DIRECTION"));
-
-        rows.push(
-            readOnly(
-                "Intensity",
-                `${number(
-                    interaction.loadMagnitude
-                )} N/m`
-            )
-        );
-
-        rows.push(`
-            <div class="drawing-property-hint">
-                Move the pointer to aim the arrows and click.
+                Move the pointer to set the magnitude and direction together,
+                then click.
             </div>
         `);
     }
 
     drawingProperties.innerHTML =
         finaliseRows(rows);
-
-    /*
-     * ONE LISTENER, ATTACHED ONCE PER PANEL.
-     *
-     * The panel is rebuilt on every phase change, so attaching on every
-     * render would stack a listener per render and the field would apply its
-     * value once per keystroke it had ever been through.
-     */
-    const input =
-        drawingProperties.querySelector(
-            "[data-load-magnitude]"
-        );
-
-    if (input) {
-        /*
-         * ============================================================
-         * THE FIELD DOES NOT DEPEND ON THE STUDENT REMEMBERING ENTER
-         * ============================================================
-         *
-         * It used to listen for Enter only, so the magnitude silently did
-         * nothing unless the student happened to press that key. Every other
-         * way of leaving a number - tabbing away, clicking elsewhere on the
-         * sheet, a blur caused by the panel being rebuilt - discarded it.
-         *
-         * 'change' fires when the value is committed by ANY means, which
-         * includes Enter (and cancels the keydown so the value is read once,
-         * not twice). So the field behaves the way every other numeric field
-         * in Datum behaves.
-         */
-        input.addEventListener(
-            "change",
-            () => {
-                takeDistributedLoadMagnitude(
-                    input.value
-                );
-            },
-        );
-
-        input.addEventListener(
-            "keydown",
-            event => {
-                if (event.key !== "Enter") {
-                    return;
-                }
-
-                event.preventDefault();
-
-                takeDistributedLoadMagnitude(
-                    input.value
-                );
-            },
-        );
-
-        /*
-         * PUT THE CURSOR IN IT. The student was just told to specify a
-         * magnitude; making them find and click the box first is a step the
-         * instruction did not mention. Autofocus is suppressed where it
-         * would steal focus from the canvas on a phase we are not on.
-         */
-        if (
-            typeof input.focus === "function"
-        ) {
-            input.focus();
-            input.select?.();
-        }
-    }
 }
 
 export function renderComponentTree() {

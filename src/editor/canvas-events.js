@@ -4,7 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isIdleForEditing } from "./annotation-tool.js";
-import { handleCanvasClick, openDimensionEditorFor, syncSelectionInteraction } from "./canvas-click.js";
+import { handleCanvasClick, openDimensionEditorFor, openNoteEditorFor, syncSelectionInteraction } from "./canvas-click.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
 import { isConstructionTool } from "./construction-tools.js";
@@ -77,7 +77,7 @@ export function installCanvasEvents() {
                         );
 
                     /*
-                     * A DIMENSION MUST ALREADY BE SELECTED.
+                     * A DIMENSION OR ANNOTATION MUST ALREADY BE SELECTED.
                      *
                      * Selecting it and editing it are two different
                      * acts, and the second one has to be asked for
@@ -101,13 +101,20 @@ export function installCanvasEvents() {
                      * placing this dimension and is now working ON
                      * it, rather than still putting it there.
                      *
-                     * A click on an UNSELECTED dimension therefore
-                     * only selects it, exactly as a click on any
-                     * other feature does, and the second double-click
-                     * opens the editor.
+                     * THE GUARD NAMES ANNOTATIONS TOO. It used to
+                     * name dimensions only, so a double-click on an
+                     * unselected annotation fell through to the
+                     * branch below - which stopped the event and
+                     * opened no editor, leaving an empty note with
+                     * no way to write in it. An annotation is placed
+                     * and then written into, and the same two-act
+                     * distinction applies, so a click on an
+                     * UNSELECTED one only selects it and the second
+                     * double-click opens the editor.
                      */
                     if (
-                        pointed?.type === "dimension" &&
+                        (pointed?.type === "dimension" ||
+                         pointed?.type === "annotation") &&
                         !drawingState.selection
                             .selectedObjectIds.includes(
                                 pointed.id
@@ -130,8 +137,19 @@ export function installCanvasEvents() {
                         event.preventDefault();
                         event.stopPropagation();
 
+                        /*
+                         * The annotation's editor is the note editor.
+                         * openNoteEditorFor refuses a GENERATED
+                         * annotation, whose text is not writable, and
+                         * returns false for one - the double-click is
+                         * then swallowed rather than reinterpreted,
+                         * which is the honest outcome for a thing that
+                         * cannot be opened.
+                         */
                         if (pointed.type === "dimension") {
                             openDimensionEditorFor(pointed);
+                        } else {
+                            openNoteEditorFor(pointed);
                         }
 
                         return;

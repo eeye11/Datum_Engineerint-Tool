@@ -6,6 +6,7 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggCreationDimension from "../features/dimensions/creation-dimension.js";
 import enggPlotEditor from "../ui/editors/plot-editor.js";
 import enggSketchEditor from "../ui/editors/sketch-editor.js";
+import enggNoteEditor from "../ui/editors/note-editor.js";
 import { drawToolDefinitions } from "./tools.js";
 import { cycleAnnotationKind } from "./annotation-tool.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
@@ -325,6 +326,18 @@ export function installKeyboardShortcuts() {
                 }
                 if (
                     enggSketchEditor?.handleEscape?.()
+                ) {
+                    return;
+                }
+
+                /*
+                 * THE NOTE EDITOR ESCAPES TOO. It is the same kind of
+                 * dialog as the others - it owns Escape while it is
+                 * open - so it is offered the key the same way, after
+                 * the sketch editor and before the plot editor.
+                 */
+                if (
+                    enggNoteEditor?.handleEscape?.()
                 ) {
                     return;
                 }

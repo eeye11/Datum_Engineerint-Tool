@@ -39,3 +39,31 @@ golden-master scenario in `tests/e2e/`.
 
 The last three were run once, during the restructure, and are kept as the
 record of exactly how it was done.
+
+## `dev/` — one-off diagnostics
+
+Small scripts written while chasing a specific defect, kept because they are
+the fastest way back into the same corner. Each reaches the real modules
+(usually through `tests/harness-renderer.cjs`) and prints what it finds, so
+none of them asserts anything and none is part of the suite.
+
+| Script                       | What it answers                                          |
+| ---------------------------- | -------------------------------------------------------- |
+| `trace-length-pipeline.mjs`  | Where a length is converted, step by step                 |
+| `audit-statics-bounds.cjs`   | Whether Statics geometry sits inside its own bounds       |
+| `probe-support-*.cjs`        | How a support attaches, and where it lands                |
+| `fix-support-*.cjs`          | One-off rewrites from the support-placement work          |
+| `show-support-*.cjs`         | Which branch draws a given support symbol                 |
+| `inspect-*.mjs`              | What a panel or a print SVG actually contains             |
+| `check*.cjs`, `list-types.cjs` | Marker and feature-type sanity checks                    |
+| `eol-diag.cjs`               | Line-ending differences that break a patch                |
+| `find-*.cjs`                 | Locating the code that handles a given construct          |
+| `patch-file.mjs`             | Applies a targeted edit to a file                         |
+| `show-callsites.cjs`         | Who calls a function                                      |
+
+They are development scratch, not tooling the application depends on: nothing
+in `src/` imports them and the build never sees them. Run one directly, e.g.
+
+```bash
+node tools/dev/trace-length-pipeline.mjs
+```

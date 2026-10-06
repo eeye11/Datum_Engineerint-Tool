@@ -15,7 +15,7 @@ import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { activeSheet, loadSheetIntoEditor, notifyReferences, refreshSheetTabs, sheetById, syncActiveSheet, syncWorkspaceSettingToggles } from "./sheet-controller.js";
 import { setToolMessage } from "./toolbar-render.js";
-import { renderedBounds } from "./viewport.js";
+import { renderedBounds, isFittableObject, renderableBoundsOf } from "./viewport.js";
 import { emitDatumEvent } from "../api/events.js";
 
 /*
@@ -533,85 +533,211 @@ function renderSheetImageBlob(formatId) {
 /*
  * Print the drawing.
  *
- * Print uses the same clean render as the image exports, for the
- * same reasons: the printed page must contain the DRAWING, not a
- * photograph of the application. The browser's own print dialog is
- * then given an image that has already been fitted to the drawing's
- * bounds, so what comes out cannot be cropped by the current zoom
- * or by the size of the editor window.
+ * Print and Fit are the same question about the same drawing: what is
+ * on the sheet, and how big is it? So Print does not carry its own
+ * answer. It asks the same bounds calculation Fit uses - the fittable
+ * features of the active sheet, measured as DRAWN rather than as
+ * stored - and fits them with the SAME shared fit engine
+ * (`fitBoundsIntoViewport`) rather than a private one, so the two
+ * can never disagree about what the drawing contains or how it is
+ * framed. Whatever Fit would show, Print prints.
+ *
+ * The fitted drawing is then rendered clean by the shared export
+ * pipeline - no panels, no cursor, no selection handles, no snap
+ * markers, no unfinished preview - and handed to the browser's own
+ * print dialog as an SVG page. SVG rather than a raster image is what
+ * keeps the print independent of zoom, window size and device pixel
+ * ratio: the page is described in its own coordinates and scaled by
+ * the printer.
+ *
+ * Nothing about the editor is changed: the camera, selection,
+ * interaction and undo history are exactly as they were afterwards.
  */
 function printDrawing() {
+    /*
+     * The same features Fit Whole Page would act on: every visible
+     * object on the ACTIVE SHEET. Hidden features are excluded by the
+     * same predicate Fit uses, so a feature the student has turned off
+     * does not silently reappear on paper - and a sheet whose features
+     * are all hidden is answered as the empty sheet it effectively is,
+     * rather than printing nothing or failing.
+     */
+    const fittableObjects =
+        drawingState.objects.filter(
+            isFittableObject
+        );
+
     if (
-        !drawingState.objects.length
+        !fittableObjects.length
     ) {
         setToolMessage(
-            "There is nothing to print"
+            drawingState.objects.length
+                ? "Every feature on this sheet is hidden, so there is nothing to print"
+                : "There is nothing to print"
         );
 
         return;
     }
 
-    const image =
-        enggDrawingExport.renderImage(
+    /*
+     * THE BOUNDS FIT WOULD USE.
+     *
+     * `renderableBoundsOf` is the Fit module's own measurement of the
+     * features' drawn extent, and `fitBoundsIntoViewport` is the shared
+     * fit engine both Fit and the exports already go through. Print
+     * asks them rather than measuring anything itself, so it cannot
+     * crop what Fit shows, or include what Fit does not.
+     */
+    const bounds =
+        renderableBoundsOf(fittableObjects);
+
+    const camera =
+        enggDrawingExport.fitBoundsIntoViewport(
+            bounds,
+            enggDrawingExport.PRINT_PAGE_PX
+        );
+
+    if (!camera) {
+        setToolMessage(
+            "Nothing to print on this sheet"
+        );
+
+        return;
+    }
+
+    /*
+     * The padded world rectangle that corresponds to that fit, which
+     * is what the clean renderer needs to lay out the page. The margin
+     * ratio is the fit engine's own, so the whitespace printed is the
+     * whitespace a Fit would leave - the drawing inset from the page
+     * edge, not touching it and not lost in the middle.
+     */
+    const padded =
+        enggDrawingExport.paddedBounds(
+            [
+                {
+                    x: bounds.minX,
+                    y: bounds.minY
+                },
+                {
+                    x: bounds.maxX,
+                    y: bounds.maxY
+                }
+            ],
+            enggDrawingExport.PRINT_PAGE_PX.width,
+            enggDrawingExport.PRINT_PAGE_PX.height
+        );
+
+    if (!padded) {
+        return;
+    }
+
+    /*
+     * The clean render sets the camera itself from the padded bounds
+     * and restores the editor's camera afterwards, so no separate
+     * camera bookkeeping is needed here.
+     */
+    const svg =
+        enggDrawingExport.renderClean(
             drawingState,
-            drawnBoundsPoints(),
-            {
-                width: enggDrawingExport.DEFAULT_OUTPUT_PX,
-                background: "#ffffff"
-            }
-        );
-
-    if (!image) {
-        return;
-    }
-
-    const dataUrl =
-        image.canvas.toDataURL(
-            "image/png"
+            padded
         );
 
     /*
-     * A window holding only the rendered drawing. It is opened with
-     * no toolbars or chrome, and its document is the image, so the
-     * system print dialog describes a page containing the drawing
-     * alone. The editor is untouched behind it and the window
-     * closes itself once printing is done.
+     * A null here means the render genuinely failed - reported as
+     * such rather than showing an empty page and calling it printed.
      */
-    const printWindow =
-        window.open("", "_blank");
-
-    if (!printWindow) {
+    if (!svg) {
         setToolMessage(
-            "Allow pop-ups to print the drawing"
+            "The drawing could not be prepared for printing"
         );
 
         return;
     }
 
-    printWindow.document.write(
-        `<!DOCTYPE html><html><head><title>Print</title>` +
-        `<style>` +
-        `html,body{margin:0;padding:0;background:#fff;}` +
-        `img{display:block;width:100%;height:auto;}` +
-        `@page{margin:10mm;}` +
-        `</style></head><body>` +
-        `<img src="${dataUrl}" alt="Drawing">` +
-        `</body></html>`
+    /*
+     * PRINT IN PLACE, NOT IN A SECOND WINDOW.
+     *
+     * The rendered drawing is added to THIS document, and a print-only
+     * stylesheet hides everything except it for the duration of the
+     * print pass. The browser's print dialog therefore describes a page
+     * containing the drawing alone, while the user stays in the editor
+     * they were working in - no pop-up, no second window, and no popup
+     * permission to ask for.
+     *
+     * The host carries the print rule inline rather than relying on the
+     * app's CSS, so the behaviour does not depend on which stylesheets
+     * happen to be loaded.
+     */
+    const PRINT_HOST_ID = "drawing-print-host";
+
+    const previousHost =
+        document.getElementById(PRINT_HOST_ID);
+
+    if (previousHost) {
+        previousHost.remove();
+    }
+
+    const host = document.createElement("div");
+
+    host.id = PRINT_HOST_ID;
+
+    host.appendChild(svg);
+
+    document.body.appendChild(host);
+
+    const style = document.createElement("style");
+
+    style.id = "drawing-print-style";
+
+    style.textContent = `
+        @media print {
+            body > *:not(#${PRINT_HOST_ID}) {
+                display: none !important;
+            }
+
+            #${PRINT_HOST_ID} {
+                display: block !important;
+                margin: 0;
+                padding: 0;
+            }
+
+            #${PRINT_HOST_ID} svg {
+                width: 100%;
+                height: auto;
+            }
+
+            @page {
+                margin: 10mm;
+            }
+        }
+    `;
+
+    document.head.appendChild(style);
+
+    /*
+     * The print pass is transient. Whether the user prints or cancels,
+     * the editor returns to exactly what it was: the host and the print
+     * stylesheet are removed once printing has finished, and a safety
+     * timeout catches browsers that do not fire `afterprint`.
+     */
+    const cleanup = () => {
+        host.remove();
+        style.remove();
+    };
+
+    window.addEventListener(
+        "afterprint",
+        cleanup,
+        { once: true }
     );
 
-    printWindow.document.close();
+    setTimeout(cleanup, 60000);
 
-    /*
-     * The image has to be laid out before print is called, or the
-     * page is still empty when the dialog reads it.
-     */
-    printWindow.addEventListener("load", () => {
-        printWindow.focus();
-        printWindow.print();
-    });
+    window.print();
 
     setToolMessage(
-        "Prepared the drawing for printing"
+        "Prepared the fitted drawing for printing"
     );
 }
 

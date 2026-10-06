@@ -22,14 +22,25 @@ Thumbs.db
 shots/
 qa-shot.png
 *.png.tmp
+# A screenshot written to the repository root by an ad-hoc QA run.
+/file-test.png
 
 # Scratch output from ad-hoc QA runs
+#
+# Test output captured to a file, and one-off diagnostic scripts written
+# beside the real tests, both lived at the repository root and in tests/ and
+# were committed by accident. They are regenerable and never referenced by
+# the build or the suite, so they are ignored by SHAPE rather than by name -
+# a list of names only ever covers the dumps somebody remembered to add.
 *.tmp
-pc.txt
-pl.txt
-sb.txt
-z.txt
-ui.txt
+*.txt
+
+# Diagnostic scripts: `_`-prefixed and `tmp-`-prefixed files in tests/.
+# The real suite is `*.test.cjs`; these are throwaway probes that were never
+# meant to run as part of it.
+tests/_*
+tests/tmp-*
+tests/*.png
 
 # Build output
 dist/

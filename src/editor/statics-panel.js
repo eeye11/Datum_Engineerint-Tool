@@ -3,6 +3,7 @@
  */
 
 import enggBodyFrames from "../core/geometry/body-frames.js";
+import enggDimensions from "../core/scale/dimensions.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
@@ -67,7 +68,7 @@ export function staticsDisplayMarkup(object) {
                     data-statics-vector-custom
                     aria-label="Custom vector scale"
                     value="${isListed ? current : current}">
-                <span class="drawing-property-unit">×</span>
+                <span class="drawing-property-unit">Ã—</span>
                 <button type="button"
                     class="drawing-property-action"
                     data-statics-vector-apply>Apply</button>
@@ -93,7 +94,7 @@ export function staticsDisplayMarkup(object) {
                                     ? ""
                                     : " selected"
                             }
-                        >Custom…</option>
+                        >Customâ€¦</option>
                     </select>
                 </span>
             </div>
@@ -259,7 +260,7 @@ export function annotationSectionMarkup(
  * box can be produced - and a second list would be a second answer.
  *
  * That is not hypothetical. The first version of this named
- * "distributed-load" and "applied-moment"; Datum's features are called "load"
+ * "distributed-load" and "moment"; Datum's features are called "load"
  * and "moment", so the list matched nothing at all and the section was
  * offered to no feature whatsoever while looking entirely correct.
  *
@@ -746,9 +747,11 @@ export function analysisPanelRows(
                         range &&
                         Number.isFinite(Number(range.from)) &&
                         Number.isFinite(Number(range.to))
-                        ? `${number(range.from)} → ${
-                            number(range.to)
-                        } mm`
+                        ? `${number(
+                            enggDimensions.toEngineering(drawingState, range.from).value,
+                        )} → ${number(
+                            enggDimensions.toEngineering(drawingState, range.to).value,
+                        )} ${enggDimensions.toEngineering(drawingState, range.to).unit}`
                         : "No source body"
                 )
             );
@@ -807,9 +810,11 @@ export function analysisPanelRows(
                         range &&
                         Number.isFinite(Number(range.from)) &&
                         Number.isFinite(Number(range.to))
-                        ? `${number(range.from)} → ${
-                            number(range.to)
-                        } mm`
+                        ? `${number(
+                            enggDimensions.toEngineering(drawingState, range.from).value,
+                        )} → ${number(
+                            enggDimensions.toEngineering(drawingState, range.to).value,
+                        )} ${enggDimensions.toEngineering(drawingState, range.to).unit}`
                         : "No source body"
                 )
             );
@@ -1316,13 +1321,14 @@ export function supportPanelRows(
 /*
  * The Features panel for a Distributed Load.
  *
- * A distributed load is one continuous load, so this panel shows
- * the things that define it rather than the arrows it draws:
- * the body it acts on, the one direction all of its arrows share,
- * the magnitude and position of each point that shapes the
- * profile, and the interval those arrows are sampled at.
+ * A distributed load is ONE continuous load. Its panel therefore carries
+ * ONE magnitude: the uniform intensity of the entire loaded region. The
+ * Start and End fields locate that region; they are not two independent
+ * load intensities, and the panel must never present them as such. The
+ * renderer may draw many arrows across the region, but every arrow
+ * represents the same single magnitude.
  *
- * Editing any of them writes to the same model the renderer
+ * Editing any of these writes to the same model the renderer
  * reads, so the change is visible at once and the load keeps its
  * identity throughout.
  */
@@ -1348,6 +1354,42 @@ export function distributedLoadPanelMarkup(
                 ? Number(value).toFixed(2)
                 : "";
 
+    /*
+     * THE ONE MAGNITUDE, AND ITS UNKNOWN STATE.
+     *
+     * The magnitude is a normal feature property of the load, not an
+     * annotation setting, so it sits in the load's own panel with the `?`
+     * Unknown control beside it â€” the same control every other
+     * magnitude-bearing field uses.
+     *
+     * UNKNOWN IS BLANK, NOT ZERO. A load whose magnitude is marked unknown
+     * has no authoritative intensity yet; an empty field states that
+     * honestly, while a zero would assert a load that does not push at
+     * all. The two are separate states.
+     */
+    const known = key =>
+        object.unknownValues?.[key] !== true;
+
+    const knownBox = (key, label) => `
+        <button type="button"
+            class="drawing-property-known${known(key) ? "" : " unknown"}"
+            data-known="${key}"
+            aria-pressed="${!known(key)}"
+            aria-label="Mark ${label} as unknown"
+            title="Unknown: ${label} is not specified">
+            ?
+        </button>
+    `;
+
+    const isMagnitudeUnknown = !known("magnitude");
+
+    /*
+     * The stored intensity lives on the geometry; the unknown flag lives on
+     * the feature. One uniform value for the whole loaded region.
+     */
+    const magnitudeValue =
+        isMagnitudeUnknown ? "" : geometry.intensity;
+
     const rows = [];
 
     rows.push(section("LOADED BODY"));
@@ -1361,24 +1403,38 @@ export function distributedLoadPanelMarkup(
     /*
      * THE LOADED REGION AND NOTHING ELSE.
      *
-     * The four absolute coordinates that used to follow are gone: Start X,
-     * Start Y, End X and End Y. The two X values were already the
-     * load's stations wearing the wrong labels, and they are now stated as
-     * stations in `relativeCoordinateRows` above - where they belong,
-     * because they are distances along the member rather than coordinates
-     * on the sheet.
-     *
-     * The two Y values are not a setting at all. They are the heights of
-     * the load's own outline, and storing them independently of the
-     * direction is what let a reversed load keep its outline on the
-     * original side of the beam: the arrows turned over and the outline
-     * stayed, so the drawing showed a load pushing from underneath a
-     * region drawn above it. The height now follows from the body and the
-     * direction, and there is no field in which it can be got wrong.
-     *
-     * A load is therefore positioned by its two stations and its direction,
-     * and by nothing else - which is the whole of what it is.
+     * The Start and End fields above locate the region the load acts over.
+     * They do not carry intensities: there is one magnitude for the entire
+     * region, shown below.
      */
+
+    /*
+     * ONE MAGNITUDE FOR THE ENTIRE LOADED REGION.
+     *
+     * This is a single uniform distributed load. Start + End + Magnitude +
+     * Direction together define one continuous uniform load; the arrows the
+     * renderer draws across the region are the visual representation of this
+     * one value, not separate loads.
+     *
+     * The field routes through the standard data-property path with key
+     * "magnitude", and the `?` control beside it marks the value unknown.
+     * When unknown the field is blank â€” never zero.
+     */
+    rows.push(`
+        <div class="drawing-property-grid drawing-property-grid-value${isMagnitudeUnknown ? " drawing-property-unknown" : ""}">
+            <span class="drawing-property-grid-label">Magnitude</span>
+            ${
+                isMagnitudeUnknown
+                    ? `<span class="drawing-property-readonly"></span>`
+                    : `<input type="number" step="any"
+                        data-property="magnitude"
+                        aria-label="Magnitude"
+                        value="${number(magnitudeValue)}">`
+            }
+            <span class="drawing-property-unit">N/mm${knownBox("magnitude", "Magnitude")}</span>
+            <span></span>
+        </div>
+    `);
 
     rows.push(section("FORCE"));
     rows.push(
@@ -1398,75 +1454,6 @@ export function distributedLoadPanelMarkup(
             "mm"
         )
     );
-
-    const points =
-        enggLoadProfile
-            .profilePointPositions(geometry);
-
-    rows.push(section("DISTRIBUTION"));
-
-    /*
-     * WHETHER THE LOAD INTENSITY IS WRITTEN BESIDE THE LOAD.
-     *
-     * Added before the early return below, because a load whose profile has
-     * no points yet still has an intensity and still deserves the control -
-     * otherwise the section would appear and disappear as the profile gained
-     * points, which reads as the panel being broken rather than as the load
-     * being incomplete.
-     */
-    const annotation =
-        annotationSectionMarkup(
-            object,
-            MAGNITUDE_BEARING_TYPES
-        );
-
-    if (annotation) {
-        rows.push(annotation);
-    }
-
-    if (!points.length) {
-        rows.push(`
-            <div class="drawing-property-grid drawing-property-grid-value">
-                <span class="drawing-property-grid-label">Magnitude</span>
-                <span class="drawing-property-readonly">${number(0)}</span>
-                <span class="drawing-property-unit">N/mm</span>
-                <span></span>
-            </div>
-        `);
-
-        return rows.join("");
-    }
-
-    rows.push(`
-        <div class="drawing-property-grid drawing-property-grid-head">
-            <span></span><span>Magnitude</span><span>Position</span><span></span>
-        </div>
-    `);
-
-    points.forEach((point, index) => {
-        /*
-         * `drawing-property-grid-pair`, not `drawing-property-grid`:
-         * this row has a magnitude AND a position, so its unit is the
-         * fourth child. The ordinary grid's fourth track is a fixed 14px
-         * Fix-checkbox column, and with no checkbox here the position
-         * input fell into the unit track and was squeezed under its own
-         * stepper.
-         */
-        rows.push(`
-            <div class="drawing-property-grid drawing-property-grid-pair">
-                <span class="drawing-property-grid-label">Point ${index + 1}</span>
-                <input type="number" step="any"
-                    data-property="loadPoint.${index}.magnitude"
-                    aria-label="Point ${index + 1} Magnitude"
-                    value="${number(point.magnitude)}">
-                <input type="number" step="any"
-                    data-property="loadPoint.${index}.t"
-                    aria-label="Point ${index + 1} Position"
-                    value="${number(point.t * 100)}">
-                <span class="drawing-property-unit">N/mm</span>
-            </div>
-        `);
-    });
 
     return rows.join("");
 }

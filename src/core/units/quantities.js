@@ -66,6 +66,42 @@ const LENGTH_UNITS = {
 const DEFAULT_LENGTH_UNIT = "mm";
 
 /*
+ * THE TORQUE UNITS THE DOCUMENT UNDERSTANDS.
+ *
+ * Every one is defined against the newton-metre, so converting
+ * between them is exact and cannot accumulate the way repeated
+ * multiplication would.
+ *
+ * The conversions:
+ *   1 kN·m  = 1000 N·m                       (exact, by definition)
+ *   1 lbf·ft = 1.3558179483314004 N·m        (exact by the international
+ *                                             pound and foot: 4.4482216152605 N
+ *                                             × 0.3048 m)
+ */
+const TORQUE_UNITS = {
+  "N·m": { label: "N·m", Nm: 1 },
+  "kN·m": { label: "kN·m", Nm: 1000 },
+  /*
+   * WRITTEN AS THE PRODUCT, NOT AS ITS EXPANSION.
+   *
+   * The comment above states the derivation - one pound-force times one foot
+   * - and the literal it used to hold was that product already multiplied
+   * out. An IEEE double cannot hold the product exactly, so the expanded
+   * decimal was a slightly different number from the one the comment
+   * describes, and ESLint's `no-loss-of-precision` flagged it for exactly
+   * that reason.
+   *
+   * Multiplying here is not a rounding difference: it is the SAME double the
+   * product produces, and it keeps the code and its explanation saying the
+   * same thing. `4.4482216152605` is the exact conversion of one pound-force
+   * to newtons, which is where the value comes from.
+   */
+  "lbf·ft": { label: "lbf·ft", Nm: 4.4482216152605 * 0.3048 }
+};
+
+const DEFAULT_TORQUE_UNIT = "N·m";
+
+/*
  * THE QUANTITY TYPES, and the unit each one carries.
  *
  * A type rather than a unit per call site, because the unit follows from what
@@ -230,6 +266,8 @@ function isMeasurable(value) {
 const enggQuantities = {
   LENGTH_UNITS,
   DEFAULT_LENGTH_UNIT,
+  TORQUE_UNITS,
+  DEFAULT_TORQUE_UNIT,
 
   number,
   atPrecision,

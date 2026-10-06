@@ -224,7 +224,6 @@ const FEATURES = [
       return shaft;
     }
   ],
-  ["couple", () => factories.couple({ x: 0, y: 0 }, 100, 50, false)],
   ["connection", () => factories.connection({ x: 0, y: 0 }, { x: 60, y: 0 })],
   ["distributed load", () => factories.load({ x: 0, y: 0 }, { x: 100, y: 0 }, 5)],
   [
@@ -340,11 +339,6 @@ const ANNOTATED = [
     "moment",
     "moment-value",
     () => factories.moment({ x: 0, y: 0 }, 500, false)
-  ],
-  [
-    "couple",
-    "moment-value",
-    () => factories.couple({ x: 0, y: 0 }, 100, 50, false)
   ],
   [
     "distributed load",

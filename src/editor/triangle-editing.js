@@ -262,12 +262,37 @@ export function applyTriangleSidesAndAngles(
                     Math.sin(direction)
         };
 
+        /*
+         * THE TWO REMAINING SIDES ARE PASSED IN THE ORDER THE SOLVER READS
+         * THEM, AND THEY WERE THE WRONG WAY ROUND.
+         *
+         * `triangleThirdPoint(first, second, firstSide, secondSide, current)`
+         * places the third point by measuring `firstSide` FROM `first` and
+         * `secondSide` FROM `second`.
+         *
+         * The three sides are, by the labelling `triangleMeasurements` uses:
+         *
+         *     sideA = first -> second
+         *     sideB = second -> third      <- measured from `second`
+         *     sideC = third -> first       <- measured from `first`
+         *
+         * So the side measured from `first` is `sideC` and the one from
+         * `second` is `sideB`. Passing them as (sideB, sideC) therefore
+         * built a triangle whose last two edges were SWAPPED: a side edited
+         * to 200 mm came out on the next edge round, so dimensioning one side
+         * appeared to resize a different one - which is the "it always picks
+         * the wrong side" behaviour a student sees.
+         *
+         * The rebuilt triangle must reproduce the sides it was given, and
+         * these tests assert exactly that: edge 1->2 is sideB and edge 2->0
+         * is sideC.
+         */
         const third =
             triangleThirdPoint(
                 first,
                 second,
-                sideB,
                 sideC,
+                sideB,
                 points[2]
             );
 

@@ -166,7 +166,6 @@ const annotatable = global.window.enggAnnotationModel
   "load",
   "varying-load",
   "moment",
-  "couple",
   "resultant",
   "force-components",
   "pin-support",
@@ -211,30 +210,50 @@ check(
 console.log("\n  AND IT IS OFFERED WHERE IT APPLIES\n");
 
 /*
- * Located by relative position rather than by one big slice: the Point Force
- * block ends where the moment branch begins, and the annotation call has to
- * be inside it. A marker that spans too far would find the call in a
- * neighbouring panel and pass regardless.
+ * Located from the start of the force branch rather than by relative position
+ * within it: the Point Force block ends where the moment branch begins.
+ *
+ * THE POINT FORCE NO LONGER CARRIES THE ANNOTATION SECTION. Its Label is a
+ * feature property now, emitted immediately under Feature Name, and the
+ * drawing-space magnitude annotation still renders per the application's
+ * existing load-display behaviour - it just has no ANNOTATION section in the
+ * Feature Panel. The Resultant keeps the section, so the section itself is
+ * still asserted below, against the panel that has it.
  */
 const forcePanel = code.slice(
-  code.indexOf("data-force-reverse-direction"),
+  code.indexOf('} else if (object.type === "force")'),
   code.indexOf('} else if (object.type === "moment")'),
 );
 
 check(
-  "the Point Force panel shows it",
-  /annotationSectionMarkup\(\s*object,\s*MAGNITUDE_BEARING_TYPES\s*\)/.test(
+  "the Point Force panel carries no ANNOTATION section",
+  !/annotationSectionMarkup\(\s*object,\s*MAGNITUDE_BEARING_TYPES\s*\)/.test(
     forcePanel,
   ),
-  "the force is the commonest magnitude-bearing feature and has no switch",
+  "Label is a feature property, not an annotation-panel property",
 );
 
 check(
-  "the load panel shows it",
+  "and its Label sits before the FORCE section",
+  (() => {
+    const labelAt = forcePanel.indexOf("standalone: true");
+
+    const forceAt = forcePanel.indexOf('section("FORCE")');
+
+    return (
+      labelAt >= 0 &&
+      forceAt > labelAt
+    );
+  })(),
+  "Label must be the first property area after Feature Name",
+);
+
+check(
+  "the Resultant panel still shows the section",
   /annotationSectionMarkup\(\s*object,\s*MAGNITUDE_BEARING_TYPES\s*\)/.test(
     code,
   ),
-  "a load carries an intensity and has no switch",
+  "the section survives where a feature still offers it",
 );
 
 console.log("\n  AND A CLICK IS WRITTEN BACK PROPERLY\n");

@@ -41,8 +41,7 @@ const TOOLS = [
     ["STATICS", "load", "distributed-load", "beam", ["c:0.45,0.6", "c:0.3,0.6", "c:0.6,0.6", "type:25", "Enter", "c:0.45,0.4"]],
     /* body -> one magnitude-defining point per click, off the beam -> Enter */
     ["STATICS", "load", "varying-distributed-load", "beam", ["c:0.3,0.6", "c:0.3,0.45", "c:0.5,0.4", "c:0.65,0.5", "Enter"]],
-    ["STATICS", "moment", "applied-moment", "beam"],
-    ["STATICS", "moment", "couple", "beam"],
+    ["STATICS", "moment", "beam"],
     ["STATICS", "support", "pin-support", "beam", ["c:0.4,0.6", "c:0.25,0.6"]],
     ["STATICS", "support", "roller-support", "beam", ["c:0.4,0.6", "c:0.25,0.6"]],
     ["STATICS", "support", "fixed-support", "beam", ["c:0.4,0.6", "c:0.25,0.6"]],

@@ -30,6 +30,21 @@ import { STATICS_BODY_TYPES, isConnectionType, isSupportType } from "../core/mod
  * looked the same as a request to edit it.
  */
 /*
+ * A LENGTH THE STUDENT TYPED, IN MILLIMETRES, AS WORLD UNITS.
+ *
+ * This is the INPUT direction of the one conversion: the panel shows and
+ * accepts physical millimetres, the geometry stores world units, and the
+ * document's World Scale relates them. `updateFeatureProperty` is the single
+ * caller that writes it into geometry, so a coordinate and a Length cannot
+ * end up converted differently.
+ */
+export function worldLengthOf(typed, unit = "mm") {
+    return enggDimensions?.fromEngineering
+        ? enggDimensions.fromEngineering(drawingState, typed, unit)
+        : typed;
+}
+
+/*
  * A stored length, in MILLIMETRES, for a panel field captioned with
  * a unit.
  *
@@ -677,21 +692,13 @@ function manipulationHandles(
 
     /*
      * An applied moment turns about its application point, so
-     * that point is its handle. A Couple Moment turns about its
-     * position in exactly the same way, so it has the SAME single
-     * handle.
+     * that point is its handle.
      *
-     * The couple used to carry a second handle that dragged its two
-     * lines of action apart. It is gone with the shape: the curved
-     * arrow has no spacing to adjust, and a handle that edited a
-     * presentation distance would have let a student change the
-     * drawing without changing the moment. Both are now dragged by
-     * click-and-drag or by their position handle, which moves the
+     * It is dragged by click-and-drag or by its position handle, which moves the
      * moment and changes nothing else about it.
      */
     if (
-        object.type === "moment" ||
-        object.type === "couple"
+        object.type === "moment"
     ) {
         return [
                 {
@@ -931,15 +938,15 @@ const CONSTRUCTION_ACTIVE_PHASES = [
     "statics-attach",
 
     /*
-     * The four steps of a distributed load. Each is listed because each
+     * The three steps of a distributed load. Each is listed because each
      * already holds something the student chose - the body, the start, the
      * region - so a click continues the construction rather than beginning
-     * a new one.
+     * a new one. The vector step is the drag that fixes magnitude AND
+     * direction together; the old magnitude and direction steps are gone.
      */
     "distributed-load-start",
     "distributed-load-end",
-    "distributed-load-magnitude",
-    "distributed-load-direction",
+    "distributed-load-vector",
 
     "distributed-load-build",
     "distributed-load-span",

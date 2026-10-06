@@ -9,7 +9,7 @@
  *
  * A LINE TYPE DESCRIBES A STROKE, and these features are not strokes.
  *
- * A MOMENT is a curved arrow and a COUPLE is a pair of them. A SUPPORT is
+ * A MOMENT is a curved arrow. A SUPPORT is
  * a symbol - hatching, rollers, a fixed base - assembled from several
  * short marks of different kinds. A CONNECTION is a joint. None of them is
  * drawn as one continuous line, so "Dashed" or "Centre" has no meaning to
@@ -35,7 +35,6 @@
  */
 const FEATURES_WITHOUT_A_LINE_TYPE = new Set([
     "moment",
-    "couple",
     "pin-support",
     "roller-support",
     "fixed-support",

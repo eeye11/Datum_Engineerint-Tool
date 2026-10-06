@@ -99,7 +99,6 @@ export const toolIcons = {
 	"Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 5h16M6 6v7M10 6v7M14 6v7M6 10.5l-2 3h4zM10 10.5l-2 3h4zM14 10.5l-2 3h4z"/>`),
 	"Varying Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 5h16M3 6l2 4M7 6l2 7M10 6l2 10M13 6l2 7M17 6l2 4"/>`),
 	"Applied Moment": drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 5.6a4.4 4.4 0 0 1 3.7 2"/><path ${iconStroke} d="M10 14.4a4.4 4.4 0 0 1-3.7-2"/><path ${iconStroke} d="M12.6 5.2l3 1.7-1.7 3"/><path ${iconStroke} d="M7.4 14.8l-3-1.7 1.7-3"/>`),
-	Couple: drawingIcon(`<circle ${iconStroke} cx="5" cy="4" r="1.4"/><circle ${iconStroke} cx="15" cy="16" r="1.4"/><path ${iconStroke} d="M5 5.4v6.6M5 9l-2.6 3.2h5.2zM15 14.6V8M15 11l-2.6-3.2h5.2z"/><path ${iconStroke} d="M7.5 11.5h5"/>`),
 	"Pin Support": drawingIcon(`<path ${iconStroke} d="M4 14h12M7 14l3-6 3 6"/><path ${iconStroke} d="M4 17h12"/><circle ${iconStroke} cx="10" cy="9" r="1.6"/>`),
 	"Roller Support": drawingIcon(`<path ${iconStroke} d="M5 11h10M7 11l3-6 3 6"/><circle ${iconStroke} cx="7" cy="13.5" r="1.5"/><circle ${iconStroke} cx="13" cy="13.5" r="1.5"/><path ${iconStroke} d="M4 17h12"/>`),
 	"Fixed Support": drawingIcon(`<path ${iconStroke} d="M8 3v12M8 15h6"/><path ${iconStroke} d="M8 15l-2.5 3M8 15l2.5 3"/><path ${iconStroke} d="M4 3v12M8 6h4M8 9h4M8 12h4"/>`),
@@ -255,8 +254,7 @@ export const featureIcons = {
 	shaft: toolIcons.Shaft,
 
 	force: toolIcons["Point Force"],
-	moment: toolIcons["Applied Moment"],
-	couple: toolIcons.Couple,
+	moment: toolIcons.Moment,
 
 	load: toolIcons["Distributed Load"],
 	"varying-load": toolIcons["Varying Distributed Load"],
@@ -328,7 +326,7 @@ export const disciplineToolGroups = {
 				{ id: "point-force", label: "Point Force" },
 
 				{ id: "load", label: "Loads", submenu: true },
-				{ id: "moment", label: "Moments", submenu: true },
+				{ id: "moment", label: "Moment" },
 				{ id: "support", label: "Supports", submenu: true },
 				{ id: "connection", label: "Connections", submenu: true }
 			]
@@ -442,7 +440,7 @@ export const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool
 export const engineeringTools = {
 	GEOMETRY: sidebarToolDefinitions.map(tool => tool.label),
 	ANNOTATE: ["Dimension", "Smart Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
-	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Applied Moment", "Couple", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
+	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Moment", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
 	DYNAMICS: ["Particle", "Rigid Body", "Velocity", "Acceleration", "Rotation", "Motion Path"],
 	FLUIDS: ["Pipe", "Reservoir", "Valve", "Pump", "Flow Arrow", "Pressure"],
 	THERMODYNAMICS: ["Control Volume", "System Boundary", "State Point", "Process Path", "Heat Transfer", "Work"],

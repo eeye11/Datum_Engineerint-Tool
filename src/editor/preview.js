@@ -14,7 +14,7 @@ import { isDimensionTool } from "./dimension-tool.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { polygonFromCursor } from "./geometry-creation.js";
-import { LOAD_BUILD_PHASES, constantLoadDraft, distributedLoadDraft, isLoadBuildPhase, isLoadSpanPhase, loadBuildInstruction, loadDirectionUnderPointer } from "./load-tool.js";
+import { LOAD_BUILD_PHASES, constantLoadDraft, distributedLoadDirectionCursor, distributedLoadDraft, isLoadBuildPhase, isLoadSpanPhase, loadBuildInstruction, loadDirectionUnderPointer } from "./load-tool.js";
 import { constructionFeedbackMessage, inferenceLabel, snapTypeLabel, updateInteractionFeedback } from "./pointer.js";
 import { STATICS_CHILD_TOOLS, STATICS_SPAN_TOOLS, bodyPlacementLocations, isBodyAttachedTool, staticsBodyMessage, staticsSpanInstruction, staticsToolPointCount } from "./statics-tools.js";
 import { isArcTool } from "./tool-menus.js";
@@ -815,14 +815,40 @@ export function updatePreview(
                  * what made the region look decided before the student had
                  * decided it.
                  *
-                 * With a region chosen the arrows appear over THAT region
-                 * and nowhere else, so the selection is visible before the
-                 * magnitude and direction are given.
+                 * Once BOTH ends are placed the region exists, and during the
+                 * vector step the draft also carries the magnitude and the
+                 * direction read from the pointer. So the field of arrows is
+                 * drawn over exactly the region chosen, turning and growing
+                 * with the cursor as it moves - and the arrows shown
+                 * immediately before the click are the arrows committed.
+                 *
+                 * THE CURSOR IS PASSED IN. The vector step is defined by the
+                 * pointer about the region's midpoint, so a draft built
+                 * without one could only ever show the region and not the
+                 * load - which is how the direction came to look fixed to
+                 * the body.
                  */
                 const constant =
                     constantLoadDraft(
                         drawingState.interaction,
-                        null
+                        point,
+
+                        /*
+                         * THE DIRECTION IS READ FROM THE ACTUAL POINTER.
+                         *
+                         * `point` is the resolved construction point, which
+                         * is SNAPPED - near an end of the span it becomes
+                         * that end exactly. Feeding it to the vector made the
+                         * direction swing to the midpoint-to-endpoint diagonal
+                         * as the cursor crossed the span. The direction is
+                         * therefore measured to the raw (or H/V-constrained)
+                         * cursor instead, and it is the same reading the
+                         * commit uses, so the preview is the load that gets
+                         * created.
+                         */
+                        distributedLoadDirectionCursor(
+                            resolution
+                        )
                     );
 
                 /*
@@ -839,10 +865,14 @@ export function updatePreview(
                  *
                  * It is dashed so it is obviously provisional, but its
                  * ARROWS are the real ones: the same span, the same
-                 * intensity, the same arrow count and the same spacing.
+                 * intensity, the same direction, the same arrow count and the
+                 * same spacing.
                  */
+                const magnitude =
+                    Math.max(0, Number(constant?.magnitude) || 0);
+
                 interaction.preview =
-                    constant
+                    constant && magnitude > 0
                         ? {
                             id: "preview-constant-load",
                             type: "load",
@@ -852,23 +882,14 @@ export function updatePreview(
                                 end: constant.end,
 
                                 /*
-                                 * THE PREVIEWED DIRECTION, once the student
-                                 * is choosing one - taken from the pointer,
-                                 * about the midpoint of the region, and not
-                                 * stored. Before that step it is null and the
-                                 * renderer uses its own default, so the
-                                 * student sees the region first and the
-                                 * direction after.
-                                 *
-                                 * Using the pointer's DIRECTION rather than
-                                 * its position is what keeps aiming from
-                                 * moving the load: the origin is the
-                                 * midpoint, and where the pointer is along
-                                 * that line changes nothing but which way
-                                 * the arrows face.
+                                 * THE DIRECTION THE VECTOR CHOSE, in degrees.
+                                 * It is null until the pointer is off the
+                                 * origin; the renderer then falls back to its
+                                 * own default, so the region can be seen
+                                 * before any direction means anything.
                                  */
                                 direction:
-                                    loadDirectionUnderPointer(),
+                                    constant.direction ?? null,
 
                                 /*
                                  * A constant load is the
@@ -883,13 +904,11 @@ export function updatePreview(
                                 points: [
                                     {
                                         t: 0,
-                                        magnitude:
-                                            constant.magnitude
+                                        magnitude
                                     },
                                     {
                                         t: 1,
-                                        magnitude:
-                                            constant.magnitude
+                                        magnitude
                                     }
                                 ]
                             },
@@ -948,10 +967,27 @@ export function updatePreview(
                  * would be committed, including the point the
                  * cursor is currently proposing.
                  */
+                /*
+                 * THE STATION COMES FROM THE RESOLVED POINT; THE DIRECTION
+                 * COMES FROM THE RAW CURSOR.
+                 *
+                 * `resolution.effectiveConstructionPoint` is snapped, which
+                 * is what a load's station wants - a point near the member
+                 * should sit ON it. The DIRECTION must not be snapped: read
+                 * from the snapped point it collapsed to the span endpoint
+                 * whenever the cursor neared an end, which is the strange
+                 * angle this fixes. `distributedLoadDirectionCursor` reads
+                 * the raw (or H/V-constrained) pointer instead, and it is the
+                 * same reading the commit uses - so the preview is the load
+                 * that gets created.
+                 */
                 const draft =
                     distributedLoadDraft(
                         interaction,
-                        point
+                        point,
+                        distributedLoadDirectionCursor(
+                            resolution
+                        )
                     );
 
                 interaction.preview =
@@ -961,6 +997,22 @@ export function updatePreview(
                             type: "load",
 
                             geometry: draft,
+
+                            /*
+                             * MARKED AS THE TOOL THAT IS BUILDING IT, so
+                             * the preview carries the same magnitude
+                             * annotations the committed load will: one per
+                             * defining point. A preview that showed a
+                             * different set of labels to the load it
+                             * becomes would be a preview of a different
+                             * feature.
+                             */
+                            engineering: {
+                                plane: "XY",
+                                discipline: "statics",
+                                staticsType:
+                                    drawingState.activeTool
+                            },
 
                             style: {
                                 stroke:
@@ -1375,7 +1427,6 @@ function staticsPreviewType(
             "load",
             "varying-load",
             "moment",
-            "couple",
             "pin-support",
             "roller-support",
             "fixed-support",

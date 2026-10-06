@@ -3999,11 +3999,47 @@ function resolveConstructionPoint(
     let inferredPoint =
         null;
 
+    /*
+     * ========================================================
+     * A LOAD CAN BE ALIGNED AND SNAPPED AT THE SAME TIME
+     * ========================================================
+     *
+     * What a point of a load is placed RELATIVE TO is the loaded span and the
+     * forces already on it: a point is put level with a span end, or level
+     * with an earlier force so the two are the same magnitude. That is
+     * inference - a horizontal or vertical guide.
+     *
+     * It used to be impossible while the cursor was over the body, because
+     * the body's own geometry answers the snap search first: a midpoint or a
+     * point on the member is found, and the alignment search was only run in
+     * the branch where NO snap was found. So the moment the student moved
+     * along the beam - which is exactly where a load's points go - the guide
+     * could never appear.
+     *
+     * `preferInference` asks for the alignment guide to be considered even
+     * when a snap is available, and it is what a load passes. The alignment
+     * is then taken when it has one, and the snap is kept as the fallback,
+     * so aligning to a span end or a force point works without losing the
+     * snap onto the body.
+     */
+    const preferInference =
+        options.preferInference ===
+        true;
+
     let inference =
-        null;
+        preferInference
+            ? findInferenceCandidate(
+                  rawPoint,
+                  state,
+                  bounds,
+                  options,
+                  candidates
+              )
+            : null;
 
     if (
-        snapCandidate
+        snapCandidate &&
+        !inference
     ) {
         snappedPoint = {
             ...snapCandidate.point
@@ -4013,14 +4049,16 @@ function resolveConstructionPoint(
             ...snapCandidate.point
         };
     } else {
-        inference =
-            findInferenceCandidate(
-                rawPoint,
-                state,
-                bounds,
-                options,
-                candidates
-            );
+        if (!inference) {
+            inference =
+                findInferenceCandidate(
+                    rawPoint,
+                    state,
+                    bounds,
+                    options,
+                    candidates
+                );
+        }
 
         if (inference) {
             inferredPoint = {

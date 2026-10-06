@@ -42,12 +42,17 @@ const DEFAULT_MM_PER_UNIT = 1;
  *
  * All of them are defined against the millimetre, so converting
  * between them is exact and does not accumulate error the way
- * repeated scale multiplication would.
+ * repeated scale multiplication would. Imperial units are defined
+ * the same way - an inch IS 25.4 mm, so it needs no separate
+ * arithmetic path and a sheet calibrated in inches converts to
+ * millimetres by the same single multiplication as every other unit.
  */
 const UNITS = {
   mm: { label: "mm", mm: 1 },
   cm: { label: "cm", mm: 10 },
-  m: { label: "m", mm: 1000 }
+  m: { label: "m", mm: 1000 },
+  in: { label: "in", mm: 25.4 },
+  ft: { label: "ft", mm: 304.8 }
 };
 
 const DEFAULT_UNIT = "mm";
