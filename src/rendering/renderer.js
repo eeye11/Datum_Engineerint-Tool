@@ -6599,13 +6599,19 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
                     if (!box) return;
 
-                    const topLeft = toScreen({ x: box.minX, y: box.minY });
-                    const bottomRight = toScreen({ x: box.maxX, y: box.maxY });
+                    /*
+                     * Screen Y grows DOWNWARD, so the world's minY maps
+                     * to the larger screen Y. The rect is normalized from
+                     * the min of each axis, because a negative width or
+                     * height is not a valid SVG attribute.
+                     */
+                    const cornerA = toScreen({ x: box.minX, y: box.minY });
+                    const cornerB = toScreen({ x: box.maxX, y: box.maxY });
 
-                    const x = topLeft.x - paddingPx;
-                    const y = topLeft.y - paddingPx;
-                    const width = (bottomRight.x - topLeft.x) + paddingPx * 2;
-                    const height = (bottomRight.y - topLeft.y) + paddingPx * 2;
+                    const x = Math.min(cornerA.x, cornerB.x) - paddingPx;
+                    const y = Math.min(cornerA.y, cornerB.y) - paddingPx;
+                    const width = Math.abs(cornerB.x - cornerA.x) + paddingPx * 2;
+                    const height = Math.abs(cornerB.y - cornerA.y) + paddingPx * 2;
 
                     svg.appendChild(createSvgElement("rect", {
                         x,
