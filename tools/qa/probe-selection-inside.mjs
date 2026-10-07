@@ -102,9 +102,7 @@ export default async function run(page) {
     const onTriangleEdge = { x: 200, y: 0 };
 
     const picked = (point) => {
-      const object = mod.objectAtPoint
-        ? mod.objectAtPoint(point, st)
-        : null;
+      const object = mod.objectAtPoint ? mod.objectAtPoint(point, st) : null;
 
       return object ? object.id : null;
     };

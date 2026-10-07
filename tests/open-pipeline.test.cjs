@@ -1,4 +1,3 @@
-
 const { JSDOM } = require("jsdom");
 
 const path = require("path");
@@ -53,11 +52,9 @@ function makeDocument() {
     { style: {} },
   );
 
-  const circle = state.geometryFactories.circle(
-    { x: 200, y: 50 },
-    25,
-    { style: {} },
-  );
+  const circle = state.geometryFactories.circle({ x: 200, y: 50 }, 25, {
+    style: {},
+  });
 
   const collection = sheets.createCollection();
 
@@ -163,7 +160,10 @@ console.log("\n  save -> open keeps the features\n");
 
   check(
     "and they keep their real types",
-    target.objects.map((o) => o.type).sort().join(",") === "circle,line",
+    target.objects
+      .map((o) => o.type)
+      .sort()
+      .join(",") === "circle,line",
     JSON.stringify(target.objects.map((o) => o.type)),
   );
 }

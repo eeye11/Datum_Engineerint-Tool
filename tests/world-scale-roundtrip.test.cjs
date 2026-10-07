@@ -70,10 +70,7 @@ console.log("\n  a Beam's length round trips through the scale\n");
     beam.geometry.end.y - beam.geometry.start.y,
   );
 
-  check(
-    "the geometry is 100 world units long",
-    close(stored, 100),
-  );
+  check("the geometry is 100 world units long", close(stored, 100));
 
   check(
     "and the panel shows it as 400 mm",
@@ -225,8 +222,7 @@ console.log("\n  recalibrating does not move the geometry\n");
 
   check(
     "the geometry is untouched by the recalibration",
-    beam.geometry.end.x === before.x &&
-      beam.geometry.end.y === before.y,
+    beam.geometry.end.x === before.x && beam.geometry.end.y === before.y,
   );
 
   check(

@@ -14,7 +14,7 @@ export default async function run(page) {
     out.entries.push({
       kind: "requestfailed",
       url: request.url(),
-      error: String(request.failure()?.errorText || "").slice(0, 200)
+      error: String(request.failure()?.errorText || "").slice(0, 200),
     });
   });
 
@@ -26,7 +26,7 @@ export default async function run(page) {
     datum: typeof window.datum,
     enggDrawing: typeof window.enggDrawing,
     enggDrawingState: typeof window.enggDrawingState,
-    mainRan: Boolean(window.datum)
+    mainRan: Boolean(window.datum),
   }));
 
   // Ask the module graph directly whether main.js executes.

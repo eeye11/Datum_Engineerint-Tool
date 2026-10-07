@@ -229,7 +229,11 @@ export default async function run(page) {
     /* One recent, so there is a card to manage. */
     window.enggRecentFiles.remember({
       name: "triangle.enggdraw",
-      document: { units: "mm", sheets: [{ id: "s", objects: [] }], activeSheetId: "s" },
+      document: {
+        units: "mm",
+        sheets: [{ id: "s", objects: [] }],
+        activeSheetId: "s",
+      },
     });
 
     document.querySelector('[data-file-action="open"]').click();

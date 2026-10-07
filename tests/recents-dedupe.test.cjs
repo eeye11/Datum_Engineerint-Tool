@@ -40,7 +40,7 @@ const check = (name, ok, detail) => {
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
-  url: "https://datum.test/"
+  url: "https://datum.test/",
 });
 
 global.window = dom.window;
@@ -51,7 +51,7 @@ const recents = require(modulePath("recent-files.js")).default;
 const doc = (id) => ({
   units: "mm",
   sheets: [{ id, name: "Sheet 1", objects: [{ id: "o", type: "line" }] }],
-  activeSheetId: id
+  activeSheetId: id,
 });
 
 function reset() {

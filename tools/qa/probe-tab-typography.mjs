@@ -22,7 +22,7 @@ export default async function run(page) {
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
         fontFamily: style.fontFamily,
-        colour: style.color
+        colour: style.color,
       };
     });
 
@@ -31,7 +31,7 @@ export default async function run(page) {
     return {
       tabs,
       sameSize: sizes.size === 1,
-      size: [...sizes]
+      size: [...sizes],
     };
   });
 }

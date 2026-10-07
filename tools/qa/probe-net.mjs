@@ -5,14 +5,17 @@ export default async function run(page) {
     if (r.url().includes(".js")) {
       out.failed.push({
         url: r.url().replace("http://localhost:5173", ""),
-        error: String(r.failure()?.errorText || "")
+        error: String(r.failure()?.errorText || ""),
       });
     }
   });
 
   page.on("response", (r) => {
     if (r.url().includes(".js") && r.status() >= 400) {
-      out.failed.push({ url: r.url().replace("http://localhost:5173", ""), status: r.status() });
+      out.failed.push({
+        url: r.url().replace("http://localhost:5173", ""),
+        status: r.status(),
+      });
     }
   });
 
@@ -24,18 +27,18 @@ export default async function run(page) {
       .getEntriesByType("resource")
       .filter((e) => e.name.includes(".js"))
       .map((e) => e.name.replace("http://localhost:5173", ""))
-      .slice(0, 40)
+      .slice(0, 40),
   );
 
   out.scripts = await page.evaluate(() =>
     Array.from(document.querySelectorAll("script[type=module]")).map((s) =>
-      s.getAttribute("src")
-    )
+      s.getAttribute("src"),
+    ),
   );
 
   out.globals = await page.evaluate(() => ({
     datum: typeof window.datum,
-    engg: typeof window.enggDrawing
+    engg: typeof window.enggDrawing,
   }));
 
   return out;

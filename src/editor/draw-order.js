@@ -44,13 +44,9 @@ import { setToolMessage } from "./toolbar-render.js";
  * each other by accident.
  */
 function selectedInOrder() {
-    const selected = new Set(
-        drawingState.selection.selectedObjectIds || []
-    );
+  const selected = new Set(drawingState.selection.selectedObjectIds || []);
 
-    return drawingState.objects.filter(
-        (object) => selected.has(object.id)
-    );
+  return drawingState.objects.filter((object) => selected.has(object.id));
 }
 
 /*
@@ -60,20 +56,14 @@ function selectedInOrder() {
  * front is one Undo step and not one per feature.
  */
 function commitOrder(nextObjects) {
-    const previous =
-        enggDrawingState.snapshotDrawing(
-            drawingState
-        );
+  const previous = enggDrawingState.snapshotDrawing(drawingState);
 
-    drawingState.objects = nextObjects;
+  drawingState.objects = nextObjects;
 
-    enggDrawingState.commitDrawingChange(
-        drawingState,
-        previous
-    );
+  enggDrawingState.commitDrawingChange(drawingState, previous);
 
-    renderProperties();
-    renderCurrentDrawing();
+  renderProperties();
+  renderCurrentDrawing();
 }
 
 /*
@@ -81,54 +71,54 @@ function commitOrder(nextObjects) {
  * order. Everything not selected keeps its order too.
  */
 function bringToFront() {
-    const chosen = selectedInOrder();
+  const chosen = selectedInOrder();
 
-    if (!chosen.length) {
-        return false;
-    }
+  if (!chosen.length) {
+    return false;
+  }
 
-    const chosenIds = new Set(chosen.map((object) => object.id));
+  const chosenIds = new Set(chosen.map((object) => object.id));
 
-    const rest = drawingState.objects.filter(
-        (object) => !chosenIds.has(object.id)
-    );
+  const rest = drawingState.objects.filter(
+    (object) => !chosenIds.has(object.id),
+  );
 
-    commitOrder([...rest, ...chosen]);
+  commitOrder([...rest, ...chosen]);
 
-    setToolMessage(
-        chosen.length === 1
-            ? `Brought ${chosen[0].name} to the front`
-            : `Brought ${chosen.length} features to the front`
-    );
+  setToolMessage(
+    chosen.length === 1
+      ? `Brought ${chosen[0].name} to the front`
+      : `Brought ${chosen.length} features to the front`,
+  );
 
-    return true;
+  return true;
 }
 
 /*
  * Send the selection to the back.
  */
 function sendToBack() {
-    const chosen = selectedInOrder();
+  const chosen = selectedInOrder();
 
-    if (!chosen.length) {
-        return false;
-    }
+  if (!chosen.length) {
+    return false;
+  }
 
-    const chosenIds = new Set(chosen.map((object) => object.id));
+  const chosenIds = new Set(chosen.map((object) => object.id));
 
-    const rest = drawingState.objects.filter(
-        (object) => !chosenIds.has(object.id)
-    );
+  const rest = drawingState.objects.filter(
+    (object) => !chosenIds.has(object.id),
+  );
 
-    commitOrder([...chosen, ...rest]);
+  commitOrder([...chosen, ...rest]);
 
-    setToolMessage(
-        chosen.length === 1
-            ? `Sent ${chosen[0].name} to the back`
-            : `Sent ${chosen.length} features to the back`
-    );
+  setToolMessage(
+    chosen.length === 1
+      ? `Sent ${chosen[0].name} to the back`
+      : `Sent ${chosen.length} features to the back`,
+  );
 
-    return true;
+  return true;
 }
 
 /*
@@ -140,41 +130,41 @@ function sendToBack() {
  * moved, which would make a multi-selection drift rather than keep its order.
  */
 function bringForward() {
-    const chosen = selectedInOrder();
+  const chosen = selectedInOrder();
 
-    if (!chosen.length) {
-        return false;
+  if (!chosen.length) {
+    return false;
+  }
+
+  const chosenIds = new Set(chosen.map((object) => object.id));
+
+  const objects = [...drawingState.objects];
+
+  let moved = false;
+
+  for (let index = objects.length - 2; index >= 0; index -= 1) {
+    const current = objects[index];
+    const above = objects[index + 1];
+
+    if (chosenIds.has(current.id) && !chosenIds.has(above.id)) {
+      objects[index] = above;
+      objects[index + 1] = current;
+
+      moved = true;
     }
+  }
 
-    const chosenIds = new Set(chosen.map((object) => object.id));
+  if (!moved) {
+    setToolMessage("Already at the front");
 
-    const objects = [...drawingState.objects];
+    return false;
+  }
 
-    let moved = false;
+  commitOrder(objects);
 
-    for (let index = objects.length - 2; index >= 0; index -= 1) {
-        const current = objects[index];
-        const above = objects[index + 1];
+  setToolMessage("Brought forward");
 
-        if (chosenIds.has(current.id) && !chosenIds.has(above.id)) {
-            objects[index] = above;
-            objects[index + 1] = current;
-
-            moved = true;
-        }
-    }
-
-    if (!moved) {
-        setToolMessage("Already at the front");
-
-        return false;
-    }
-
-    commitOrder(objects);
-
-    setToolMessage("Brought forward");
-
-    return true;
+  return true;
 }
 
 /*
@@ -182,48 +172,48 @@ function bringForward() {
  * walked from the bottom up for the same reason.
  */
 function sendBackward() {
-    const chosen = selectedInOrder();
+  const chosen = selectedInOrder();
 
-    if (!chosen.length) {
-        return false;
+  if (!chosen.length) {
+    return false;
+  }
+
+  const chosenIds = new Set(chosen.map((object) => object.id));
+
+  const objects = [...drawingState.objects];
+
+  let moved = false;
+
+  for (let index = 1; index < objects.length; index += 1) {
+    const current = objects[index];
+    const below = objects[index - 1];
+
+    if (chosenIds.has(current.id) && !chosenIds.has(below.id)) {
+      objects[index] = below;
+      objects[index - 1] = current;
+
+      moved = true;
     }
+  }
 
-    const chosenIds = new Set(chosen.map((object) => object.id));
+  if (!moved) {
+    setToolMessage("Already at the back");
 
-    const objects = [...drawingState.objects];
+    return false;
+  }
 
-    let moved = false;
+  commitOrder(objects);
 
-    for (let index = 1; index < objects.length; index += 1) {
-        const current = objects[index];
-        const below = objects[index - 1];
+  setToolMessage("Sent backward");
 
-        if (chosenIds.has(current.id) && !chosenIds.has(below.id)) {
-            objects[index] = below;
-            objects[index - 1] = current;
-
-            moved = true;
-        }
-    }
-
-    if (!moved) {
-        setToolMessage("Already at the back");
-
-        return false;
-    }
-
-    commitOrder(objects);
-
-    setToolMessage("Sent backward");
-
-    return true;
+  return true;
 }
 
 const DRAW_ORDER_COMMANDS = {
-    front: bringToFront,
-    forward: bringForward,
-    backward: sendBackward,
-    back: sendToBack
+  front: bringToFront,
+  forward: bringForward,
+  backward: sendBackward,
+  back: sendToBack,
 };
 
 /*
@@ -231,13 +221,13 @@ const DRAW_ORDER_COMMANDS = {
  * can tell "already at the front" from a real reorder.
  */
 export function applyDrawOrder(commandId) {
-    const command = DRAW_ORDER_COMMANDS[commandId];
+  const command = DRAW_ORDER_COMMANDS[commandId];
 
-    if (!command) {
-        return false;
-    }
+  if (!command) {
+    return false;
+  }
 
-    return command();
+  return command();
 }
 
 /*
@@ -248,22 +238,20 @@ export function applyDrawOrder(commandId) {
  * Pan and Move armed. Selecting a feature first is the whole interaction.
  */
 export function installDrawOrderControls() {
-    document
-        .querySelectorAll("[data-draw-order]")
-        .forEach((button) => {
-            button.addEventListener("click", () => {
-                applyDrawOrder(button.dataset.drawOrder);
-            });
-        });
+  document.querySelectorAll("[data-draw-order]").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyDrawOrder(button.dataset.drawOrder);
+    });
+  });
 }
 
 export const enggDrawOrder = {
-    applyDrawOrder,
-    bringForward,
-    bringToFront,
-    installDrawOrderControls,
-    sendBackward,
-    sendToBack
+  applyDrawOrder,
+  bringForward,
+  bringToFront,
+  installDrawOrderControls,
+  sendBackward,
+  sendToBack,
 };
 
 export default enggDrawOrder;

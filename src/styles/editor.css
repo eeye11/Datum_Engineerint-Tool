@@ -166,7 +166,7 @@
 }
 
 .drawing-app-toolbar button[data-global-tool].active {
-    background: var(--cad-active-bg);
+    background: var(--datum-green-tint);
     border-color: var(--cad-active-border);
     box-shadow: 0 0 0 1px var(--cad-active-border) inset;
     color: var(--cad-active-ink);
@@ -179,7 +179,7 @@
 }
 
 .drawing-app-toolbar button[data-global-tool].active:hover {
-    background: var(--cad-active-bg);
+    background: var(--datum-green-tint);
 }
 
 .drawing-global-icon {
@@ -345,7 +345,7 @@
 .drawing-category:hover,
 .drawing-category.active {
     background: var(--datum-green-wash);
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-category.active {
@@ -451,7 +451,7 @@
 }
 
 .drawing-panel-toggle:focus-visible {
-    outline: 2px solid var(--cad-accent);
+    outline: 2px solid var(--datum-green);
     outline-offset: -2px;
 }
 
@@ -790,7 +790,7 @@
 
 .drawing-tool-icon {
     align-items: center;
-    color: var(--cad-accent);
+    color: var(--datum-green);
     display: inline-flex;
 
     /*
@@ -832,7 +832,7 @@
 }
 
 .drawing-tool.active {
-    background: var(--cad-active-bg);
+    background: var(--datum-green-tint);
     border-color: var(--cad-active-border);
     color: var(--cad-active-ink);
     font-weight: 700;
@@ -927,7 +927,7 @@
 }
 
 .drawing-origin {
-    background: var(--cad-accent);
+    background: var(--datum-green);
     border: 2px solid #ffffff;
     border-radius: 50%;
     height: 10px;
@@ -991,7 +991,7 @@
     align-self: flex-start;
     background: transparent;
     border: 0;
-    color: var(--cad-accent);
+    color: var(--datum-green);
     cursor: pointer;
     display: none;
     font-size: 10px;
@@ -1040,7 +1040,7 @@
 }
 
 .drawing-component-row svg {
-    color: var(--cad-accent);
+    color: var(--datum-green);
     height: 15px;
     width: 15px;
 }
@@ -1078,7 +1078,7 @@
 }
 
 .drawing-component-twisty:hover {
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-component-row-child {
@@ -1110,7 +1110,7 @@
 }
 
 .drawing-properties-title {
-    color: var(--cad-accent);
+    color: var(--datum-green);
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -1179,7 +1179,7 @@
 
 .drawing-status-toggle:hover,
 .drawing-status-toggle.active:hover {
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-status-toggle:not(.active) {
@@ -1377,7 +1377,7 @@
 }
 
 .drawing-colour-swatch:hover {
-    border-color: var(--cad-accent);
+    border-color: var(--datum-green);
 }
 
 .drawing-colour-native {
@@ -1420,7 +1420,7 @@
 }
 
 .drawing-colour-cell:hover {
-    border-color: var(--cad-accent);
+    border-color: var(--datum-green);
     transform: scale(1.15);
 }
 
@@ -1454,11 +1454,11 @@
 
 .drawing-colour-action:hover {
     background: #e0eaee;
-    border-color: var(--cad-accent);
+    border-color: var(--datum-green);
 }
 
 .drawing-colour-action.active {
-    background: var(--cad-accent);
+    background: var(--datum-green);
     border-color: #16472b;
     color: #ffffff;
     font-weight: 700;
@@ -1508,13 +1508,13 @@
 }
 
 .drawing-segmented-option:hover {
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-segmented-option.active {
     background: #ffffff;
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
-    color: var(--cad-accent);
+    color: var(--datum-green);
     font-weight: 700;
 }
 
@@ -1802,7 +1802,7 @@
 
 .drawing-number-stepper button:hover {
     background: #dde6ea;
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-number-stepper button:active {
@@ -1893,7 +1893,7 @@
     background: #ffffff;
     border: 1px solid #cbd5d9;
     border-radius: 3px;
-    color: var(--cad-accent);
+    color: var(--datum-green);
     cursor: pointer;
     font: inherit;
     font-size: 9px;
@@ -1904,12 +1904,12 @@
 }
 
 .drawing-property-action:hover {
-    background: var(--cad-active-bg);
-    border-color: var(--cad-accent);
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
 }
 
 .drawing-property-action:active {
-    background: var(--cad-accent);
+    background: var(--datum-green);
     color: #ffffff;
 }
 
@@ -1986,7 +1986,7 @@
 
 .drawing-coordinate-submenu-item.active {
     background: #e4f0ea;
-    color: var(--cad-accent);
+    color: var(--datum-green);
     font-weight: 700;
 }
 
@@ -2058,7 +2058,7 @@
 }
 
 .drawing-context-item:hover:not(:disabled) {
-    background: var(--cad-active-bg);
+    background: var(--datum-green-tint);
 }
 
 .drawing-context-item:disabled {
@@ -2148,7 +2148,7 @@
 }
 
 .drawing-property-known:hover {
-    border-color: var(--cad-accent);
+    border-color: var(--datum-green);
 }
 
 /*
@@ -2321,13 +2321,13 @@
 .drawing-coordinate-submenu-item:hover {
     background: var(--datum-green-wash);
     border-color: var(--datum-green-soft);
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 .drawing-tool[aria-expanded="true"] {
     background: var(--datum-green-wash);
     border-color: var(--datum-green-soft);
-    color: var(--cad-accent);
+    color: var(--datum-green);
 }
 
 /* =========================================================
@@ -2993,18 +2993,26 @@
 }
 
 .engg-dialog-button {
-    background: #f2f6f7;
-    border: 1px solid #cbd4d9;
-    border-radius: 5px;
-    color: var(--datum-ink);
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--datum-green);
     cursor: pointer;
-    font-family: inherit;
-    font-size: 12.5px;
-    padding: 7px 14px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 14px;
 }
 
 .engg-dialog-button:hover {
-    background: #e8eff1;
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.engg-dialog-button:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
 }
 
 .engg-dialog-button-primary {
@@ -3015,6 +3023,7 @@
 
 .engg-dialog-button-primary:hover {
     background: var(--datum-green-hover);
+    border-color: var(--datum-green-hover);
 }
 
 /*
@@ -3043,17 +3052,22 @@
 .engg-context-menu-item {
     background: transparent;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     color: var(--datum-ink);
     cursor: pointer;
-    font-family: inherit;
-    font-size: 12.5px;
-    padding: 7px 10px;
+    font: inherit;
+    font-size: 11px;
+    padding: 6px 10px;
     text-align: left;
 }
 
 .engg-context-menu-item:hover {
-    background: var(--datum-panel);
+    background: var(--datum-green-tint);
+}
+
+.engg-context-menu-item:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: -2px;
 }
 
 .engg-context-menu-item-danger {
@@ -3171,34 +3185,73 @@
     min-width: 0;
 }
 
+/*
+ * THE MENU BUTTON IS A DATUM PANEL BUTTON.
+ *
+ * It is the same control as `.drawing-property-action` - a white button, a thin
+ * border, the accent colour, a 3px radius - so a control in the Open popup and
+ * a control in the Features panel are recognisably the same kind of thing. The
+ * earlier version was a bare grey glyph with no border, which read as decoration
+ * rather than as something to press.
+ *
+ * The `\u22ee` glyph is set at the panel's own type scale rather than at 15px,
+ * and the box is a compact square with the glyph OPTICALLY CENTRED - three dots
+ * sit high in most faces, so nudging the line-height is what stops them looking
+ * adrift in their button.
+ */
 .datum-open-recent-menu,
 .datum-open-template-menu {
     align-items: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--datum-muted);
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--datum-green);
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     flex: 0 0 auto;
-    font-size: 15px;
-    height: 24px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    height: 20px;
     justify-content: center;
     line-height: 1;
-    width: 24px;
+    padding: 0;
+    width: 20px;
 }
 
 .datum-open-recent-menu:hover,
 .datum-open-template-menu:hover {
-    background: var(--datum-panel);
-    border-color: var(--datum-border);
-    color: var(--datum-ink);
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+}
+
+.datum-open-recent-menu:active,
+.datum-open-template-menu:active {
+    background: var(--datum-green);
+    color: #ffffff;
 }
 
 .datum-open-recent-menu:focus-visible,
 .datum-open-template-menu:focus-visible {
     outline: 2px solid var(--datum-green);
     outline-offset: 1px;
+}
+
+/*
+ * THE THREE DOTS, DRAWN RATHER THAN TYPED.
+ *
+ * The `\u22ee` character is absent from some fonts, and a missing glyph is
+ * substituted from a fallback that can be a different size entirely. Three small
+ * circles in an inline SVG are the same mark in every browser, at exactly the
+ * size asked for.
+ */
+.datum-open-recent-menu svg,
+.datum-open-template-menu svg {
+    display: block;
+    fill: currentColor;
+    height: 12px;
+    pointer-events: none;
+    width: 12px;
 }
 
 /*
@@ -3343,57 +3396,54 @@
 }
 
 /*
- * The preview is an SVG of the drawing, scaled to fit the box. Pointers are
- * disabled so the card underneath owns every click - the picture is a label,
- * not a control.
+ * The template menu button's own rules are the shared ones above, next to the
+ * Recent menu's - one control, defined once. The only thing stated here is where
+ * it sits on a card.
  */
-.datum-open-template-preview svg {
-    height: 100%;
-    pointer-events: none;
-    width: 100%;
+.datum-open-template-menu {
+    position: absolute;
+    right: 4px;
+    top: 4px;
 }
 
+/*
+ * The name and the "User template" note, stacked under the preview.
+ */
 .datum-open-template-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
-.datum-open-template-menu {
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: var(--datum-muted);
-    cursor: pointer;
-    font-size: 15px;
-    line-height: 1;
-    padding: 2px 6px;
-    position: absolute;
-    right: 4px;
-    top: 4px;
-}
-
-.datum-open-template-menu:hover {
-    background: rgba(255, 255, 255, 0.9);
-    color: var(--datum-ink);
-}
-
+/*
+ * ADD TEMPLATE IS A DATUM BUTTON, NOT A DASHED OUTLINE.
+ *
+ * It was a dashed box, which reads as a placeholder - "something goes here" -
+ * rather than as a control that does something. It is now the same button as
+ * every other action in the application: white, thin border, accent text, and
+ * the shared hover fill.
+ */
 .datum-open-add-template {
-    background: transparent;
-    border: 1px dashed var(--datum-border);
-    border-radius: 6px;
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
-    font-family: inherit;
-    font-size: 12.5px;
+    font: inherit;
+    font-size: 9px;
     font-weight: 600;
     margin-top: 8px;
-    padding: 7px 12px;
+    padding: 4px 10px;
 }
 
 .datum-open-add-template:hover {
-    background: var(--datum-green-wash);
-    border-color: var(--datum-green-line);
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+}
+
+.datum-open-add-template:active {
+    background: var(--datum-green);
+    color: #ffffff;
 }
 
 .datum-open-add-template:focus-visible {
@@ -3423,26 +3473,187 @@
     gap: 3px;
 }
 
+/*
+ * THE VIEW SWITCH IS A SEGMENTED CONTROL.
+ *
+ * Two buttons, one active: the same idea the force panel's "Magnitude &amp;
+ * Direction / X / Y Components" control uses, so a pair of mutually exclusive
+ * choices looks the same wherever it appears. The ACTIVE one is filled with the
+ * accent tint and the accent border, which is how the segmented control says
+ * which choice is in force.
+ */
 .datum-open-view-button {
-    background: transparent;
-    border: 1px solid var(--datum-border);
-    border-radius: 4px;
-    color: var(--datum-muted);
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--datum-green);
     cursor: pointer;
-    font-size: 13px;
-    line-height: 1;
-    padding: 3px 7px;
+    display: inline-flex;
+    font: inherit;
+    font-size: 9px;
+    height: 20px;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0;
+    width: 24px;
 }
 
 .datum-open-view-button:hover {
-    background: var(--datum-panel);
-    color: var(--datum-ink);
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
 }
 
 .datum-open-view-button.active {
+    background: var(--datum-green);
+    border-color: var(--datum-green);
+    color: #ffffff;
+}
+
+.datum-open-view-button:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+/*
+ * THE VIEW BUTTON'S ICON IS A FIXED SMALL BOX.
+ *
+ * Explicitly sized and clipped, so nothing can make this control grow whatever
+ * it is drawn with.
+ */
+.datum-open-view-button svg {
+    display: block;
+    fill: currentColor;
+    height: 12px;
+    pointer-events: none;
+    width: 12px;
+}
+
+/*
+ * =========================================================
+ * THE SELECT CONTROL AND ITS BULK ACTIONS
+ * =========================================================
+ *
+ * "Select" is the ordinary way into multi-selection, so it is an ordinary Datum
+ * button - the same white, thin-bordered control as Add Template and the menu
+ * buttons, so the row of controls at the head of Recent reads as one family.
+ */
+.datum-open-section-controls {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+}
+
+.datum-open-select-toggle {
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--datum-green);
+    cursor: pointer;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 4px 10px;
+}
+
+.datum-open-select-toggle:hover {
     background: var(--datum-green-tint);
-    border-color: var(--datum-green-line);
-    color: var(--datum-green-ink);
+    border-color: var(--datum-green);
+}
+
+.datum-open-select-toggle:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+/*
+ * The bar that appears while selection mode is on: the count, then the actions.
+ */
+.datum-open-selection-bar {
+    align-items: center;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    border-radius: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+}
+
+.datum-open-selection-count {
+    color: var(--datum-ink);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.datum-open-selection-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.datum-open-selection-action {
+    background: #ffffff;
+    border: 1px solid #cbd5d9;
+    border-radius: 3px;
+    color: var(--datum-green);
+    cursor: pointer;
+    font: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 3px 8px;
+}
+
+.datum-open-selection-action:hover {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+}
+
+/*
+ * A destructive action reads as destructive, in the error colour the rest of the
+ * application uses for one.
+ */
+.datum-open-selection-action-danger {
+    color: var(--datum-error);
+}
+
+.datum-open-selection-action-danger:hover {
+    background: #fdf2f4;
+    border-color: var(--datum-error);
+}
+
+.datum-open-selection-action:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+/*
+ * A ROW'S CHECKBOX, WHILE SELECTING.
+ *
+ * The same control as a property's constraint tick, and it sits in the row's
+ * own leading column so the list stays aligned whether or not it is there.
+ */
+.datum-open-select {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    justify-content: center;
+    padding: 0 2px;
+}
+
+.datum-open-select input {
+    accent-color: var(--datum-green);
+    cursor: pointer;
+    height: 13px;
+    margin: 0;
+    width: 13px;
+}
+
+.datum-open-recent-selected {
+    background: var(--datum-green-wash);
+    border-radius: 4px;
 }
 
 /*
@@ -3474,10 +3685,82 @@
  * disabled so the row underneath owns every click - the picture is a label,
  * not a control.
  */
+/*
+ * =========================================================
+ * A PREVIEW NEVER ESCAPES ITS BOX
+ * =========================================================
+ *
+ * A preview is an SVG string injected into a small square. Three things have to
+ * be true for it to stay there, and the first version of this only had one of
+ * them:
+ *
+ *   1. the BOX clips - `overflow: hidden` - so nothing can be drawn outside it
+ *      even if the SVG inside wants more room;
+ *   2. the SVG is a BLOCK at `width/height: 100%`, so it takes the box's size
+ *      rather than its own `width="160"` attribute. On the default inline
+ *      display a replaced element keeps its intrinsic width, which is how a
+ *      thumbnail came out at its full pixel size inside a 54px box;
+ *   3. `min-width`/`min-height: 0` stop the flex parent from being stretched to
+ *      fit the SVG's intrinsic size instead of the other way round.
+ *
+ * The clip is the guarantee: whatever the stored preview's own dimensions are -
+ * including one written by an older build before previews were fitted - it can
+ * only ever be drawn INSIDE the square it belongs to.
+ */
+/*
+ * THE PREVIEW SVG IS SIZED BY THE BOX, AND CANNOT FALL BACK TO ITS OWN SIZE.
+ *
+ * `height: 100%` is only definite when the PARENT has a definite height. In the
+ * grid the thumbnail is a block with a fixed height, so it worked; in the LIST
+ * the box sits in a flex row whose height is auto, so a percentage height
+ * resolves to `auto` - and the SVG then falls back to its own intrinsic size,
+ * which for a `viewBox` of 0 0 760 460 is the whole drawing. That is exactly the
+ * bug: switching to List put a full-size drawing on the page.
+ *
+ * So the box is given an EXPLICIT pixel size here, and the SVG is absolutely
+ * positioned to fill it. An absolutely positioned child is measured against its
+ * containing block's PADDING BOX regardless of that block's own height being
+ * auto - so the size is definite in both views, and there is no percentage left
+ * to resolve to `auto`.
+ */
+.datum-open-thumb,
+.datum-open-template-preview {
+    overflow: hidden;
+    position: relative;
+}
+
+.datum-open-thumb svg,
+.datum-open-template-preview svg {
+    display: block;
+    height: 100%;
+    inset: 0;
+    left: 0;
+    max-height: 100%;
+    max-width: 100%;
+    min-height: 0;
+    min-width: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    width: 100%;
+}
+
 .datum-open-thumb svg {
     height: 100%;
     pointer-events: none;
     width: 100%;
+}
+
+/*
+ * AN EXPLICIT SIZE FOR THE THUMBNAIL, IN BOTH VIEWS.
+ *
+ * The base rule already gave 46x34, but a flex item's `flex: 0 0 auto` with an
+ * auto cross-size can still collapse. Stating the size for the list row makes it
+ * definite, so the absolutely-positioned SVG above has a real box to fill.
+ */
+.datum-open-recents .datum-open-thumb {
+    height: 34px;
+    width: 46px;
 }
 
 .datum-open-recents-grid .datum-open-recent-when {

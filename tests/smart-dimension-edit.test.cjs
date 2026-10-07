@@ -51,7 +51,7 @@ drawingState.scale = { mmPerUnit: MM_PER_UNIT, unit: "mm" };
 
 const close = (a, b, t = 1e-9) => Math.abs(a - b) <= t;
 
-const mm = world => dimensions.toEngineering(drawingState, world).value;
+const mm = (world) => dimensions.toEngineering(drawingState, world).value;
 
 /* A dimension between two anchors of one feature. */
 const spanDimension = (featureId, type = "linear") => ({
@@ -198,9 +198,7 @@ console.log("\n  an Arc's radius resizes the Arc\n");
     id: "dim-a",
     type: "dimension",
     dimensionType: "radius",
-    sourceRefs: [
-      { kind: "property", featureId: "arc-1", property: "radius" },
-    ],
+    sourceRefs: [{ kind: "property", featureId: "arc-1", property: "radius" }],
   };
 
   dimensionEdit.applyDimensionValue(dim, drawingState, 300);

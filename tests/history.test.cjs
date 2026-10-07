@@ -105,10 +105,7 @@ console.log("\n  one completed action is one history entry\n");
 
   state.redo(st);
 
-  check(
-    "and one Redo re-applies it",
-    st.objects[0].geometry.start.x === 40,
-  );
+  check("and one Redo re-applies it", st.objects[0].geometry.start.x === 40);
 }
 
 console.log("\n  selection and deletion\n");

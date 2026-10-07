@@ -68,17 +68,13 @@ console.log("\n  a user's name becomes name.enggdraw\n");
     ["My Statics Assignment", "My Statics Assignment.enggdraw"],
     ["triangle.enggdraw", "triangle.enggdraw"],
     ["Beam Diagram", "Beam Diagram.enggdraw"],
-    ["", "drawing.enggdraw"]
+    ["", "drawing.enggdraw"],
   ];
 
   cases.forEach(([input, expected]) => {
     const actual = file.withExtension(input);
 
-    check(
-      `"${input}" -> "${expected}"`,
-      actual === expected,
-      actual,
-    );
+    check(`"${input}" -> "${expected}"`, actual === expected, actual);
   });
 }
 
@@ -94,7 +90,7 @@ console.log("\n  the picker LABEL never reaches a filename\n");
     "EnggDraw (",
     "(*.enggdraw)",
     "EnggDraw (*.enggdraw)",
-    "Datum Drawing"
+    "Datum Drawing",
   ];
 
   const names = [
@@ -102,7 +98,7 @@ console.log("\n  the picker LABEL never reaches a filename\n");
     "My Statics Assignment",
     "triangle.enggdraw",
     "Beam.enggdraw",
-    ""
+    "",
   ].map((name) => file.withExtension(name));
 
   forbidden.forEach((bad) => {
@@ -120,12 +116,12 @@ console.log("\n  the picker LABEL never reaches a filename\n");
   const normalised = [
     save.normaliseName("triangle", {
       id: "enggdraw",
-      extensions: [`.${EXTENSION}`]
+      extensions: [`.${EXTENSION}`],
     }),
     save.normaliseName("My Statics Assignment", {
       id: "enggdraw",
-      extensions: [`.${EXTENSION}`]
-    })
+      extensions: [`.${EXTENSION}`],
+    }),
   ];
 
   check(
@@ -155,7 +151,8 @@ console.log("\n  the picker's TYPE label is a separate thing\n");
 
   check(
     "its description names the format and the extension",
-    /EnggDraw/.test(native.description) && /\.enggdraw/.test(native.description),
+    /EnggDraw/.test(native.description) &&
+      /\.enggdraw/.test(native.description),
     native.description,
   );
 

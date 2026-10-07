@@ -54,7 +54,7 @@ const MM_PER_UNIT = 4;
 
 drawingState.scale = { mmPerUnit: MM_PER_UNIT, unit: "mm" };
 
-const measuredMm = beam =>
+const measuredMm = (beam) =>
   dimensions.toEngineering(
     drawingState,
     Math.hypot(
@@ -189,7 +189,10 @@ console.log("\n  Height does not explode because Length is large\n");
 
   check(
     "and the height reads back as 1000 mm",
-    close(dimensions.toEngineering(drawingState, truss.geometry.height).value, 1000),
+    close(
+      dimensions.toEngineering(drawingState, truss.geometry.height).value,
+      1000,
+    ),
     `read back ${dimensions.toEngineering(drawingState, truss.geometry.height).value} mm`,
   );
 }

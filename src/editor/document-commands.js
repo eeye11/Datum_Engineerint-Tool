@@ -819,6 +819,24 @@ function printDrawing() {
     const host = document.createElement("div");
 
     host.id = PRINT_HOST_ID;
+    host.setAttribute("aria-hidden", "true");
+
+    /*
+     * HIDDEN ON SCREEN, ALWAYS - NOT ONLY IN A PRINT STYLESHEET.
+     *
+     * This host holds a full-size fitted drawing. It used to be hidden by a
+     * rule inside `@media print`, which meant that ON SCREEN it was a normal,
+     * visible block laid over the application - and if the cleanup below ever
+     * failed to run, a whole-page drawing stayed there, covering the editor and
+     * swallowing every click. That is precisely the "a fitted diagram on the
+     * whole page" defect.
+     *
+     * So it is hidden by an inline style, which is the strongest thing a page
+     * can say about an element's own presentation and cannot be beaten by an
+     * ordinary rule. The print stylesheet then REVEALS it, for the print pass
+     * only, rather than being the only thing keeping it out of the way.
+     */
+    host.style.display = "none";
 
     host.appendChild(svg);
 
@@ -855,22 +873,53 @@ function printDrawing() {
 
     /*
      * The print pass is transient. Whether the user prints or cancels,
-     * the editor returns to exactly what it was: the host and the print
-     * stylesheet are removed once printing has finished, and a safety
-     * timeout catches browsers that do not fire `afterprint`.
+     * the editor returns to exactly what it was.
+     *
+     * CLEANUP IS IDEMPOTENT AND OVERDETERMINED. The host is now hidden on
+     * screen as well - see above - so a missed cleanup can no longer cover the
+     * application; these listeners are the second line, and there is no harm in
+     * any of them running after another.
      */
+    let cleaned = false;
+
     const cleanup = () => {
+        if (cleaned) {
+            return;
+        }
+
+        cleaned = true;
+
         host.remove();
         style.remove();
+
+        window.removeEventListener("focus", cleanup);
+        document.removeEventListener("visibilitychange", onVisibility);
     };
 
-    window.addEventListener(
-        "afterprint",
-        cleanup,
-        { once: true }
-    );
+    /*
+     * `afterprint` is the event a browser is SUPPOSED to fire, and it is not
+     * fired consistently - a dialog dismissed quickly, a print preview closed,
+     * or a browser that simply does not implement it all leave the host behind.
+     * So the same cleanup is also run when the page regains focus and when it
+     * becomes visible again, both of which happen immediately after a print
+     * dialog closes in every browser that has one.
+     */
+    function onVisibility() {
+        if (!document.hidden) {
+            cleanup();
+        }
+    }
 
-    setTimeout(cleanup, 60000);
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.addEventListener("focus", cleanup, { once: true });
+    document.addEventListener("visibilitychange", onVisibility);
+
+    /*
+     * A safety timeout, now SHORT. It used to be a minute, which is a long time
+     * for a hidden overlay to sit in the page; a print pass that has not
+     * finished in five seconds is not going to.
+     */
+    setTimeout(cleanup, 5000);
 
     window.print();
 
@@ -907,13 +956,18 @@ export async function saveDrawing() {
      * single most damaging thing this function could do.
      */
     if (saved && saved.error) {
-        setToolMessage(saved.error);
-
-        window.alert(saved.error);
-
-        if (typeof console !== "undefined" && console.error) {
-            console.error("[Datum] Save failed", saved.detail);
-        }
+        /*
+         * A FAILED SAVE GOES THROUGH THE SAME REPORTER AS A FAILED OPEN.
+         *
+         * Both are "a file operation did not work", and both must reach the
+         * user without blocking the page and without itself being able to
+         * throw. `saved.detail` is the underlying error, which the report logs
+         * for investigation.
+         */
+        reportFileProblem(saved.error, {
+            operation: "save",
+            detail: saved.detail
+        });
 
         return false;
     }
@@ -1060,6 +1114,55 @@ function suggestedFileName() {
  * its real parameters, and the Feature Tree, Features panel, snapping
  * and manipulation all work on it without any special handling.
  */
+/*
+ * ========================================================
+ * REPORTING A FILE PROBLEM
+ * ========================================================
+ *
+ * Every failure a file can produce goes through here: it cannot be read, it is
+ * empty, it is not a drawing, it is from a newer build, it is too old, or it
+ * has no features. One function, so the same problem always reads the same way
+ * and no path can accidentally report nothing.
+ *
+ * WHY THIS IS NOT `window.alert` ANY MORE.
+ *
+ * An alert was used before, and it is the wrong tool three times over. It
+ * BLOCKS the page, so a file problem froze the workspace until dismissed. Its
+ * wording cannot be styled, so a Datum message arrived looking like a browser
+ * warning. And it can THROW - in a sandboxed iframe, or in any context where
+ * dialogs are suppressed - which turns a handled error into an UNCAUGHT one,
+ * so the failure being reported is replaced by a worse failure from the
+ * reporting itself.
+ *
+ * So the message goes to the status line, which is always available and never
+ * interrupts, and the error log records it with the file's name so a repeated
+ * problem can be investigated. Nothing here can throw.
+ */
+function reportFileProblem(message, context = {}) {
+    const detail =
+        String(message || "") ||
+        "That file could not be opened.";
+
+    try {
+        setToolMessage(detail);
+    } catch (error) {
+        /* A missing status line must not stop the report. */
+    }
+
+    enggErrorLog.reportError("open file", new Error(detail), context);
+
+    return false;
+}
+
+/*
+ * Read a file's size safely, for a message that can say what happened.
+ */
+function sizeOfFile(file) {
+    const size = Number(file?.size);
+
+    return Number.isFinite(size) ? size : null;
+}
+
 export function loadDrawing(
     payload,
     fileName
@@ -1071,21 +1174,15 @@ export function loadDrawing(
 
     if (!result.ok) {
         /*
-         * The reason is shown rather than a generic failure,
-         * because the user's next action depends entirely on which
-         * of these it is: a wrong file needs choosing again, an old
-         * one needs a different tool, and a future one needs a newer
-         * EnggDraw.
+         * The reason is shown rather than a generic failure, because the user's
+         * next action depends entirely on which of these it is: a wrong file
+         * needs choosing again, an old one needs a different tool, and a future
+         * one needs a newer Datum.
          */
-        setToolMessage(
-            result.detail
-        );
-
-        window.alert(
-            result.detail
-        );
-
-        return false;
+        return reportFileProblem(result.detail, {
+            fileName,
+            failure: result.failure
+        });
     }
 
     const data = result.document;
@@ -1094,14 +1191,11 @@ export function loadDrawing(
         !Array.isArray(data.objects) &&
         !Array.isArray(data.sheets)
     ) {
-        const detail =
-            "The file is an EnggDraw drawing but " +
-            "contains no features.";
-
-        setToolMessage(detail);
-        window.alert(detail);
-
-        return false;
+        return reportFileProblem(
+            "That file is an EnggDraw drawing but contains no pages of " +
+                "geometry. Your current drawing has not been changed.",
+            { fileName, failure: "no-document-body" }
+        );
     }
 
     const previous =
@@ -1308,6 +1402,28 @@ export function importDrawingFile() {
  */
 function openChosenFile(file) {
     return new Promise((resolve) => {
+        /*
+         * A FILE THAT CANNOT BE READ AT ALL, REPORTED BEFORE READING.
+         *
+         * An empty file is the case a reader handles least clearly: the load
+         * fires with "", the parse then fails, and the student is told the file
+         * is "damaged" - when in fact it is empty, which is a different problem
+         * with a different answer. A zero-length file is therefore caught here,
+         * by size, before anything tries to parse it.
+         */
+        const size = sizeOfFile(file);
+
+        if (size === 0) {
+            resolve(
+                reportFileProblem(
+                    `"${file.name}" is empty, so there is nothing to open.`,
+                    { fileName: file.name, failure: "empty-file" }
+                )
+            );
+
+            return;
+        }
+
         const reader = new FileReader();
 
         reader.addEventListener("load", () => {
@@ -1315,19 +1431,35 @@ function openChosenFile(file) {
         });
 
         reader.addEventListener("error", () => {
-            setToolMessage(
-                "That file could not be read. It may be damaged."
+            resolve(
+                reportFileProblem(
+                    `"${file.name}" could not be read. It may have been moved, ` +
+                        "or Datum may not have permission to read it.",
+                    { fileName: file.name, failure: reader.error?.name || "read" }
+                )
             );
-
-            window.alert(
-                "That file could not be read. It may be damaged, or it may " +
-                "not be an EnggDraw drawing."
-            );
-
-            resolve(false);
         });
 
-        reader.readAsText(file);
+        try {
+            reader.readAsText(file);
+        } catch (error) {
+            /*
+             * `readAsText` throws on a directory rather than firing `error`, so
+             * the call itself is guarded too - otherwise choosing a folder from
+             * the panel would be an uncaught exception rather than a message.
+             */
+            resolve(
+                reportFileProblem(
+                    `"${file.name}" could not be read. Choose an EnggDraw ` +
+                        "drawing file.",
+                    { fileName: file.name, failure: "unreadable" }
+                )
+            );
+
+            enggErrorLog.reportError("read file", error, {
+                fileName: file.name
+            });
+        }
     });
 }
 
@@ -1348,17 +1480,12 @@ function applyOpenedText(text, name, file) {
     try {
         parsed = JSON.parse(text);
     } catch (error) {
-        setToolMessage(
-            "That file could not be read. It may be damaged, " +
-            "or it may not be an EnggDraw drawing."
+        return reportFileProblem(
+            `"${name || "That file"}" is not an EnggDraw drawing. It may be ` +
+                "a different kind of file, or it may have been damaged. " +
+                "Your current drawing has not been changed.",
+            { fileName: name, failure: "not-json" }
         );
-
-        window.alert(
-            "That file could not be read. It may be damaged, or it may not " +
-            "be an EnggDraw drawing."
-        );
-
-        return false;
     }
 
     const opened = loadDrawing(parsed, name);
@@ -1423,22 +1550,19 @@ async function openRecentFile(entry) {
             /*
              * The file is gone, or access was refused. This is the normal case
              * for a recently used file on a drive that is no longer attached,
-             * so it is reported rather than thrown.
+             * so it is reported rather than thrown - and the entry is MARKED
+             * missing rather than deleted, so the row stays in the list with a
+             * working menu and can be removed, or reopened after the file comes
+             * back.
              */
             enggRecentFiles.markMissing(entry.key);
 
-            setToolMessage(
-                `${entry.fileName} could not be opened. It may have been ` +
-                "moved, renamed or deleted."
+            return reportFileProblem(
+                `${entry.fileName} could not be found. It may have been moved, ` +
+                    "renamed or deleted - or the drive it is on may not be " +
+                    "connected. Import it again to reopen it.",
+                { fileName: entry.fileName, failure: "missing-file" }
             );
-
-            window.alert(
-                `File not found:\n\n${entry.fileName}\n\n` +
-                "It may have been moved, renamed or deleted. " +
-                "Import it again to reopen it."
-            );
-
-            return false;
         }
     }
 
@@ -1737,37 +1861,6 @@ function readFileAsText() {
     });
 }
 
-/*
- * Tell the user a chosen file could not be used.
- *
- * Reported in both places the user is already looking: the status line for the
- * detail, and a dialog so a failure cannot pass unnoticed. A silent refusal is
- * the failure mode this exists to prevent - the user would otherwise believe a
- * template had been added when none had.
- */
-function reportFileProblem(detail) {
-    const message =
-        detail ||
-        "That file could not be used. It may not be an EnggDraw drawing.";
-
-    setToolMessage(message);
-
-    window.alert(message);
-}
-
-/*
- * A small SVG picture of a stored document.
- *
- * READ-ONLY with respect to the document: the drawing is rendered into its own
- * SVG by the same export pipeline the canvas and the PNG export use, and nothing
- * about the document - positions, World Scale, annotations, dirty state, feature
- * order - is touched. A preview that failed is simply not shown, so a rendering
- * problem can never stop a template from being created, or a file from being
- * opened.
- *
- * Used for BOTH a template's card and a recent file's thumbnail, because both
- * are the same question: what does this stored drawing look like?
- */
 /*
  * A small SVG picture of a stored document.
  *

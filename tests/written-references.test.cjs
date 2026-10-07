@@ -105,8 +105,9 @@ check(
 
 check(
   "emptiness is asked of the SHEET, not inferred from failed measurement",
-  /const hasContent = \(sheet\.objects \|\| \[\]\)\.length > 0;/.test(reference) &&
-    /if \(!points\.length && hasContent\)/.test(reference),
+  /const hasContent = \(sheet\.objects \|\| \[\]\)\.length > 0;/.test(
+    reference,
+  ) && /if \(!points\.length && hasContent\)/.test(reference),
   "a measurement failure must never be reported as a blank sheet",
 );
 

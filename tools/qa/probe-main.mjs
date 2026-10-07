@@ -1,29 +1,24 @@
 export default async function run(page) {
   const out = {};
 
-  out.imported = await page.evaluate(async () => {
-    const result = await Promise.race([
-      import("/src/main.js")
-        .then(() => ({ settled: "resolved" }))
-        .catch((e) => ({
-          settled: "rejected",
-          message: String(e && e.message),
-          stack: String((e && e.stack) || "").slice(0, 600)
-        })),
-      new Promise((resolve) =>
-        setTimeout(() => resolve({ settled: "timeout" }), 4000)
-      )
-    ]);
-
-    return result;
+  out.importMain = await page.evaluate(async () => {
+    try {
+      await import("/src/main.js");
+      return { ok: true, datum: typeof window.datum };
+    } catch (e) {
+      return {
+        ok: false,
+        message: String(e.message),
+        stack: String(e.stack || "").slice(0, 500),
+      };
+    }
   });
 
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 
   out.after = await page.evaluate(() => ({
     datum: typeof window.datum,
     enggDrawing: typeof window.enggDrawing,
-    sheets: typeof window.enggDrawingSheets
   }));
 
   return out;

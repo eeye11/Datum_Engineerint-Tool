@@ -2,7 +2,7 @@ export default async function run(page) {
   const out = { errors: [] };
 
   page.on("pageerror", (e) => {
-    out.errors.push(String(e && e.message || e).slice(0, 500));
+    out.errors.push(String((e && e.message) || e).slice(0, 500));
   });
 
   page.on("console", (msg) => {
@@ -17,7 +17,7 @@ export default async function run(page) {
 
   out.globals = await page.evaluate(() => ({
     datum: typeof window.datum,
-    engg: typeof window.enggDrawing
+    engg: typeof window.enggDrawing,
   }));
 
   return out;

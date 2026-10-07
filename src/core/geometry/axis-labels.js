@@ -25,13 +25,11 @@
 const MINIMUM_AXIS_LENGTH = 15;
 
 function axisLength(geometry, key) {
-  const stored = Number(
-    geometry?.[key] ?? geometry?.axisLength
-  );
+  const stored = Number(geometry?.[key] ?? geometry?.axisLength);
 
   return Math.max(
     MINIMUM_AXIS_LENGTH,
-    Number.isFinite(stored) && stored > 0 ? stored : 25
+    Number.isFinite(stored) && stored > 0 ? stored : 25,
   );
 }
 
@@ -68,8 +66,8 @@ function axisLabelPositions(object) {
       text: x,
       position: geometry.xLabelPosition || {
         x: geometry.origin.x + axisLength(geometry, "xPositiveLength") + 5,
-        y: geometry.origin.y - 6
-      }
+        y: geometry.origin.y - 6,
+      },
     });
   }
 
@@ -82,8 +80,8 @@ function axisLabelPositions(object) {
       text: y,
       position: geometry.yLabelPosition || {
         x: geometry.origin.x + 6,
-        y: geometry.origin.y - axisLength(geometry, "yPositiveLength") - 5
-      }
+        y: geometry.origin.y - axisLength(geometry, "yPositiveLength") - 5,
+      },
     });
   }
 
@@ -92,7 +90,7 @@ function axisLabelPositions(object) {
 
 const enggAxisLabels = {
   MINIMUM_AXIS_LENGTH,
-  axisLabelPositions
+  axisLabelPositions,
 };
 
 export default enggAxisLabels;

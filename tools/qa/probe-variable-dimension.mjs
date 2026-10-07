@@ -1,4 +1,4 @@
-/*
+ /*
  * ========================================================
  * ACCEPTANCE TEST - VARIABLE DIMENSION
  * ========================================================
@@ -96,14 +96,31 @@ export default async function run(page) {
   out.distinct = out.distinct;
 
   /* The tool is offered in the Annotate toolset. */
-  out.toolset = await page.evaluate(() => {
+  out.toolset = await page.evaluate(async () => {
+    /* Open the Annotate toolset, the way a student would. */
+    const category = document.querySelector(
+      '.drawing-category[data-category="ANNOTATE"]',
+    );
+
+    if (category) {
+      category.click();
+    }
+
+    await new Promise((r) => setTimeout(r, 350));
+
     const button = [...document.querySelectorAll(".drawing-tool")].find(
       (n) => /variable dimension/i.test(n.textContent),
+    );
+
+    /* The ids the panel actually offered, so a miss is diagnosable. */
+    const offered = [...document.querySelectorAll(".drawing-tool")].map(
+      (n) => n.dataset.toolId,
     );
 
     return {
       present: Boolean(button),
       toolId: button ? button.dataset.toolId : null,
+      offered,
     };
   });
 

@@ -181,6 +181,149 @@ function templateCard(template, handlers) {
 }
 
 /*
+ * ========================================================
+ * SELECTING SEVERAL RECENT FILES
+ * ========================================================
+ *
+ * A list of files accumulates: ten drawings from one afternoon, several of
+ * which are no longer wanted. Removing them one at a time through a menu is
+ * tedious, so the list supports selecting several and acting on them together.
+ *
+ * SELECTION IS A SEPARATE MODE, NOT A MODIFIER ON OPENING.
+ *
+ * A recent's normal click OPENS the file - that is what the row is for, and it
+ * has to stay that way. So selection is entered deliberately (the Select
+ * control), and ONLY while it is active does a row-click mean "select" rather
+ * than "open". A click can never be both, which is what makes multi-selection
+ * possible without making opening unpredictable.
+ *
+ * The set lives here, keyed by the recent's own key, and is cleared whenever
+ * the list is rebuilt - so a removed file cannot stay selected, and a selection
+ * can never outlive the rows it refers to.
+ */
+const recentSelection = new Set();
+
+function selectedRecentKeys() {
+  return [...recentSelection];
+}
+
+/*
+ * The checkbox that appears on a row while selection is active.
+ */
+function selectionToggle(entry, handlers) {
+  const label = element("label", "datum-open-select");
+
+  const input = document.createElement("input");
+
+  input.type = "checkbox";
+  input.checked = recentSelection.has(entry.key);
+  input.setAttribute("aria-label", `Select ${entry.fileName}`);
+
+  input.addEventListener("click", (event) => {
+    /*
+     * The box is its own control, so its click must not also be read as a click
+     * on the row - which would open or select the file a second time.
+     */
+    event.stopPropagation();
+  });
+
+  input.addEventListener("change", () => {
+    if (input.checked) {
+      recentSelection.add(entry.key);
+    } else {
+      recentSelection.delete(entry.key);
+    }
+
+    handlers.onSelectionChange();
+  });
+
+  label.appendChild(input);
+
+  return label;
+}
+
+/*
+ * The bar that appears once selection mode is on.
+ *
+ * Its actions are chosen from what is actually selected, so a control is never
+ * offered that cannot do anything: Delete File is only there when at least one
+ * selected file exists.
+ */
+function selectionBar(handlers) {
+  const bar = element("div", "datum-open-selection-bar");
+
+  const entries = enggRecentFiles.list();
+
+  const chosen = entries.filter((entry) => recentSelection.has(entry.key));
+
+  const count = element(
+    "span",
+    "datum-open-selection-count",
+    `${chosen.length} selected`,
+  );
+
+  bar.appendChild(count);
+
+  const actions = element("div", "datum-open-selection-actions");
+
+  const button = (label, className, onSelect) => {
+    const node = element("button", className, label);
+
+    node.type = "button";
+    node.addEventListener("click", onSelect);
+
+    return node;
+  };
+
+  actions.appendChild(
+    button("Select All", "datum-open-selection-action", () => {
+      entries.forEach((entry) => recentSelection.add(entry.key));
+      handlers.onSelectionChange();
+    }),
+  );
+
+  actions.appendChild(
+    button(
+      "Remove",
+      "datum-open-selection-action",
+      () => handlers.onRemoveSelected(selectedRecentKeys()),
+    ),
+  );
+
+  /*
+   * DELETE IS OFFERED ONLY WHEN SOMETHING CAN BE DELETED. A selected file that
+   * is missing cannot be deleted, so if every selected file is missing the
+   * control is not shown at all - rather than shown and then failing.
+   */
+  if (chosen.some((entry) => !entry.missing)) {
+    actions.appendChild(
+      button(
+        "Delete",
+        "datum-open-selection-action datum-open-selection-action-danger",
+        () => handlers.onDeleteSelected(selectedRecentKeys()),
+      ),
+    );
+  }
+
+  actions.appendChild(
+    button("Clear Selection", "datum-open-selection-action", () => {
+      recentSelection.clear();
+      handlers.onSelectionChange();
+    }),
+  );
+
+  actions.appendChild(
+    button("Done", "datum-open-selection-action", () =>
+      handlers.onExitSelection(),
+    ),
+  );
+
+  bar.appendChild(actions);
+
+  return bar;
+}
+
+/*
  * How the Recent section is presented: a grid of thumbnails, or a compact list.
  *
  * The preference is remembered, because it is a statement about how this person
@@ -216,23 +359,55 @@ function setRecentView(view) {
  *
  * One is active at a time, and both are always visible so switching back is
  * never hidden behind the current choice.
+ *
+ * THE ICONS ARE INLINE SVG, NOT UNICODE GLYPHS.
+ *
+ * They were `\u25a6` and `\u2637` - a square and a TRIGRAM character. Those are
+ * not present in every font, and when a font has no glyph the browser
+ * substitutes one from a fallback that can be many times larger. The trigram in
+ * particular came out as a huge symbol, which is what put a drawing-sized shape
+ * on the page when the List view was chosen.
+ *
+ * A path is drawn at exactly the size asked for, in every browser, with no font
+ * lookup to go wrong.
  */
 function viewSwitcher(onChange) {
   const wrapper = element("div", "datum-open-view-switch");
 
   const current = recentView();
 
+  const iconFor = (id) =>
+    id === "grid"
+      ? '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="5.5" height="5.5"/>' +
+        '<rect x="9" y="1.5" width="5.5" height="5.5"/>' +
+        '<rect x="1.5" y="9" width="5.5" height="5.5"/>' +
+        '<rect x="9" y="9" width="5.5" height="5.5"/></svg>'
+      : '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+        '<rect x="1.5" y="2" width="3" height="3"/>' +
+        '<rect x="1.5" y="6.5" width="3" height="3"/>' +
+        '<rect x="1.5" y="11" width="3" height="3"/>' +
+        '<rect x="6.5" y="3" width="8" height="1"/>' +
+        '<rect x="6.5" y="7.5" width="8" height="1"/>' +
+        '<rect x="6.5" y="12" width="8" height="1"/></svg>';
+
   [
-    { id: "grid", label: "\u25a6", title: "Thumbnail grid" },
-    { id: "list", label: "\u2637", title: "Compact list" }
+    { id: "grid", title: "Thumbnail grid" },
+    { id: "list", title: "Compact list" }
   ].forEach((option) => {
-    const button = element("button", "datum-open-view-button", option.label);
+    const button = element("button", "datum-open-view-button");
 
     button.type = "button";
     button.title = option.title;
     button.dataset.view = option.id;
     button.setAttribute("aria-label", option.title);
     button.setAttribute("aria-pressed", String(current === option.id));
+
+    /*
+     * A LITERAL BUILT IN THIS FILE - no stored value, no user input - so there
+     * is nothing here that could carry a script.
+     */
+    button.innerHTML = iconFor(option.id);
 
     if (current === option.id) {
       button.classList.add("active");
@@ -265,8 +440,21 @@ function recentRow(entry, handlers) {
   const wrapper = element(
     "div",
     "datum-open-recent-wrap" +
-      (entry.missing ? " datum-open-recent-missing" : "")
+      (entry.missing ? " datum-open-recent-missing" : "") +
+      (handlers.selecting ? " datum-open-recent-selecting" : "") +
+      (recentSelection.has(entry.key) ? " datum-open-recent-selected" : "")
   );
+
+  /*
+   * A CHECKBOX, ONLY WHILE SELECTING.
+   *
+   * It appears when selection mode is entered and not before, so the ordinary
+   * list stays uncluttered - and while it is there a click on the row SELECTS
+   * rather than opens, which is what the checkbox beside it says.
+   */
+  if (handlers.selecting) {
+    wrapper.appendChild(selectionToggle(entry, handlers));
+  }
 
   const row = element("button", "datum-open-recent");
 
@@ -311,7 +499,28 @@ function recentRow(entry, handlers) {
     handlers.onRecentMenu(entry, menu, event);
   });
 
-  row.addEventListener("click", () => handlers.onOpenRecent(entry));
+  /*
+   * ONE OR THE OTHER, NEVER BOTH.
+   *
+   * While selection mode is on, a click on the row SELECTS or DESELECTS it -
+   * which is the only way several files can be gathered - and it does not open.
+   * Off, the click opens the file, as it always has.
+   */
+  row.addEventListener("click", () => {
+    if (handlers.selecting) {
+      if (recentSelection.has(entry.key)) {
+        recentSelection.delete(entry.key);
+      } else {
+        recentSelection.add(entry.key);
+      }
+
+      handlers.onSelectionChange();
+
+      return;
+    }
+
+    handlers.onOpenRecent(entry);
+  });
 
   /*
    * SIBLINGS, NOT NESTED. The row is the Open action; the menu button sits
@@ -374,15 +583,34 @@ function recentsSection(handlers) {
   }
 
   /*
-   * The view control sits with the heading, so switching views is part of the
-   * Recent section rather than an action on the whole popup.
+   * The heading carries the view control, and - while selection mode is on -
+   * the count and the bulk actions. Both belong to the Recent section rather
+   * than to the whole popup.
    */
   const head = element("div", "datum-open-section-head");
 
   head.appendChild(wrapper.querySelector(".datum-open-section-title"));
-  head.appendChild(viewSwitcher(() => handlers.onRedraw()));
+
+  const headControls = element("div", "datum-open-section-controls");
+
+  if (!handlers.selecting) {
+    const select = element("button", "datum-open-select-toggle", "Select");
+
+    select.type = "button";
+    select.addEventListener("click", () => handlers.onEnterSelection());
+
+    headControls.appendChild(select);
+  }
+
+  headControls.appendChild(viewSwitcher(() => handlers.onRedraw()));
+
+  head.appendChild(headControls);
 
   wrapper.insertBefore(head, wrapper.firstChild);
+
+  if (handlers.selecting) {
+    wrapper.appendChild(selectionBar(handlers));
+  }
 
   const view = recentView();
 
@@ -447,16 +675,73 @@ function openOpenPopup() {
     let currentBody = null;
 
     /*
+     * Selection mode starts OFF on every open, and the selection starts empty.
+     * A list of files is not the place to leave a mode switched on from last
+     * time - a click that selects rather than opens would be a puzzle with no
+     * visible cause.
+     */
+    let selectionActive = false;
+
+    recentSelection.clear();
+
+    /*
      * Rebuilt in place when a template is deleted, so the list stays correct
      * while the user keeps working in the popup.
      */
     function redraw() {
+      /*
+       * Any key that is no longer on the list is dropped from the selection, so
+       * a removed file cannot stay selected - the selection and the rows it
+       * refers to cannot drift apart.
+       */
+      const live = new Set(
+        enggRecentFiles.list().map((entry) => entry.key)
+      );
+
+      [...recentSelection].forEach((key) => {
+        if (!live.has(key)) {
+          recentSelection.delete(key);
+        }
+      });
+
       const next = buildBody({
+        selecting: selectionActive,
         onUseTemplate: (id) => choose({ action: "template", id }),
         onOpenRecent: (entry) =>
           choose({ action: "recent", key: entry.key, entry }),
         onForget: () => redraw(),
         onAddTemplate: () => choose({ action: "add-template" }),
+
+        onEnterSelection: () => {
+          selectionActive = true;
+          recentSelection.clear();
+          redraw();
+        },
+
+        onExitSelection: () => {
+          selectionActive = false;
+          recentSelection.clear();
+          redraw();
+        },
+
+        onSelectionChange: () => redraw(),
+
+        /*
+         * REMOVING FROM RECENTS NEVER TOUCHES A FILE, and works for a file that
+         * is missing - which is the whole point of being able to select several.
+         */
+        onRemoveSelected: (keys) => {
+          keys.forEach((key) => enggRecentFiles.forget(key));
+          recentSelection.clear();
+          redraw();
+        },
+
+        /*
+         * DELETING A FILE IS THE DESTRUCTIVE ONE, so it is handed to the caller
+         * to confirm. The popup does not delete anything itself.
+         */
+        onDeleteSelected: (keys) =>
+          choose({ action: "delete-recents", keys }),
 
         /*
          * Switching the Recent view redraws the body IN PLACE. The choice is

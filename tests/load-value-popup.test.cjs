@@ -33,10 +33,9 @@ const check = (name, ok, detail) => {
   }
 };
 
-const dom = new JSDOM(
-  '<!doctype html><html><body></body></html>',
-  { pretendToBeVisual: true },
-);
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+});
 
 global.window = dom.window;
 global.document = dom.window.document;
@@ -90,10 +89,7 @@ console.log("\n  the popup collects a value and a unit\n");
     JSON.stringify(confirmed),
   );
 
-  check(
-    "the popup closes once confirmed",
-    popupElement() === null,
-  );
+  check("the popup closes once confirmed", popupElement() === null);
 }
 
 console.log("\n  the Enter it handles does not reach the document\n");
@@ -247,15 +243,9 @@ console.log("\n  cancelling reports nothing\n");
 
   popup.closeLoadValuePopup();
 
-  check(
-    "a cancelled popup confirms nothing",
-    confirmed === null,
-  );
+  check("a cancelled popup confirms nothing", confirmed === null);
 
-  check(
-    "the popup is gone",
-    popupElement() === null,
-  );
+  check("the popup is gone", popupElement() === null);
 
   void cancelled;
 }

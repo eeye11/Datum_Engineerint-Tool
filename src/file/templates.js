@@ -38,8 +38,7 @@ const STORAGE_KEY = "datum:templates";
  *
  * Higher than the recents cap because templates are deliberate, few, and the
  * whole point of keeping them - a person who has made twenty course set-ups
- * wants all twenty. It is a guard against unbounded growth, not a display
- * limit.
+ * wants all twenty. It is a guard against unbounded growth, not a display limit.
  */
 const MAX_TEMPLATES = 40;
 
@@ -170,8 +169,8 @@ function writeAll(templates) {
  *
  * The Open popup renders this list, and it never needs the documents - those
  * are large and only matter at the moment a template is actually used. Keeping
- * them out of the listing is what stops the popup paying for every stored
- * drawing on every open.
+ * them out of the listing is what stops the popup paying for the whole stored
+ * library on every open.
  */
 function list() {
   return readAll()
@@ -212,7 +211,10 @@ function copyDocumentFor(id) {
     return JSON.parse(JSON.stringify(document));
   } catch (error) {
     if (typeof console !== "undefined" && console.error) {
-      console.error("[Datum] A template's document could not be copied.", error);
+      console.error(
+        "[Datum] A template's document could not be copied.",
+        error
+      );
     }
 
     return null;
@@ -317,8 +319,7 @@ function deleteTemplate(id) {
  * Store a preview image for a template.
  *
  * Read-only with respect to the document: a preview is a picture of the drawing
- * and nothing about the drawing changes because one was taken. Kept separate so
- * a failed or unavailable preview can never affect the template itself.
+ * and nothing about the drawing changes because one was taken.
  */
 function setPreview(id, preview) {
   const templates = readAll();

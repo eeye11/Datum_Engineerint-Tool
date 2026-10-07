@@ -102,7 +102,11 @@ export default async function run(page) {
 
     await new Promise((r) => setTimeout(r, 200));
 
-    return { before, after: st.camera.zoom, changed: st.camera.zoom !== before };
+    return {
+      before,
+      after: st.camera.zoom,
+      changed: st.camera.zoom !== before,
+    };
   });
 
   log("wheelZoom", wheelZoom);
