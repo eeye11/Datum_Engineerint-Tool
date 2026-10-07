@@ -69,6 +69,67 @@ function supportsNativePicker() {
   return typeof window.showSaveFilePicker === "function";
 }
 
+/*
+ * Whether this browser can hand back a handle to a file the user CHOSE TO OPEN.
+ *
+ * A separate capability from the save picker, and deliberately so: a browser
+ * could have one without the other, and the two are used for different things.
+ * What matters is whether `showOpenFilePicker` exists, because that is the only
+ * way a web page is ever given a handle it can later WRITE BACK to.
+ */
+function supportsOpenPicker() {
+  return typeof window.showOpenFilePicker === "function";
+}
+
+/*
+ * Ask the user for an existing .enggdraw, and keep a handle to it.
+ *
+ * THIS IS WHAT MAKES SAVE WRITE BACK TO THE FILE YOU OPENED.
+ *
+ * An `<input type="file">` hands over the file's CONTENTS and nothing else - a
+ * `File` is a read-only snapshot with no way to write to where it came from. So
+ * a document opened that way had no target for Save, and Save fell through to
+ * Save As every time: the user was asked to choose a filename again for a file
+ * they had just chosen.
+ *
+ * `showOpenFilePicker` gives a HANDLE, which can be written back to. Where the
+ * browser has it, opening therefore goes through here and the document gains a
+ * real save target.
+ *
+ * Returns null when the user cancelled - an ordinary thing to do, not an error.
+ * Throws nothing else: a refused or unsupported call is reported by the caller
+ * as the failure it is.
+ */
+async function openWithPicker() {
+  const handle = await window.showOpenFilePicker({
+    types: [
+      {
+        description: "EnggDraw (*.enggdraw)",
+        accept: {
+          [enggDocumentFile.MEDIA_TYPE]: [`.${enggDocumentFile.EXTENSION}`]
+        }
+      }
+    ],
+
+    /* One drawing at a time - this opens a document, not a batch. */
+    multiple: false
+  });
+
+  const chosen = Array.isArray(handle) ? handle[0] : handle;
+
+  if (!chosen) {
+    return null;
+  }
+
+  const file = await chosen.getFile();
+
+  return {
+    handle: chosen,
+    file,
+    name: chosen.name || file.name
+  };
+}
+
 /* ---------------------------------------------------------- */
 /* THE FORMATS                                                 */
 /* ---------------------------------------------------------- */
@@ -566,10 +627,12 @@ const enggFileSave = {
   forgetFileHandle,
   formatForName,
   normaliseName,
+  openWithPicker,
   save,
   saveAs,
   setFileHandle,
-  supportsNativePicker
+  supportsNativePicker,
+  supportsOpenPicker
 };
 
 export default enggFileSave;

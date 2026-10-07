@@ -75,6 +75,7 @@ import { installSheetController } from "./sheet-controller.js";
 import { installContextMenu } from "./context-menu.js";
 import { installWorkspaceControls } from "./workspace-controls.js";
 import { installDocumentCommands } from "./document-commands.js";
+import { refreshDocumentHeader } from "./document-commands.js";
 import { installDrawOrderControls } from "./draw-order.js";
 import { installToolbarWiring } from "./toolbar-wiring.js";
 import { installWorkspaceLayout } from "./workspace-layout.js";
@@ -116,6 +117,14 @@ refreshSheetTabs();
 renderCurrentDrawing();
 
 renderProperties();
+
+/*
+ * Name the document in the header from the very first frame.
+ *
+ * Nothing has been saved yet, so this puts "Untitled" there rather than leaving
+ * an empty slot that fills in only once the user does something.
+ */
+refreshDocumentHeader();
 
 /*
  * Offer to recover unsaved work from a previous session, once the

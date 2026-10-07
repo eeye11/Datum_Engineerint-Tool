@@ -26,11 +26,76 @@ body {
     background: #ffffff;
     border-bottom: 1px solid #d9dce1;
     padding: 22px 40px;
+
+    /*
+     * THREE COLUMNS: BRAND, DOCUMENT, SPACE.
+     *
+     * The middle column is what CENTRES the document name - not a margin, and
+     * not a flex gap. A margin would put the name wherever "Datum" happened to
+     * end, so a longer brand would push it right and a shorter filename would
+     * leave it stranded; and with flex the name's position would depend on
+     * everything beside it.
+     *
+     * Equal outer columns (`1fr auto 1fr`) mean the middle sits at the true
+     * centre of the header whatever the two sides contain, so neither the brand
+     * nor the filename can move the other.
+     */
+    display: grid;
+    align-items: center;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
 }
 
 .header h1 {
     margin: 0;
     font-size: 28px;
+
+    /* The brand owns the left column. */
+    justify-self: start;
+}
+
+/*
+ * THE CURRENT DOCUMENT'S NAME.
+ *
+ * SECONDARY TO THE BRAND, deliberately: smaller, not bold, muted. It names the
+ * drawing, not the application, and it must not compete with the heading for
+ * attention.
+ *
+ * It is one line with an ellipsis rather than a wrapping block, so a very long
+ * filename cannot make the header taller - the full name is available in the
+ * tooltip, which is where a truncated name belongs.
+ */
+.header-document {
+    align-items: baseline;
+    color: var(--datum-muted);
+    display: flex;
+    font-size: 14px;
+    gap: 4px;
+    justify-self: center;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.header-document-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * THE UNSAVED MARK.
+ *
+ * A single asterisk beside the name, in the accent colour so it is noticed
+ * without being loud. It is hidden with the `hidden` attribute rather than
+ * emptied, so the element is always there and only its visibility changes.
+ */
+.header-document-dirty {
+    color: var(--datum-green);
+    font-weight: 700;
+}
+
+.header-document-dirty[hidden] {
+    display: none;
 }
 
 

@@ -1194,9 +1194,7 @@ export function modifyInstruction(
                 : "Select mirror line or point",
 
         trim:
-            session.stage === "base"
-                ? "Select the boundary to trim against"
-                : "Select the segment to trim",
+            "Click the part of the line you want removed",
 
         extend:
             session.stage === "base"

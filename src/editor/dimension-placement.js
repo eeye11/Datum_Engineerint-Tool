@@ -166,7 +166,7 @@ function acceptFirstDimensionReference(
  * and so the resulting dimension keeps referring to the geometry it
  * was measured from.
  */
-function beginDimensionReferenceSelection(
+export function beginDimensionReferenceSelection(
     reference,
     point
 ) {
@@ -176,6 +176,65 @@ function beginDimensionReferenceSelection(
         ...(interaction.dimensionPickedRefs || []),
         reference
     ];
+
+    /*
+     * ========================================================
+     * ONE MEASURABLE WHOLE IS A DIMENSION ALREADY
+     * ========================================================
+     *
+     * A Line, Beam, Truss, Cable, Shaft, Reference Line, Circle or Arc clicked
+     * ON ITS OWN is a finished reference: it has a length, a diameter or a
+     * radius, and nothing else is needed to state it. So the tool moves into
+     * placement on that FIRST click and the preview appears at once, following
+     * the cursor until the student clicks to place it.
+     *
+     * This is what makes the interaction continuous. It used to record the
+     * click and wait for Enter, so a student who had just clicked a line saw
+     * nothing at all - no number, no preview, no sign the tool had understood -
+     * and had to be told that a keystroke was needed before anything would
+     * happen.
+     *
+     * A SINGLE POINT still waits, because it is the one reference that is
+     * genuinely incomplete: a point has no length, and a distance needs a
+     * partner. Waiting there is honest rather than pedantic.
+     */
+    if (refs.length === 1 && reference?.kind !== "point") {
+        const descriptor = inferDimensionDescriptor(reference, null);
+
+        if (descriptor?.refs?.length) {
+            beginDimensionPlacement(reference, descriptor, point, [
+                reference.featureId
+            ].filter(Boolean));
+
+            return;
+        }
+    }
+
+    /*
+     * TWO REFERENCES THAT ALREADY MEASURE GO STRAIGHT TO PLACEMENT.
+     *
+     * Two lines state an angle, and two points state a distance - in both cases
+     * the measurement is COMPLETE on the click that finished it, so there is
+     * nothing left to pick and the tool moves to placement at once. The preview
+     * appears immediately and follows the cursor until the student clicks to
+     * place it.
+     *
+     * WITHOUT THIS THE SECOND CLICK ONLY RECORDED the reference and the tool
+     * kept selecting, so a student who had clicked two lines saw no angle, no
+     * preview and no sign the tool had understood - the measurement appeared
+     * only if they happened to press Enter. That is the step being removed.
+     */
+    if (refs.length === 2) {
+        const descriptor = inferDimensionDescriptor(refs[0], refs[1]);
+
+        if (descriptor?.refs?.length && descriptorIsComplete(descriptor, refs)) {
+            beginDimensionPlacement(refs[1], descriptor, point, refs
+                .map((r) => r.featureId)
+                .filter(Boolean));
+
+            return;
+        }
+    }
 
     enggDrawingState.setInteraction(
         drawingState,
@@ -324,6 +383,38 @@ function acceptSecondDimensionReference(
         return;
     }
 
+    /*
+     * ========================================================
+     * A COMPLETE MEASUREMENT GOES STRAIGHT TO PLACEMENT
+     * ========================================================
+     *
+     * Two references that MEASURE something - a line and a line giving an
+     * angle, two points giving a distance - are the whole answer, so the tool
+     * moves into placement on the click that completed them. The preview appears
+     * immediately and follows the cursor, and the next click places it.
+     *
+     * ENTER IS NOT REQUIRED, and that is the point. It used to be: the second
+     * click only RECORDED the reference and the tool kept selecting, so the
+     * student saw nothing until they pressed Enter. Nothing on screen told them
+     * the tool had understood, and a workflow that waits for a keystroke before
+     * showing anything is one the student has to be taught.
+     *
+     * A selection that is NOT yet complete still waits, because there is nothing
+     * to preview: one point needs a partner, and a lone line is a length the
+     * student may or may not want. Enter still exists for those cases, so the
+     * deliberate workflow is preserved rather than replaced.
+     */
+    if (descriptorIsComplete(descriptor, [first, second])) {
+        beginDimensionPlacement(
+            second,
+            descriptor,
+            drawingState.interaction.dimensionFirstPoint,
+            [first, second].map((r) => r.featureId).filter(Boolean)
+        );
+
+        return;
+    }
+
     enggDrawingState.setInteraction(
         drawingState,
         {
@@ -341,6 +432,49 @@ function acceptSecondDimensionReference(
     );
 
     renderCurrentDrawing();
+}
+
+/*
+ * Whether two references already MEASURE something, so the tool can move
+ * straight to placement rather than waiting for Enter.
+ *
+ * The test is what the descriptor can actually state:
+ *
+ *   two LINES      an angle - both directions are known, so the measurement is
+ *                  complete and there is nothing else to pick
+ *   two POINTS     a distance - the span between them is the whole answer
+ *
+ * A POINT AND A LINE, or a single reference, can still go further - a point may
+ * want a second point, a line may be measured alone - so those keep the
+ * deliberate Enter workflow rather than committing on a click the student may
+ * not have meant as final.
+ */
+function descriptorIsComplete(descriptor, refs) {
+    if (!descriptor?.refs?.length) {
+        return false;
+    }
+
+    if (refs.length !== 2) {
+        return false;
+    }
+
+    const kinds = refs.map((reference) => reference?.kind);
+
+    /* An angle: two lines, both directions known. */
+    if (descriptor.dimensionType === "angular") {
+        return true;
+    }
+
+    /*
+     * A distance between two points: the span is the measurement, and the only
+     * thing left for the student to decide is where it is drawn - which is the
+     * placement stage.
+     */
+    if (kinds.every((kind) => kind === "point")) {
+        return true;
+    }
+
+    return false;
 }
 
 /*

@@ -214,6 +214,13 @@ export function markDocumentDirty() {
      */
     notifyReferences();
 
+    /*
+     * The header's unsaved mark follows the flag it describes, from the one
+     * place the flag is set - so the mark cannot be stale, and no edit path has
+     * to remember to update it.
+     */
+    refreshDocumentTitle();
+
     emitDatumEvent("documentchange");
 }
 
@@ -228,6 +235,9 @@ function markDocumentClean() {
     documentDirty = false;
 
     enggRecovery.discard();
+
+    /* The unsaved mark goes with the flag. */
+    refreshDocumentTitle();
 }
 
 function documentIsDirty() {
@@ -245,6 +255,17 @@ export function documentHasUnsavedChanges() {
 
 export function documentIsLoading() {
     return documentLoading;
+}
+
+/*
+ * Put the current document's name and unsaved mark into the header.
+ *
+ * Exposed so the editor can call it once at start-up, when there is no edit and
+ * no save to trigger it - otherwise the header would sit empty until the user
+ * happened to do something.
+ */
+export function refreshDocumentHeader() {
+    refreshDocumentTitle();
 }
 
 /*
@@ -270,17 +291,73 @@ function documentFile() {
 }
 
 /*
- * Show the current document's file name in the window title.
+ * ========================================================
+ * THE DOCUMENT'S NAME, WITHOUT ITS EXTENSION
+ * ========================================================
  *
- * The window's title is the one place a web application's current document is
- * named, and keeping it in step is what lets a student tell at a glance which
- * drawing is open. A document that has never been saved is named "Untitled",
- * matching the file it does not yet have.
+ * A file called `triangle.enggdraw` is shown as `triangle`.
+ *
+ * ONLY THE FINAL `.enggdraw` IS REMOVED - never another period, and never
+ * anything else. `Statics.V2.Final.enggdraw` is `Statics.V2.Final`, because the
+ * rest of the name is the user's and this rule has no business editing it.
+ *
+ * The EXTENSION IS STILL THERE on disk. This is a display rule: the file is
+ * `triangle.enggdraw`, and only the way the application TALKS about it changes.
+ * A window title, a menu, a recent file - they all name the drawing, and the
+ * drawing is called "triangle".
+ */
+function displayNameFor(fileName) {
+    const name = String(fileName || "").trim();
+
+    if (!name) {
+        return "Untitled";
+    }
+
+    const suffix = `.${enggDocumentFile.EXTENSION}`;
+
+    return name.toLowerCase().endsWith(suffix.toLowerCase())
+        ? name.slice(0, -suffix.length)
+        : name;
+}
+
+/*
+ * Show the current document's name in the window title and the header.
+ *
+ * Two places, one answer: the window's title and the header's centre both name
+ * the drawing, and they are written together here so they cannot disagree about
+ * what it is called or whether it has unsaved changes.
+ *
+ * The header carries the UNSAVED MARK as its own element, hidden and shown
+ * rather than added and removed, so the name does not shift sideways when the
+ * mark appears - a filename that jumped every time the user typed would be
+ * worse than no mark at all.
  */
 function refreshDocumentTitle() {
-    document.title = documentFileName
-        ? `${documentFileName} - Datum`
-        : "Untitled - Datum";
+    const shown = displayNameFor(documentFileName);
+    document.title = `${shown} - Datum`;
+
+    const base = document.getElementById("headerDocumentBaseName");
+    const host = document.getElementById("headerDocumentName");
+    const mark = document.getElementById("headerDocumentDirty");
+
+    if (base) {
+        base.textContent = shown;
+    }
+
+    if (host) {
+        /*
+         * The tooltip carries the FULL name, extension included - the header
+         * truncates a long name, and a truncated name with no way to read the
+         * whole of it would be a small cruelty.
+         */
+        host.title = documentFileName
+            ? `${displayNameFor(documentFileName)} (${documentFileName})`
+            : "This drawing has not been saved yet";
+    }
+
+    if (mark) {
+        mark.hidden = !documentDirty;
+    }
 }
 
 /*
@@ -974,12 +1051,18 @@ export async function saveDrawing() {
 
     if (!saved) {
         /*
-         * Nowhere to save back to. Save As is not a lesser thing
-         * here - it is the only thing that can happen - so it is run
-         * rather than reported. Its own result is returned, so a caller
-         * that needs to know whether the document was actually written -
-         * the Save First choice in the unsaved-changes prompt - is not
-         * misled into continuing after a cancelled panel.
+         * NOTHING TO WRITE BACK TO YET.
+         *
+         * This is reached in exactly one honest situation: a document that has
+         * never been saved, so there is no file it could belong to. Save As is
+         * then the only thing that can happen, and running it is right - the
+         * user asked to keep their work and there is nowhere yet to keep it.
+         *
+         * It is NOT reached for a file that was opened: opening through the
+         * handle picker gives the document a real save target, and where the
+         * browser cannot provide one the file input path records the name so
+         * Save has somewhere to go. A file that was opened therefore saves back
+         * to itself, which is the whole point of the distinction.
          */
         return await saveDrawingAs();
     }
@@ -1358,6 +1441,53 @@ function applyLoadedDocument(data, fileName, previous, result) {
  * file actually arrives and loads.
  */
 export function importDrawingFile() {
+    /*
+     * WHERE THE BROWSER CAN, OPEN THROUGH THE HANDLE PICKER.
+     *
+     * `showOpenFilePicker` is the only route that gives Datum a handle it can
+     * later WRITE BACK to, which is what makes Save update the file the user
+     * opened instead of asking for a name again. Where it exists it is used
+     * first; where it does not, the ordinary file input is the fallback and
+     * Save behaves as it always has.
+     */
+    if (enggFileSave.supportsOpenPicker()) {
+        return enggFileSave
+            .openWithPicker()
+            .then(async (chosen) => {
+                if (!chosen) {
+                    /* Cancelled. Nothing happened, so nothing is reported. */
+                    return false;
+                }
+
+                /*
+                 * The handle is remembered BEFORE the file is read, so the
+                 * document has its save target from the moment it is open -
+                 * even if the read then fails, the target is the file the user
+                 * actually chose.
+                 */
+                enggFileSave.setFileHandle(chosen.handle);
+
+                return await openChosenFile(chosen.file);
+            })
+            .catch((error) => {
+                /*
+                 * A refused picker - a permission the browser withheld, or an
+                 * unsupported call despite the API being present - is reported
+                 * as the failure it is rather than silently falling back, which
+                 * would leave the user wondering why nothing opened.
+                 */
+                if (error && error.name === "AbortError") {
+                    return false;
+                }
+
+                return reportFileProblem(
+                    "The file chooser could not be opened. Your current drawing " +
+                        "has not been changed.",
+                    { failure: error?.name || "open-picker" }
+                );
+            });
+    }
+
     return new Promise((resolve) => {
         const input =
             document.createElement("input");
@@ -1498,11 +1628,16 @@ function applyOpenedText(text, name, file) {
      * worse than no entry at all. `loadDrawing` returns the reconstructed
      * document on success and false on failure, so the document stored with
      * the entry is exactly what is now open.
+     *
+     * THE FILE HANDLE GOES WITH IT, where there is one, so the entry can be
+     * written back to - which is what lets Save update the file that was opened
+     * rather than producing another copy of it.
      */
     if (opened) {
         enggRecentFiles.remember({
             name,
             file,
+            handle: enggFileSave.currentFileHandle(),
             document: opened,
 
             /*

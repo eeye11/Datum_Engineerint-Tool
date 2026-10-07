@@ -172,13 +172,36 @@ function writeAll(templates) {
  * them out of the listing is what stops the popup paying for the whole stored
  * library on every open.
  */
+/*
+ * A template's display name, WITHOUT a file extension.
+ *
+ * The name is whatever the user typed, and a user is free to type
+ * "statics.enggdraw" - or to accept a default that arrived from a source file
+ * before this rule existed. So the extension is stripped where the name is
+ * SHOWN, not only where it is created: a display rule that depends on every
+ * writer having remembered it is a rule that holds until the first writer
+ * forgets.
+ *
+ * Only the FINAL `.enggdraw` goes, so `Statics.V2.Final.enggdraw` reads
+ * `Statics.V2.Final` - the rest of the name is the user's.
+ */
+function displayName(name) {
+  const trimmed = String(name || "").trim();
+
+  const suffix = ".enggdraw";
+
+  return trimmed.toLowerCase().endsWith(suffix)
+    ? trimmed.slice(0, -suffix.length)
+    : trimmed;
+}
+
 function list() {
   return readAll()
     .slice()
     .reverse()
     .map((template) => ({
       id: template.id,
-      name: template.name,
+      name: displayName(template.name),
       createdAt: Number(template.createdAt) || 0,
       preview: template.preview || null
     }));
@@ -271,9 +294,13 @@ function addTemplate({ name, document, preview } = {}) {
  * Only the display name changes. The id and the stored document are untouched,
  * which is what makes a rename safe: nothing that referenced the template can
  * be broken by it.
+ *
+ * A typed extension is stripped, so a name that arrives as "statics.enggdraw"
+ * is stored the way it will be shown. The display rule would catch it anyway -
+ * this just keeps what is stored and what is seen the same thing.
  */
 function renameTemplate(id, name) {
-  const trimmed = String(name || "").trim();
+  const trimmed = displayName(String(name || "").trim());
 
   if (!trimmed) {
     return false;
@@ -361,6 +388,7 @@ const enggTemplates = {
   copyDocumentFor,
   count,
   deleteTemplate,
+  displayName,
   documentFor,
   list,
   renameTemplate,

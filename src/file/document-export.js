@@ -428,6 +428,20 @@ function renderClean(state, bounds) {
    * The rendered SVG carries the editor's own layout styling, which
    * means nothing outside it. The size and a plain white
    * background are stated here so the file stands on its own.
+   *
+   * THE SIZE IS STATED AS AN INLINE STYLE, NOT ONLY AS AN ATTRIBUTE.
+   *
+   * The host this SVG was drawn into is removed before it is returned, so the
+   * SVG is left with NO PARENT - and a detached element with only `width` and
+   * `height` ATTRIBUTES is still open to being sized by any CSS rule that
+   * matches it. The renderer's own `.drawing-canvas svg { width: 100% }` did
+   * exactly that: with no parent to resolve against, the percentage resolved
+   * against the VIEWPORT, and a figure asked for at 760x460 came out at the
+   * window's size - 1280x775 - sitting at the top-left of the page.
+   *
+   * An inline style is the strongest statement a page can make about an
+   * element's own size, so the figure keeps the size it was rendered at
+   * wherever it is placed afterwards.
    */
   svg.setAttribute(
     "width",
@@ -441,6 +455,16 @@ function renderClean(state, bounds) {
     "viewBox",
     `0 0 ${bounds.width} ${bounds.height}`
   );
+
+  /*
+   * The width is stated in PIXELS and the height is left to the aspect ratio,
+   * which is what lets a figure scale down to a narrow pane without distorting:
+   * a fixed pixel height would keep the drawing at its rendered size and
+   * overflow instead.
+   */
+  svg.style.width = `${bounds.width}px`;
+  svg.style.maxWidth = "100%";
+  svg.style.height = "auto";
   svg.style.background = "#ffffff";
 
   return svg;
@@ -464,6 +488,17 @@ function drawnPoints() {
   }
 
   return boundsProvider() || [];
+}
+
+/*
+ * The registered provider, for tests.
+ *
+ * Exposed so a test can ask "how big is THIS feature" through exactly the code
+ * the Fit runs, rather than through a second measurement that could disagree
+ * with it. It is a read-only view of one function reference.
+ */
+function boundsProviderForTest() {
+  return boundsProvider;
 }
 
 /*
@@ -653,6 +688,7 @@ const enggDrawingExport = {
   unionBounds,
   fitBoundsIntoViewport,
 
+  boundsProviderForTest,
   cameraFor,
   drawnPoints,
   paddedBounds,

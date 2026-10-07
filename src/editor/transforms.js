@@ -582,6 +582,110 @@ export function trimObjectToBoundary(
 }
 
 /*
+ * REMOVE THE SEGMENT UNDER THE CURSOR.
+ *
+ * This is the Trim the student actually asked for: identify the piece of line to
+ * get rid of, and it goes - no second selection, no boundary to name, no
+ * direction to choose.
+ *
+ * The geometry is MODIFIED, not hidden. What happens depends on which piece was
+ * clicked, and each case is the honest consequence of removing that piece:
+ *
+ *   a MIDDLE piece      the line becomes TWO lines, one each side. The feature
+ *                       cannot represent a gap, so it is split - the same
+ *                       result the student would get by drawing the two
+ *                       remaining pieces themselves.
+ *
+ *   the FIRST piece     the start moves to the crossing: the line is shorter.
+ *
+ *   the LAST piece      the end moves to the crossing.
+ *
+ * A middle piece is the case that made this worth building: with the old
+ * nearest-crossing model it was impossible to remove, because the tool could
+ * only ever shorten one end.
+ */
+export function trimSegmentAtCursor(target, clickPoint, objects) {
+    const g = target?.geometry;
+
+    if (!g?.start || !g?.end) {
+        setToolMessage("Only straight geometry can be trimmed");
+
+        return false;
+    }
+
+    const segment = trimSegmentAt(
+        target,
+        objects || drawingState.objects,
+        clickPoint
+    );
+
+    if (!segment) {
+        /*
+         * NO VALID INTERSECTION MEANS NO TRIM. Nothing is removed, nothing is
+         * approximated, and the line is left exactly as it was - which is the
+         * only safe answer when the tool cannot tell what the student meant.
+         */
+        setToolMessage(
+            "Nothing crosses this line here, so there is nothing to trim"
+        );
+
+        return false;
+    }
+
+    const previous = enggDrawingState.snapshotDrawing(drawingState);
+
+    const removesBothEnds =
+        segment.touchesStart && segment.touchesEnd;
+
+    if (segment.touchesStart && !segment.touchesEnd) {
+        /* The first piece: the line now begins at the crossing. */
+        g.start = { ...segment.to };
+    } else if (segment.touchesEnd && !segment.touchesStart) {
+        /* The last piece: the line now ends at the crossing. */
+        g.end = { ...segment.from };
+    } else if (!removesBothEnds) {
+        /*
+         * A MIDDLE PIECE: split into the two remaining runs.
+         *
+         * The original keeps its id, its name and its place in the document -
+         * so anything referring to it still refers to something - and the far
+         * piece is added as a new feature beside it. Doing it the other way
+         * round would silently break every reference to the trimmed line.
+         */
+        const originalEnd = { ...g.end };
+
+        g.end = { ...segment.from };
+
+        const tail =
+            enggDrawingState.createGeometryObject(
+                target.type,
+                {
+                    ...JSON.parse(JSON.stringify(g)),
+                    start: { ...segment.to },
+                    end: originalEnd
+                },
+                {
+                    style: { ...target.style },
+                    name: target.name
+                }
+            );
+
+        enggDrawingState.addObject(drawingState, tail);
+    }
+
+    enggDrawingState.commitDrawingChange(drawingState, previous);
+
+    cancelModifySession();
+
+    setToolMessage("Trimmed");
+
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+/*
  * Extend a line to its nearest intersection with the
  * boundary along the line's own direction.
  */
@@ -671,6 +775,146 @@ export function extendObjectToBoundary(
  * Intersection between a line and any other supported
  * boundary object, in world coordinates.
  */
+/*
+ * ========================================================
+ * THE SEGMENTS A LINE IS DIVIDED INTO
+ * ========================================================
+ *
+ * Every place another feature crosses this line divides it. Three crossings
+ * give four segments; one gives two. That is the whole model behind Trim: the
+ * user identifies the PIECE they want gone, and the piece is bounded by the
+ * real intersections either side of where they clicked.
+ *
+ * THE BOUNDARIES ARE FOUND FROM THE GEOMETRY, NOT FROM A SECOND PICK.
+ *
+ * Trim used to require the cutting edge to be chosen as well as the line, which
+ * is two selections for one decision - and the tool then cut back to the
+ * NEAREST crossing of that one boundary, so a line crossed by several features
+ * could not have a middle piece removed at all. Here every other feature is
+ * tested, so the segments are the ones the drawing actually has.
+ *
+ * All of it is world-space arithmetic on the stored geometry: zoom, pan and
+ * World Scale cannot change where an intersection is, so a trim lands exactly
+ * on the crossing at any magnification.
+ */
+function intersectionsAlongLine(lineObject, objects) {
+    const g = lineObject.geometry;
+
+    const hits = [];
+
+    (objects || []).forEach((other) => {
+        /*
+         * A feature cannot cross itself, and dimensions and annotations are not
+         * geometry to cut against - they are statements ABOUT the geometry.
+         */
+        if (
+            !other ||
+            other.id === lineObject.id ||
+            other.type === "dimension" ||
+            other.type === "variable-dimension" ||
+            other.type === "annotation"
+        ) {
+            return;
+        }
+
+        boundarySegments(other).forEach(([a, b]) => {
+            if (!a || !b) {
+                return;
+            }
+
+            const hit = segmentIntersectionPoint(g.start, g.end, a, b);
+
+            if (!hit) {
+                return;
+            }
+
+            const t = segmentParameter(g.start, g.end, hit);
+
+            /* Only crossings ON the line divide it. */
+            if (t < -1e-9 || t > 1 + 1e-9) {
+                return;
+            }
+
+            hits.push({ t, point: hit });
+        });
+    });
+
+    /*
+     * Ordered along the line, with crossings that coincide treated as one - two
+     * features meeting the line at the same place divide it once, not twice.
+     */
+    hits.sort((first, second) => first.t - second.t);
+
+    return hits.filter((hit, index) =>
+        index === 0 || Math.abs(hit.t - hits[index - 1].t) > 1e-9
+    );
+}
+
+/*
+ * THE SEGMENT THE CURSOR IS OVER, as a pair of endpoints on the line.
+ *
+ * The segments are: start..first crossing, crossing..crossing, last
+ * crossing..end. The click is placed on one of them by its parameter along the
+ * line, and the segment it falls in is returned - which is exactly the piece
+ * that will disappear, so a preview drawn from this cannot disagree with what
+ * the commit does.
+ *
+ * With NO crossings there is no segment to remove: a line that nothing crosses
+ * has only itself, and removing it would be Delete, not Trim.
+ */
+export function trimSegmentAt(lineObject, objects, clickPoint) {
+    const g = lineObject?.geometry;
+
+    if (!g?.start || !g?.end) {
+        return null;
+    }
+
+    const hits = intersectionsAlongLine(lineObject, objects);
+
+    if (!hits.length) {
+        return null;
+    }
+
+    const clickT = segmentParameter(g.start, g.end, clickPoint);
+
+    /*
+     * The bounds in order, including the line's own ends - so the outer segments
+     * are bounded by an end on one side and a crossing on the other.
+     */
+    const stops = [
+        { t: 0, point: { ...g.start } },
+        ...hits,
+        { t: 1, point: { ...g.end } }
+    ];
+
+    for (let index = 1; index < stops.length; index += 1) {
+        const from = stops[index - 1];
+        const to = stops[index];
+
+        if (clickT >= from.t - 1e-9 && clickT <= to.t + 1e-9) {
+            /*
+             * A zero-length piece is not a segment - it is a crossing sitting
+             * on an end, and removing it would change nothing.
+             */
+            if (Math.abs(to.t - from.t) < 1e-9) {
+                return null;
+            }
+
+            return {
+                from: { ...from.point },
+                to: { ...to.point },
+                fromT: from.t,
+                toT: to.t,
+                /* True when the piece includes an end of the line. */
+                touchesStart: index === 1,
+                touchesEnd: index === stops.length - 1
+            };
+        }
+    }
+
+    return null;
+}
+
 function nearestIntersectionOnLine(
     lineObject,
     boundary,

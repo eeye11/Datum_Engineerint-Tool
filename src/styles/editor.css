@@ -378,6 +378,23 @@
  * Collapsed is a width, not a display toggle, so the rail's
  * single arrow stays on screen and the layout keeps its shape.
  */
+/*
+ * =========================================================
+ * THE HIDE BUTTON SITS ON ITS PANEL'S OUTER EDGE
+ * =========================================================
+ *
+ * The two rails were mirrored with `row-reverse`, which put the two Hide
+ * buttons on DIFFERENT sides of their panels: measured on a 1280px window, the
+ * Tools button sat at x=21 with its panel starting at 43 (outside-left, as
+ * intended), while the Features button sat at x=1024 with its panel starting at
+ * 1046 - INSIDE, on the canvas side. Two controls doing the same job to two
+ * panels, and they did not look like the same control.
+ *
+ * So the rule is stated ONCE and each side only says WHICH edge is its outer
+ * one. The button is always the first thing in the rail on the left, and the
+ * last thing on the right, so it always sits against the window edge rather
+ * than against the canvas.
+ */
 .drawing-panel-rail {
     display: flex;
     flex-direction: row;
@@ -390,11 +407,24 @@
 
 .drawing-panel-rail-left {
     border-right: 1px solid var(--cad-border);
+
+    /* The left panel's outer edge is the WINDOW's left: button first. */
+    flex-direction: row;
 }
 
 .drawing-panel-rail-right {
     border-left: 1px solid var(--cad-border);
-    flex-direction: row-reverse;
+
+    /*
+     * The right panel's outer edge is the WINDOW's right, so the button goes
+     * LAST - which is `row` with the button already last in the markup, not
+     * `row-reverse`.
+     *
+     * `row-reverse` reverses EVERYTHING, which is what moved the button to the
+     * inside. Leaving the direction alone and ordering the markup is the same
+     * rule as the left rail: the button is always on the outside.
+     */
+    flex-direction: row;
 }
 
 /*
@@ -2856,10 +2886,18 @@
 /*
  * A figure inside the rendered solution.
  *
- * Block-level and centred, with space above and below, because it is a
- * figure in a piece of written work rather than a decoration: the
- * reader's eye has to find it where the author put it, between the
- * two paragraphs that talk about it.
+ * IT BELONGS IN THE PANE, AT THE PANE'S WIDTH.
+ *
+ * The Rendered Solution box (`.output`) is a 395px-tall scroll pane - that is
+ * its whole design. A figure wider than the pane is scaled down to the pane's
+ * width and the PANE SCROLLS if the figure is then taller than the box. That is
+ * why the pane has `overflow: auto`, and it is the behaviour a figure in a
+ * piece of written work should have: the reader scrolls the document.
+ *
+ * So the figure is sized by WIDTH and its height follows the drawing's aspect
+ * ratio. It is NOT given a viewport-relative height ceiling: a figure capped at
+ * 60vh is a figure shrunk to something the pane is not asking for, and a
+ * percentage height on an auto-height frame collapses it to nothing.
  */
 #writingOutput .drawing-reference-figure {
     margin: 18px auto;
@@ -2877,16 +2915,49 @@
     margin: 0 0 22px;
 }
 
+/*
+ * THE FRAME WRAPS THE DRAWING.
+ *
+ * It is a border and a background around the figure, nothing more. It must NOT
+ * clip and must NOT cap the height: either would either cut the drawing off or
+ * collapse the box the drawing is measured against. The pane above is what
+ * handles a figure that is too tall, by scrolling.
+ */
 .drawing-reference-frame {
     background: #ffffff;
     border: 1px solid #d8dce1;
     border-radius: 6px;
-    overflow: hidden;
+    display: block;
+    width: 100%;
 }
 
+/*
+ * The SVG IS the width of the frame, and its height follows from its own aspect
+ * ratio. `height: auto` is what preserves the drawing's proportions.
+ *
+ * THE EDITOR'S OWN POSITIONING IS UNDONE HERE, AND THAT IS THE WHOLE FIX.
+ *
+ * The renderer draws into the editor's canvas, so its SVG carries the class
+ * `.drawing-renderer`, whose rule is `position: absolute; inset: 0; width: 100%;
+ * height: 100%` - correct for a canvas, because the drawing should fill it.
+ *
+ * A figure is made by CLONING that SVG, class and all. So the clone arrived
+ * absolutely positioned with `inset: 0`, which took it OUT OF THE FRAME'S LAYOUT
+ * entirely: it positioned against the nearest positioned ancestor, landed at the
+ * top-left of the page, and sized itself against that instead of the figure. A
+ * drawing asked for at 760x460 came out at the window's size, over the whole
+ * page, with nothing to dismiss.
+ *
+ * A stylesheet rule cannot beat an inline style, but `position` and `inset` here
+ * are NOT inline - they come from the class - so they are undone by restating
+ * them for this context. The clone becomes an ordinary block in the figure's
+ * flow, which is what a figure in a document should be.
+ */
 .drawing-reference-frame svg {
     display: block;
     height: auto;
+    inset: auto;
+    position: static;
     width: 100%;
 }
 

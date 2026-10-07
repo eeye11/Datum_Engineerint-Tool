@@ -7,6 +7,7 @@ import enggMeasurement from "../core/geometry/measurement-core.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import { axisLabelPositions } from "../core/geometry/axis-labels.js";
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggAnalysisFrame from "../features/analysis/analysis-frame.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
@@ -254,29 +255,16 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
      * the plot to fill the axis would silently rescale every value the
      * student drew against it.
      */
-    const ANALYSIS_FRAME = {
-        /*
-         * The ordinate, above AND below the zero line.
-         *
-         * One number, used twice. Kept as a single field rather than a
-         * positive and a negative height, because two of them is an
-         * invitation to set them differently - which is the mistake this
-         * replaces, and which would then be invisible until someone
-         * compared the two halves of an SFD.
-         */
-        ordinateHeightPx: 110,
-
-        /* How far the x-axis runs past the body's far end. */
-        axisExtensionPx: 46,
-
-        /* The axis arrowhead, and the gap before the axis label. */
-        arrowHeadPx: 7,
-        labelGapPx: 7,
-
-        /* Padding around the frame, and the corner rounding. */
-        paddingPx: 8,
-        radiusPx: 3
-    };
+    /*
+     * THE FRAME'S DIMENSIONS, FROM THE SHARED DEFINITION.
+     *
+     * These numbers are also what the FIT reserves space for, and the fit
+     * cannot import this module - it is reached from the canvas renderer, which
+     * this file uses, so the two would form a cycle. They live in a leaf module
+     * both can import instead, so a fitted diagram and a drawn diagram cannot
+     * disagree about how tall the frame is.
+     */
+    const ANALYSIS_FRAME = enggAnalysisFrame.ANALYSIS_FRAME;
 
     /* The frame's extents, all in screen pixels from the zero line. */
     function analysisFrameExtents() {
@@ -6930,6 +6918,48 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         state,
         bounds
     ) {
+        const toScreenAll =
+            point =>
+                enggDrawingState.engineeringToScreen(point, bounds, state);
+
+        /*
+         * THE PIECE OF LINE TRIM WILL REMOVE.
+         *
+         * Drawn as a thick highlight over the segment itself, because that is
+         * the question the student is asking - "is this the part I mean?" - and
+         * the answer has to be the same segment the click removes. It comes from
+         * the session's own `trimPreview`, which was computed by the same
+         * function the commit uses, so the two cannot disagree.
+         *
+         * Editor-only by construction: a preview is drawn fresh from the session
+         * on every frame, and a clean render - print, export, thumbnail - has no
+         * session at all, so it can never reach paper or a file.
+         */
+        const trimPreview = state.interaction.trimPreview;
+
+        if (trimPreview?.from && trimPreview?.to) {
+            const a = toScreenAll(trimPreview.from);
+            const b = toScreenAll(trimPreview.to);
+
+            svg.appendChild(
+                createSvgElement("line", {
+                    x1: a.x,
+                    y1: a.y,
+                    x2: b.x,
+                    y2: b.y,
+                    class: "drawing-trim-preview",
+                    stroke: "#b00020",
+                    "stroke-width": 3,
+                    "stroke-linecap": "round",
+
+                    /*
+                     * Semi-transparent, so the geometry being cut is still
+                     * visible under the highlight rather than hidden by it.
+                     */
+                    opacity: 0.55
+                })
+            );
+        }
         /*
          * THE ANALYSIS AXIS BEING POSITIONED.
          *

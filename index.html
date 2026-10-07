@@ -33,6 +33,35 @@
             Datum
         </h1>
 
+        <!--
+            THE CURRENT DOCUMENT'S NAME.
+
+            Secondary information, so it is smaller than the application name
+            and sits in the middle of the header rather than beside the brand -
+            centred by the layout, not by a margin, so its position does not
+            depend on how wide "Datum" happens to be.
+
+            The BASE name only: a file called triangle.enggdraw reads
+            "triangle" here. The extension belongs to the file, not to the way
+            the application talks about it.
+        -->
+        <div
+            class="header-document"
+            id="headerDocumentName"
+            title=""
+        >
+            <span
+                class="header-document-name"
+                id="headerDocumentBaseName"
+            ></span>
+            <span
+                class="header-document-dirty"
+                id="headerDocumentDirty"
+                aria-label="Unsaved changes"
+                hidden
+            >*</span>
+        </div>
+
     </header>
 
 

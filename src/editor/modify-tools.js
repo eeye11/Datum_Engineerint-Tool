@@ -12,7 +12,7 @@ import { objectAtPoint } from "./hit-testing.js";
 import { modifyInstruction } from "./pointer.js";
 import { activateTool } from "./tool-activation.js";
 import { setToolMessage } from "./toolbar-render.js";
-import { extendObjectToBoundary, mirrorObjectAcrossLine, rotateObjectAbout, translateObject, trimObjectToBoundary } from "./transforms.js";
+import { extendObjectToBoundary, mirrorObjectAcrossLine, rotateObjectAbout, translateObject, trimSegmentAt, trimSegmentAtCursor } from "./transforms.js";
 import { fitDrawingToView, zoomAtCanvasPoint } from "./viewport.js";
 import { clearGlobalToolHighlight } from "./workspace-controls.js";
 
@@ -212,8 +212,13 @@ export function activateGlobalTool(
     if (toolId === "trim") {
         beginModifySession("trim");
 
+        /*
+         * ONE INSTRUCTION, because there is one decision: which piece goes.
+         * The crossings either side of the click define it, so nothing else is
+         * asked for.
+         */
         setToolMessage(
-            "Select the boundary to trim against"
+            "Click the part of the line you want removed"
         );
 
         return;
@@ -269,6 +274,17 @@ function buildModifyPreview(
 function clearModifyPreview() {
     drawingState.interaction.previewObjects =
         [];
+
+    /*
+     * The trim highlight goes with them, so a cursor that leaves the geometry
+     * leaves nothing behind - a stale "this is about to be removed" mark would
+     * be actively misleading.
+     */
+    if (editorState.modifySession) {
+        editorState.modifySession.trimPreview = null;
+    }
+
+    drawingState.interaction.trimPreview = null;
 }
 
 /*
@@ -287,6 +303,62 @@ export function updateModifyPreview(
 
     if (!point) {
         clearModifyPreview();
+        return;
+    }
+
+    /*
+     * TRIM SHOWS THE PIECE THAT WILL GO.
+     *
+     * The preview is not a ghost of the result - it is the SEGMENT ITSELF,
+     * highlighted, because that is the question the student is asking: "is this
+     * the part I mean?". It is computed by the same function the commit uses,
+     * so the highlight and the removal cannot disagree about which piece is
+     * which - a preview that promised one piece and removed another would be
+     * worse than no preview at all.
+     *
+     * It follows the cursor from segment to segment, and is CLEARED whenever
+     * there is no segment under it, so a stale highlight is never left behind.
+     */
+    if (editorState.modifySession.kind === "trim") {
+        const rawPoint = resolution.rawPoint || point;
+
+        const target = objectAtPoint(rawPoint);
+
+        const segment = target
+            ? trimSegmentAt(target, drawingState.objects, point)
+            : null;
+
+        if (!segment) {
+            clearModifyPreview();
+
+            return;
+        }
+
+        editorState.modifySession.trimPreview = {
+            targetId: target.id,
+            from: { ...segment.from },
+            to: { ...segment.to }
+        };
+
+        /*
+         * The highlight travels on the INTERACTION, which is the state the
+         * renderer already reads - so the renderer needs no knowledge of a
+         * Modify session, and no import that could cycle back to the editor.
+         */
+        drawingState.interaction.trimPreview = {
+            from: { ...segment.from },
+            to: { ...segment.to }
+        };
+
+        /*
+         * No ghost objects: nothing is being built, so nothing is added to the
+         * preview list. The highlight is drawn from `trimPreview` instead.
+         */
+        drawingState.interaction.previewObjects = [];
+        drawingState.interaction.preview = null;
+
+        renderCurrentDrawing();
+
         return;
     }
 
@@ -840,14 +912,36 @@ function commitMirror() {
 }
 
 /*
- * Trim and Extend: the first click picks the boundary,
- * the second picks the target segment.
+ * ========================================================
+ * TRIM IS ONE CLICK; EXTEND IS TWO
+ * ========================================================
+ *
+ * TRIM identifies a PIECE OF LINE, and the piece is found from the geometry -
+ * the crossings either side of where the student clicked. So there is nothing
+ * else to select: no cutting edge, no direction, no second click. The student
+ * points at the part they want gone and it goes.
+ *
+ * EXTEND is genuinely two decisions - what to grow, and what to grow it TO - so
+ * it keeps the boundary-then-target flow. Those two are not the same operation
+ * and pretending otherwise would make Extend guess at a boundary.
  */
 function handleTrimExtendClick(
     session,
     rawPoint,
     point
 ) {
+    if (session.kind === "trim") {
+        const target = objectAtPoint(rawPoint);
+
+        if (!target) {
+            return true;
+        }
+
+        trimSegmentAtCursor(target, point, drawingState.objects);
+
+        return true;
+    }
+
     if (session.stage === "base") {
         const boundary =
             objectAtPoint(
@@ -865,9 +959,7 @@ function handleTrimExtendClick(
             "target";
 
         setToolMessage(
-            session.kind === "trim"
-                ? "Select the segment to trim"
-                : "Select the geometry to extend"
+            "Select the geometry to extend"
         );
 
         return true;
@@ -893,19 +985,11 @@ function handleTrimExtendClick(
         return true;
     }
 
-    if (session.kind === "trim") {
-        trimObjectToBoundary(
-            target,
-            boundary,
-            point
-        );
-    } else {
-        extendObjectToBoundary(
-            target,
-            boundary,
-            point
-        );
-    }
+    extendObjectToBoundary(
+        target,
+        boundary,
+        point
+    );
 
     return true;
 }

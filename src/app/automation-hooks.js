@@ -17,9 +17,13 @@ import enggRecovery from "../file/document-recovery.js";
 import enggRecentFiles from "../file/recent-files.js";
 import enggTemplates from "../file/templates.js";
 import enggErrorLog from "./error-log.js";
+import enggFileSave from "../file/file-save.js";
 import enggAxisLabels from "../core/geometry/axis-labels.js";
 import enggVariableDimension from "../features/dimensions/variable-dimension.js";
 import enggDrawOrder from "../editor/draw-order.js";
+import * as enggDimensionPlacement from "../editor/dimension-placement.js";
+import * as enggDimensionInference from "../editor/dimension-inference.js";
+import * as enggDimensionPreview from "../editor/preview.js";
 import * as enggHitTesting from "../editor/hit-testing.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import { editorState } from "../editor/editor-state.js";
@@ -42,9 +46,13 @@ export function installAutomationHooks(target = window) {
         enggDrawingSheets,
         enggDrawingState,
         enggErrorLog,
+        enggFileSave,
         enggAxisLabels,
         enggVariableDimension,
         enggDrawOrder,
+        enggDimensionPlacement,
+        enggDimensionInference,
+        enggDimensionPreview,
         enggHitTesting,
         enggEditorState: editorState,
         enggLoadProfile,

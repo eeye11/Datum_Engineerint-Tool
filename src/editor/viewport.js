@@ -7,8 +7,8 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
-import enggDrawingExport from "../file/document-export.js";
-import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
+import { analysisFrameExtents } from "../features/analysis/analysis-frame.js";
+import enggDrawingExport from "../file/document-export.js";import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { renderedPointsForObjects } from "./document-commands.js";
@@ -656,6 +656,140 @@ function geometryRenderedBounds(
                 y: geometry.center.y + radius
             }
         ];
+    }
+
+    if (object.type === "point") {
+        /*
+         * A POINT IS DRAWN AS A MARKER, SO IT HAS A SIZE.
+         *
+         * Its defining geometry is a single position, so a bounds
+         * measurement built from defining points is a ZERO-SIZE box - and Fit,
+         * given a zero-size drawing, zooms in to the maximum looking for an
+         * extent that is not there. A point is not nothing: it is a marker with
+         * a visible radius, and that radius is what the drawing occupies.
+         *
+         * The marker is drawn at a fixed SCREEN radius, so it is divided by the
+         * measurement scale to become world units - which is what keeps a Fit
+         * at zoom 1 and a Fit at 400% agreeing about how big the point is.
+         */
+        const position =
+            geometry.position || geometry.point || geometry;
+
+        if (
+            !position ||
+            !Number.isFinite(position.x) ||
+            !Number.isFinite(position.y)
+        ) {
+            return [];
+        }
+
+        const radius =
+            (Number.isFinite(object.style?.pointSize) &&
+            object.style.pointSize > 0
+                ? object.style.pointSize
+                : 4) / Math.max(scale, 1e-6);
+
+        return [
+            { x: position.x - radius, y: position.y - radius },
+            { x: position.x + radius, y: position.y + radius }
+        ];
+    }
+
+    if (object.type === "particle") {
+        /*
+         * A PARTICLE IS THE SAME KIND OF THING as a point - an engineering node
+         * drawn as a filled circle - and is measured the same way, from the
+         * radius the renderer draws it at. It is a distinct type rather than an
+         * alias because it MEANS something different on a free body diagram,
+         * but it occupies space in exactly the same manner.
+         */
+        const position = geometry.position;
+
+        if (
+            !position ||
+            !Number.isFinite(position.x) ||
+            !Number.isFinite(position.y)
+        ) {
+            return [];
+        }
+
+        /* The renderer draws a particle at a fixed radius of 4 screen pixels. */
+        const radius = 4 / Math.max(scale, 1e-6);
+
+        return [
+            { x: position.x - radius, y: position.y - radius },
+            { x: position.x + radius, y: position.y + radius }
+        ];
+    }
+
+    if (object.type === "analysis-diagram") {
+        /*
+         * AN ANALYSIS DIAGRAM IS MEASURED BY ITS FRAME, NOT BY ITS AXIS.
+         *
+         * Its defining geometry is the x-axis span, so a bounds measurement
+         * built from defining points gives a box with NO HEIGHT - and the frame
+         * the diagram is actually drawn as, the area the student sketches in,
+         * extends above and below that axis. Fitting the axis alone left the
+         * frame hanging outside the view.
+         *
+         * The frame's extents are asked of the RENDERER, which is the code that
+         * draws it, so what is fitted is what is drawn. They are stated in
+         * screen pixels, so they are divided by the measurement scale to become
+         * world units - the same conversion the point marker above uses, and
+         * for the same reason.
+         */
+        const points = [];
+
+        if (geometry.start) {
+            points.push(geometry.start);
+        }
+
+        if (geometry.end) {
+            points.push(geometry.end);
+        }
+
+        if (!points.length) {
+            return points;
+        }
+
+        const frame =
+            typeof analysisFrameExtents === "function"
+                ? analysisFrameExtents()
+                : null;
+
+        if (!frame) {
+            return points;
+        }
+
+        const toWorld = (pixels) =>
+            Math.abs(Number(pixels) || 0) / Math.max(scale, 1e-6);
+
+        const top = toWorld(frame.top);
+        const bottom = toWorld(frame.bottom);
+        const right = toWorld(frame.right) + toWorld(frame.arrowHead);
+
+        points.forEach((point) => {
+            if (
+                !point ||
+                !Number.isFinite(point.x) ||
+                !Number.isFinite(point.y)
+            ) {
+                return;
+            }
+
+            /*
+             * The frame's corners, so the whole plot area is inside the fit
+             * rather than only the line the axis runs along.
+             */
+            points.push(
+                { x: point.x, y: point.y - top },
+                { x: point.x, y: point.y + bottom },
+                { x: point.x + right, y: point.y - top },
+                { x: point.x + right, y: point.y + bottom }
+            );
+        });
+
+        return points;
     }
 
     if (object.type === "coordinate-system-2d") {

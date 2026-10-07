@@ -467,7 +467,19 @@ function recentRow(entry, handlers) {
 
   text.appendChild(element("span", "datum-open-recent-name", entry.label));
 
-  text.appendChild(element("span", "datum-open-recent-file", entry.fileName));
+  /*
+   * NO SECOND LINE REPEATING THE FILENAME.
+   *
+   * The row used to print the name and then the file name under it, so
+   * `triangle.enggdraw` appeared in full and the drawing was named twice - once
+   * as `triangle` and once with the extension. A drawing is named by its BASE
+   * name; the extension belongs to the file on disk and is not part of how the
+   * application talks about it.
+   *
+   * The full file name is still available in the row's tooltip, where it is
+   * useful rather than repetitive.
+   */
+  row.title = entry.fileName;
 
   text.appendChild(
     element(
