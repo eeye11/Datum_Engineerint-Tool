@@ -1691,7 +1691,32 @@ function generatedText(
  * reaction exists on the force.
  */
 function forceText(object) {
-  return featureValueText(object, "magnitude", "F", "N");
+  /*
+   * THE UNIT COMES FROM THE FORCE, not from a literal here - the same rule a
+   * load's magnitude follows. A force carries the unit it was entered in (N
+   * or kN), so the number on the drawing is written the way the student stated
+   * it, and the drawing and the Features panel cannot disagree.
+   */
+  return featureValueText(
+    object,
+    "magnitude",
+    "F",
+    forceUnitOf(object)
+  );
+}
+
+/*
+ * The unit a force's magnitude is stated in, read from the shared load module
+ * so the annotation and the panel ask one question. The literal is only a
+ * fallback for the moment before that module is loaded.
+ */
+function forceUnitOf(object) {
+  return (
+    typeof enggLoadProfile !== "undefined" &&
+    typeof enggLoadProfile.forceUnit === "function"
+      ? enggLoadProfile.forceUnit(object?.geometry)
+      : "N"
+  );
 }
 
 /*
@@ -1737,8 +1762,17 @@ function momentText(object) {
    * "CCW" to the number repeated it as text - and, as with the force
    * angle, in a second place that could be stale the moment the
    * moment was flipped.
+   *
+   * THE UNIT IS THE MOMENT'S OWN. It is read from the feature, so the label
+   * beside the curved arrow and the unit chosen in the Features panel are one
+   * value - a moment set to kilonewton-metres says so on the sheet too.
    */
-  return featureValueText(object, "magnitude", "M", "N·m");
+  return featureValueText(
+    object,
+    "magnitude",
+    "M",
+    enggLoadProfile.momentUnit(object.geometry)
+  );
 }
 
 function loadText(object) {
@@ -1748,8 +1782,35 @@ function loadText(object) {
    * standard way a load diagram reads, and adding a direction
    * glyph to the label duplicated what the arrows already say
    * while consuming space beside every annotation on the sheet.
+   *
+   * THE UNIT COMES FROM THE LOAD, not from a literal here. A load
+   * carries the unit its magnitude is stated in - kN/m or N/mm - and the
+   * label reads that one value, so the drawing and the Features panel can
+   * never show the same load in two different units.
    */
-  return featureValueText(object, "intensity", "w", "kN/m");
+  return featureValueText(
+    object,
+    "intensity",
+    "w",
+    loadUnitOf(object)
+  );
+}
+
+/*
+ * The unit a load's magnitude is stated in, read from the shared load
+ * module so the annotation and the panel ask the same question.
+ *
+ * The literal is only a fallback for the moment before that module is
+ * loaded; it is the drawing's own long-standing unit, so even then the
+ * label reads as it always did.
+ */
+function loadUnitOf(object) {
+  return (
+    typeof enggLoadProfile !== "undefined" &&
+    typeof enggLoadProfile.loadUnit === "function"
+      ? enggLoadProfile.loadUnit(object?.geometry)
+      : "kN/m"
+  );
 }
 
 /*
@@ -1849,7 +1910,7 @@ function profileText(
   return quantity(
     `w${suffix}`,
     magnitude,
-    "kN/m"
+    loadUnitOf({ geometry })
   );
 }
 
@@ -2227,6 +2288,45 @@ function annotationTextBounds(
 }
 
 /*
+ * The box around a PLAIN STRING of drawing text at a position.
+ *
+ * The same estimation `annotationTextBounds` makes, for text that is not an
+ * annotation object - a coordinate system's axis label, which is drawn from the
+ * feature's own geometry rather than from an annotation. Measuring it here, with
+ * the same character-width factor the renderer lays text out with, is what keeps
+ * "what a click can reach" and "what is drawn" the same box.
+ */
+function drawnTextBounds(text, position, fontSize = 13) {
+    const lines = String(text ?? "").split("\n");
+
+    if (!lines.length || !lines[0]) {
+        return null;
+    }
+
+    const longest = lines.reduce(
+        (max, line) => Math.max(max, line.length),
+        0
+    );
+
+    const width = longest * fontSize * TEXT_CHARACTER_WIDTH;
+    const height = lines.length * fontSize * TEXT_LINE_HEIGHT;
+
+    const cx = Number(position?.x) || 0;
+    const cy = Number(position?.y) || 0;
+
+    return {
+        cx,
+        cy,
+        width,
+        height,
+        minX: cx - width / 2,
+        maxX: cx + width / 2,
+        minY: cy - height / 2,
+        maxY: cy + height / 2
+    };
+}
+
+/*
  * Is a world point inside a drawn label, allowing a small margin?
  *
  * The margin is added in WORLD units by the caller - converted from the
@@ -2264,8 +2364,23 @@ function textBoundsContainPoint(
  * the other annotations - is the placement tool's job, not this
  * module's, because it needs the whole document and this function
  * deliberately only knows one feature.
+ *
+ * ========================================================
+ * THE ANCHOR IS ASKED FOR, NOT ASSUMED
+ * ========================================================
+ *
+ * The automatic position falls just beyond a vector feature's current
+ * arrowhead, and "beyond the arrowhead" is a question about the CURRENT
+ * rendered geometry - not about the stored span, which is the engineering
+ * vector and is drawn at the shared Visual Force Scale rather than at its own
+ * length once the scale leaves 1.
+ *
+ * So `annotationAnchor` answers that question once, from the force's current
+ * drawn geometry, and both this function and a drag ask it - so an annotation
+ * that is being dragged is measured against exactly the anchor the renderer
+ * is drawing, and the two cannot disagree about where it naturally falls.
  */
-function suggestPlacement(
+function annotationAnchor(
   annotation,
   state
 ) {
@@ -2281,12 +2396,82 @@ function suggestPlacement(
   const geometry = object.geometry || {};
 
   /*
-   * A force or a load is drawn along an arrow, so its label goes
-   * beyond the arrow's head - the only part of the feature with
-   * room, and the side the reader looks along.
+   * ========================================================
+   * THE ANCHOR IS THE CURRENT RENDERED FORCE ENDPOINT
+   * ========================================================
+   *
+   * A force's stored `end` is the ENGINEERING vector - exactly its magnitude
+   * away from the application point - while the arrow is DRAWN at the shared
+   * Visual Force Scale. Those two are the same number only at 1x: at 2x the
+   * arrowhead is twice as far out as the stored end, and a label anchored to
+   * the stored end would sit in the middle of its own arrow.
+   *
+   * So the automatic position is taken from the force's CURRENT RENDERED
+   * geometry - `enggLoadProfile.forceGeometry`, which recomputes the drawn
+   * endpoint from the application point, the stored magnitude, the stored
+   * direction and the current scale. Changing the scale, the magnitude, the
+   * direction, or the application point therefore all move the label, because
+   * none of them is remembered here: the endpoint is recalculated every time
+   * this runs.
+   *
+   * A LOAD is still measured from its own stored geometry. A distributed
+   * load's arrows are a field standing off a span, not a single vector, so
+   * the span is the right thing to anchor its label to.
    */
   if (
     object.type === "force" ||
+    object.type === "resultant"
+  ) {
+    const drawn =
+      enggLoadProfile &&
+      typeof enggLoadProfile.forceGeometry === "function"
+        ? enggLoadProfile.forceGeometry(state, geometry)
+        : null;
+
+    const end =
+      drawn?.end ||
+      geometry.end ||
+      geometry.position;
+
+    const start =
+      drawn?.start ||
+      geometry.start ||
+      end;
+
+    /*
+     * The label sits beyond the arrowhead, along the force's own direction.
+     * The direction comes from the drawn geometry, so a reversed force carries
+     * its label past the head that is now at the other end of the same line.
+     */
+    if (end && start) {
+      const direction =
+        drawn && Number.isFinite(drawn.direction)
+          ? unitVectorOf(drawn.direction)
+          : normalise({
+              x: end.x - start.x,
+              y: end.y - start.y
+            });
+
+      /*
+       * Beyond the arrowhead, by a distance that does not shrink
+       * with the arrow. A fraction of the arrow's length put the
+       * label back INSIDE a short arrow, which is worse than not
+       * suggesting a position at all - it suggests one that covers
+       * the thing it is labelling.
+       */
+      const standoff = 10;
+
+      return {
+        x: end.x + direction.x * standoff,
+        y:
+          end.y +
+          direction.y * standoff -
+          4
+      };
+    }
+  }
+
+  if (
     object.type === "load" ||
     object.type === "varying-load"
   ) {
@@ -2301,19 +2486,6 @@ function suggestPlacement(
         y: end.y - start.y
       });
 
-      const reach =
-        Math.hypot(
-          end.x - start.x,
-          end.y - start.y
-        ) || 1;
-
-      /*
-       * Beyond the arrowhead, by a distance that does not shrink
-       * with the arrow. A fraction of the arrow's length put the
-       * label back INSIDE a short arrow, which is worse than not
-       * suggesting a position at all - it suggests one that covers
-       * the thing it is labelling.
-       */
       const standoff = 10;
 
       return {
@@ -2349,12 +2521,49 @@ function suggestPlacement(
   return { x: anchor.x + 10, y: anchor.y - 10 };
 }
 
+function suggestPlacement(
+  annotation,
+  state
+) {
+  const object = findObject(
+    state,
+    annotation.sourceFeatureId
+  );
+
+  if (!object) {
+    return { ...annotation.placement };
+  }
+
+  return annotationAnchor(annotation, state);
+}
+
 function normalise(vector) {
   const length = Math.hypot(vector.x, vector.y);
 
   return length < 1e-9
     ? { x: 1, y: 0 }
     : { x: vector.x / length, y: vector.y / length };
+}
+
+/*
+ * A unit vector for a direction in degrees, read from the shared vector
+ * module so a label placed along a force's own direction uses exactly the
+ * components the force itself is drawn with - including the axis cleaning
+ * that makes a force straight along an axis land exactly on it.
+ */
+function unitVectorOf(degrees) {
+  if (
+    enggLoadProfile &&
+    typeof enggLoadProfile.unitVector === "function"
+  ) {
+    const unit = enggLoadProfile.unitVector(degrees);
+
+    return { x: unit.x, y: unit.y };
+  }
+
+  const radians = (Number(degrees) || 0) * Math.PI / 180;
+
+  return { x: Math.cos(radians), y: Math.sin(radians) };
 }
 
 /*
@@ -2657,6 +2866,8 @@ const enggAnnotationModel = {
   magnitudeShownFor,
   annotatableTypes,
   annotationTextBounds,
+  annotationAnchor,
+  drawnTextBounds,
   featureValueText,
   labelledQuantityText,
   textBoundsContainPoint,

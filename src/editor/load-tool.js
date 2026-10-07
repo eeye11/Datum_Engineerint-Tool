@@ -4,8 +4,9 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
+import { openLoadValuePopup } from "../ui/editors/load-value-popup.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
-import { drawingState } from "./editor-state.js";
+import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { distanceToSegment, isRectangleLike, objectPoints } from "./hit-testing.js";
 import { cancelInteraction } from "./selection.js";
@@ -389,7 +390,7 @@ export function beginDistributedLoadConstruction(
     );
 
     setToolMessage(
-        "Specify the end of the loaded span"
+        "Drag to define the loaded span, then release"
     );
 
     renderCurrentDrawing();
@@ -432,9 +433,9 @@ const LOAD_BUILD_INSTRUCTIONS = {
     "distributed-load-start":
         "Specify start point",
     "distributed-load-end":
-        "Specify end point",
+        "Drag along the body to define the loaded span, then release",
     "distributed-load-vector":
-        "Move to set magnitude and direction, then click",
+        "Click to place the load",
 };
 
 export function loadBuildInstruction(
@@ -719,7 +720,7 @@ export function startDistributedLoadBuild(
     );
 
     setToolMessage(
-        "Move to set the first force direction and magnitude, then click"
+        "Click to place the first load point"
     );
 
     renderProperties();
@@ -728,26 +729,27 @@ export function startDistributedLoadBuild(
 
 /*
  * ========================================================
- * THE REFERENCE POINT FOR THE LOAD DIRECTION
+ * THE SPAN'S OWN AXIS AND ITS PERPENDICULAR
  * ========================================================
  *
- * The vector that decides which way the load acts runs from HERE to the
- * cursor. It is the midpoint of the loaded region, which is the same
- * origin the constant Distributed Load reads its direction from, so both
- * load tools share one reading of the pointer and one meaning of
- * "reference point".
+ * The varying load's DEFAULT direction is square-on to the loaded span,
+ * and both the axis and its perpendicular are derived HERE, ONCE, from the
+ * span itself.
  *
- * IT MUST NOT BE THE CURSOR'S OWN PROJECTION ONTO THE BODY.
+ * THE AXIS IS THE SPAN'S ESTABLISHED DIRECTION - from its start to its end,
+ * the same fact the member is drawn with. The perpendicular is taken from
+ * that axis, so a load on an angled member is square to THAT member rather
+ * than to the world axes: the span says which way the member runs, and the
+ * square-on direction follows from it.
  *
- * That is what the varying load used to use, and it is why its direction
- * was always perpendicular to the parent body: the projection of a point
- * onto a line is the foot of its perpendicular, so the vector from that
- * foot to the point is perpendicular to the line BY CONSTRUCTION. The
- * cursor's actual direction never reached the load - moving diagonally
- * still produced a square-on force, and the direction could not be chosen
- * at all.
+ * WHICH SIDE THE PERPENDICULAR POINTS. There are two normals to a line, and
+ * the load has to pick one. It picks the side the CURSOR is on, so the
+ * magnitude - which is the cursor's offset measured ALONG the direction -
+ * comes out positive and the arrows grow as the student pulls away. The
+ * sense is a consequence of where the pointer is, not a rule of its own, and
+ * once the direction is COMMITTED it is frozen for the whole load.
  */
-function distributedLoadDirectionReference(
+function spanAxis(
     interaction
 ) {
     const start =
@@ -760,44 +762,181 @@ function distributedLoadDirectionReference(
         return null;
     }
 
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+
+    const length = Math.hypot(dx, dy);
+
+    if (length < 1e-9) {
+        return null;
+    }
+
     return {
-        x: (start.x + end.x) / 2,
-        y: (start.y + end.y) / 2
+        x: dx / length,
+        y: dy / length
     };
 }
 
 /*
- * The direction the cursor is currently selecting, in degrees, or null
- * when it is not selecting one.
+ * The span's perpendicular direction, as a unit vector and in degrees.
  *
- * The vector runs from the loaded region's midpoint to the cursor, and
- * its angle is the direction:
+ * The sense is chosen from the cursor's side of the span axis, so the
+ * returned direction is the one the cursor is on. A cursor sitting exactly
+ * on the axis leaves the choice open, and the first normal is used - which
+ * is the drawing's own convention and is then frozen once committed.
+ */
+function spanPerpendicularDirection(
+    interaction,
+    cursor
+) {
+    const axis =
+        spanAxis(interaction);
+
+    if (!axis) {
+        return null;
+    }
+
+    const start =
+        interaction.distributedLoadStart;
+
+    /*
+     * A normal to the axis. The two candidates are +/- this vector.
+     */
+    let nx = -axis.y;
+    let ny = axis.x;
+
+    if (cursor) {
+        const side =
+            (cursor.x - start.x) * nx +
+            (cursor.y - start.y) * ny;
+
+        if (side < 0) {
+            nx = -nx;
+            ny = -ny;
+        }
+    }
+
+    return {
+        x: nx,
+        y: ny,
+        degrees:
+            Math.atan2(ny, nx) *
+            180 /
+            Math.PI
+    };
+}
+
+/*
+ * How far along the span a point lies, UNCLAMPED.
  *
- *     reference point -> cursor
- *              │
- *         vector angle -> the direction every arrow shares
+ * `fractionAlong` clamps its answer to the span, which is right for placing
+ * a point ON a member - the point is always on the member. This question is
+ * different: it asks whether the cursor is WITHIN the span or OUTSIDE it,
+ * and clamping would erase exactly the distinction being asked about. A
+ * value below 0 is beyond the span's start, above 1 is beyond its end, and
+ * in between is on the span.
+ */
+function fractionAlongUnclamped(
+    interaction,
+    point
+) {
+    const start =
+        interaction?.distributedLoadStart;
+
+    const end =
+        interaction?.distributedLoadEnd;
+
+    if (!start || !end || !point) {
+        return 0;
+    }
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+
+    const lengthSquared =
+        dx * dx + dy * dy;
+
+    if (lengthSquared < 1e-12) {
+        return 0;
+    }
+
+    return (
+        ((point.x - start.x) * dx +
+            (point.y - start.y) * dy) /
+        lengthSquared
+    );
+}
+
+/*
+ * ========================================================
+ * THE DIRECTION, FROM THE CURSOR AND THE SPAN'S BOUNDS
+ * ========================================================
  *
- * A cursor on the reference point aims nowhere, so it reports null rather
- * than a zero vector - the load must not invent a direction from nothing.
+ * The different direction can only be introduced DELIBERATELY, by taking
+ * the cursor past one of the span's own ends. A cursor anywhere WITHIN the
+ * span - however far off the member it is dragged - gives the perpendicular
+ * direction and nothing else, so the magnitude can be chosen by pulling
+ * away without the load spinning under the student as they do it.
+ *
+ *   WITHIN THE SPAN (0 <= t <= 1)  ->  perpendicular to the span axis
+ *   BEYOND THE START (t < 0)       ->  the direction from the start to the
+ *                                      cursor, which is the LEFT side
+ *   BEYOND THE END (t > 1)         ->  the direction from the end to the
+ *                                      cursor, which is the RIGHT side
+ *
+ * THE BOUNDS ARE THE SPAN'S OWN ENDS. There is no second, invented distance
+ * threshold: the loaded region is the span, its ends are where it stops, and
+ * a cursor past one of them has left the region and is asking for something
+ * the perpendicular cannot express.
+ *
+ * The vector is measured FROM THE NEAREST END, not from the midpoint. The
+ * end is the pivot the cursor has just gone past, and the direction it
+ * describes is what the student is pointing at from that pivot.
  */
 function distributedLoadDirectionUnderPointer(
     interaction,
     cursor
 ) {
-    const origin =
-        distributedLoadDirectionReference(
-            interaction
+    const perpendicular =
+        spanPerpendicularDirection(
+            interaction,
+            cursor
         );
 
-    if (!origin || !cursor) {
+    if (!interaction || !cursor) {
         return null;
     }
 
-    const dx = cursor.x - origin.x;
-    const dy = cursor.y - origin.y;
+    const t =
+        fractionAlongUnclamped(
+            interaction,
+            cursor
+        );
+
+    /*
+     * WITHIN THE SPAN: the default, and it does not rotate.
+     */
+    if (t >= 0 && t <= 1) {
+        return perpendicular
+            ? perpendicular.degrees
+            : null;
+    }
+
+    /*
+     * BEYOND AN END: the direction the cursor describes about that end.
+     */
+    const pivot =
+        t < 0
+            ? interaction.distributedLoadStart
+            : interaction.distributedLoadEnd;
+
+    const dx = cursor.x - pivot.x;
+    const dy = cursor.y - pivot.y;
 
     if (Math.hypot(dx, dy) < 1e-6) {
-        return null;
+        return perpendicular
+            ? perpendicular.degrees
+            : null;
     }
 
     return (
@@ -809,30 +948,23 @@ function distributedLoadDirectionUnderPointer(
 
 /*
  * ========================================================
- * THE DIRECTION IS THE USER'S CURSOR VECTOR
+ * THE DIRECTION IS THE FIRST POINT'S, AND IT IS SQUARE-ON BY DEFAULT
  * ========================================================
  *
- * A Varying Distributed Load's direction is chosen by the student, once,
- * during the first magnitude selection. The vector from a FIXED reference
- * point - the midpoint of the loaded region - to the CURSOR is the force:
- * its length is the first magnitude and its angle is the direction every
- * arrow of the load shares.
+ * A Varying Distributed Load has ONE direction, shared by every arrow it
+ * draws. That direction is established when the FIRST profile point is
+ * placed, and from then on every later point contributes a MAGNITUDE only.
  *
- * IT IS NEVER TAKEN FROM THE SPAN. Not the beam's tangent, not its normal,
- * not its start, end or midpoint, not the nearest snap point. A load on an
- * angled member may point horizontally, vertically, square to the member or
- * at any angle at all, because the student drew it that way - the span says
- * WHERE the load acts, and the cursor says WHICH WAY. Deriving one from the
- * other is how a load ends up at an angle nobody asked for.
+ * The default is PERPENDICULAR TO THE LOADED SPAN, and the cursor stays on
+ * that default for its whole journey along the span. A different direction
+ * is a DELIBERATE act: the cursor must be taken past one of the span's own
+ * ends, and only then does it describe a direction of its own - the left
+ * side from the start, the right side from the end. See
+ * `distributedLoadDirectionUnderPointer` for the whole rule.
  *
- * The one thing that MAY steer the direction is the shared HORIZONTAL /
- * VERTICAL inference: when the cursor is within the inference tolerance of
- * level or plumb, the direction is squared to that axis on purpose. That is
- * a deliberate constraint the student can see and break by moving away.
- * Ordinary body and endpoint SNAPPING is not an alignment and must not
- * reach this calculation - a cursor near a span end is still just a cursor,
- * and reading the snapped endpoint here is what produced a strange diagonal
- * angle when the student aimed towards an end of the span.
+ * IT IS NEVER RE-DERIVED PER POINT. Every arrow of the load reads the one
+ * stored direction; none of them is turned by where its own cursor happened
+ * to be, so the arrows stay parallel however the profile varies.
  */
 
 /*
@@ -1217,44 +1349,166 @@ export function continueDistributedLoadBuild(
     }
 
     /*
-     * A CURSOR ON THE REFERENCE POINT AIMS NOWHERE.
+     * THE FIRST POINT NEEDS A DIRECTION; WITHOUT ONE THERE IS NO LOAD.
      *
-     * The first click depends on the cursor for its direction as well as its
-     * magnitude, and a cursor sitting on the reference point supplies
-     * neither - there is no vector to read. Refusing asks the student to
-     * drag away from the reference point rather than committing a load whose
-     * direction was never chosen, and it is deliberately NOT resolved by
-     * falling back to the span's perpendicular: a direction the student did
-     * not choose must never be stored as if they had.
+     * A load with no usable direction would have to invent one, and an
+     * invented direction is stored as though the student had chosen it.
+     * The only way to have none now is a degenerate span - a zero-length
+     * loaded region - because within the span the perpendicular direction
+     * is always available and past an end the cursor's own vector is.
      *
-     * Once a direction exists this guard stops firing, because the direction
-     * is then fixed and every later click is magnitude only.
+     * So this refuses only what genuinely cannot be read, and it stops
+     * firing entirely once a direction is stored: every later point is
+     * magnitude only.
      */
     if (
         !draft.directionChosen &&
         !interaction.distributedLoadDirection
     ) {
         setToolMessage(
-            "Move away from the load to set its magnitude and direction, then click"
+            "Move away from the load to set its magnitude, then click"
         );
 
         return;
     }
 
-    const hasProfile =
-        Boolean(
-            interaction
-                .distributedLoadHasProfile
-        ) ||
-        draft.points.length > 0;
+    /*
+     * ========================================================
+     * THE POINT'S MAGNITUDE IS ASKED FOR, PER POINT
+     * ========================================================
+     *
+     * Placing a profile point fixes WHERE it acts; its magnitude is a
+     * physical value, so it is asked for rather than guessed from a cursor
+     * distance. The cursor's offset along the load's direction is offered as
+     * the SUGGESTION, so a student who is happy with the size they dragged
+     * presses Enter, and one who wants a round number types it.
+     *
+     * The point is NOT committed until the popup is confirmed. Cancelling
+     * removes it, so a profile never gains a point whose value nobody gave -
+     * which is the state the old flow could reach by clicking quickly.
+     */
+    const station =
+        draft.points.length
+            ? draft.points[draft.points.length - 1]
+            : null;
+
+    const suggested =
+        station && Number.isFinite(station.magnitude)
+            ? station.magnitude
+            : 0;
+
+    openLoadValuePopup({
+        title: "Varying Load Point",
+        label: `Point ${draft.points.length} Magnitude`,
+        value: Number(suggested).toFixed(2),
+        unit: loadUnitOfInteraction(interaction),
+
+        /*
+         * THE BOTTOM BAR SAYS WHAT THE OPEN POPUP IS ASKING FOR. The current
+         * step belongs in one place, and while the value is being entered that
+         * step is the entry itself.
+         */
+        onOpen: () => {
+            setToolMessage(
+                "Enter the magnitude for this load point"
+            );
+        },
+
+        onConfirm: confirmed => {
+            commitDistributedLoadPoint({
+                resolution,
+                point,
+                draft,
+                interaction,
+                magnitude: confirmed.value,
+                unit: confirmed.unit
+            });
+        },
+
+        onCancel: () => {
+            setToolMessage(
+                "Point cancelled - click to add another point, Enter to finish"
+            );
+
+            renderCurrentDrawing();
+        }
+    });
+}
+
+/*
+ * The unit a varying load's points are stated in.
+ *
+ * ONE UNIT FOR THE WHOLE PROFILE: it is read from the interaction when a
+ * direction or a unit was already chosen, and defaults to the drawing's own
+ * unit until the first point is confirmed - at which point it is written
+ * onto the interaction so every later point offers the same one.
+ */
+function loadUnitOfInteraction(interaction) {
+    const chosen =
+        interaction?.loadUnit ??
+        interaction?.distributedLoadUnit;
+
+    return enggLoadProfile.loadUnit({
+        loadUnit: chosen
+    });
+}
+
+/*
+ * Commit one point of the load's magnitude profile, with the value the
+ * student entered.
+ *
+ * The STATION comes from the resolved point - where the click landed - and
+ * the MAGNITUDE is the number from the popup rather than the cursor's
+ * offset, so the two are separate decisions that cannot overwrite each
+ * other. The point's direction is never stored: the load has ONE direction,
+ * established by its first point, and every later point inherits it.
+ */
+function commitDistributedLoadPoint({
+    resolution,
+    point,
+    draft,
+    interaction,
+    magnitude,
+    unit
+}) {
+    const t =
+        enggLoadProfile.fractionAlong(
+            {
+                start: draft.start,
+                end: draft.end
+            },
+            point
+        );
+
+    const points = [
+        ...(interaction.distributedLoadPoints || [])
+    ];
+
+    const existing =
+        points.findIndex(
+            existingPoint =>
+                Math.abs(existingPoint.t - t) < 1e-6
+        );
+
+    const entry = {
+        t,
+        magnitude: Math.max(0, Number(magnitude) || 0)
+    };
+
+    if (existing >= 0) {
+        points[existing] = entry;
+    } else {
+        points.push(entry);
+    }
+
+    const hasProfile = points.length > 0;
 
     enggDrawingState.setInteraction(
         drawingState,
         {
             ...resolution,
 
-            phase:
-                "distributed-load-build",
+            phase: "distributed-load-build",
 
             distributedLoadStart: {
                 ...draft.start
@@ -1265,69 +1519,48 @@ export function continueDistributedLoadBuild(
             },
 
             /*
-             * THE DIRECTION THE FIRST MAGNITUDE SELECTION ESTABLISHED.
-             *
-             * It is stored the moment it exists and never re-read from the
-             * cursor afterwards, so the second and third points are
-             * magnitude only. Nothing here derives it from the span.
+             * THE DIRECTION THE FIRST POINT ESTABLISHED, kept once and never
+             * re-read - every later point is magnitude only.
              */
             distributedLoadDirection:
-                draft.directionChosen
+                interaction.distributedLoadDirection ??
+                (draft.directionChosen
                     ? draft.direction
-                    : null,
-
-            distributedLoadPoints:
-                draft.points,
-
-            distributedLoadHasProfile:
-                hasProfile,
+                    : null),
 
             /*
-             * Every point placed so far is published to the
-             * snap system at the moment it is placed, not when
-             * the load is finished.
+             * THE ONE UNIT FOR THE WHOLE PROFILE, SET BY THE FIRST POINT.
              *
-             * This is what makes a Varying Distributed Load
-             * snap to itself. The student defines Force 1, then
-             * moves to place Force 2, and the natural thing is
-             * to put Force 2 at the same height as Force 1 -
-             * that is how "the same magnitude again" is actually
-             * drawn. Without the point being a snap target the
-             * only way to express that is by eye, and a force
-             * placed a few pixels off reads as a different
-             * magnitude rather than an equal one.
-             *
-             * Registering here rather than at the end is the
-             * whole point: a load is an open sequence, and its
-             * earlier points are real for as long as the tool
-             * is running.
+             * The first confirmed point establishes the feature's unit from
+             * what the student typed. Every later point then KEEPS that unit:
+             * a profile is one quantity measured along one axis, so its points
+             * cannot be stated in different units - "1 kN/m, 3 N/mm, 6 kN/m"
+             * describes nothing. So once a unit is recorded it is read back
+             * unchanged, and a later point only supplies a magnitude.
              */
-            snapGeometry:
-                distributedLoadSnapGeometry(
-                    {
-                        distributedLoadStart:
-                            draft.start,
+            distributedLoadUnit:
+                interaction.distributedLoadUnit ??
+                unit,
 
-                        distributedLoadEnd:
-                            draft.end,
+            distributedLoadPoints: points,
 
-                        distributedLoadPoints:
-                            draft.points
-                    }
-                ),
+            distributedLoadHasProfile: hasProfile,
 
-            parentId:
-                interaction.parentId
+            snapGeometry: distributedLoadSnapGeometry({
+                distributedLoadStart: draft.start,
+                distributedLoadEnd: draft.end,
+                distributedLoadPoints: points
+            }),
+
+            parentId: interaction.parentId
         }
     );
 
     setToolMessage(
-        interaction
-            .distributedLoadHasProfile
-            ? "Click to add another point, Enter to finish"
-            : "Click to add another point, Enter to finish"
+        "Click to place the next load point, Enter to finish"
     );
 
+    renderProperties();
     renderCurrentDrawing();
 }
 
@@ -1391,7 +1624,7 @@ function startConstantLoadBuild(
     );
 
     setToolMessage(
-        "Specify start point"
+        "Drag along the body to define the loaded span, then release"
     );
 
     renderProperties();
@@ -1421,7 +1654,7 @@ export function takeDistributedLoadStart(
     );
 
     setToolMessage(
-        "Specify end point"
+        "Drag along the body to define the loaded span, then release"
     );
 
     renderProperties();
@@ -1473,7 +1706,7 @@ export function takeDistributedLoadEnd(
     );
 
     setToolMessage(
-        "Move to set magnitude and direction, then click"
+        "Click to place the load"
     );
 
     renderProperties();
@@ -1538,6 +1771,96 @@ export function takeDistributedLoadVector(
     const degrees =
         Math.atan2(dy, dx) * 180 / Math.PI;
 
+    /*
+     * ========================================================
+     * THE MAGNITUDE IS ASKED FOR IN A POPUP
+     * ========================================================
+     *
+     * The cursor sets the DIRECTION, and its distance is offered as the
+     * SUGGESTED magnitude - so a student who is happy with the size they
+     * dragged simply presses Enter, and one who wants a round number types
+     * it. Either way the value is a real physical load the student stated,
+     * not a screen distance silently reinterpreted.
+     *
+     * The load is not created until the popup is confirmed, so a cancelled
+     * popup leaves nothing behind - the same guarantee the creation-size
+     * popup gives for a Beam.
+     */
+    openLoadMagnitudePopup({
+        direction: degrees,
+        suggestedMagnitude: length
+    });
+
+    return true;
+}
+
+/*
+ * Ask for a constant load's magnitude, then build it.
+ *
+ * Kept separate from the gesture that chose the direction so the two
+ * questions do not share a code path: the direction comes from the pointer
+ * and is settled here, the magnitude comes from the student's own entry and
+ * is settled in the popup's callback.
+ */
+function openLoadMagnitudePopup({
+    direction,
+    suggestedMagnitude
+}) {
+    const interaction =
+        drawingState.interaction;
+
+    const unit =
+        interaction.loadUnit ??
+        enggLoadProfile.DEFAULT_LOAD_UNIT;
+
+    openLoadValuePopup({
+        title: "Distributed Load",
+        label: "Magnitude",
+        value: Number(suggestedMagnitude).toFixed(2),
+        unit,
+
+        /*
+         * THE BOTTOM BAR REPORTS THE OPEN POPUP'S QUESTION. The current step
+         * is said in one place, and while the value is being entered that step
+         * is the entry itself.
+         */
+        onOpen: () => {
+            setToolMessage(
+                "Enter the load magnitude"
+            );
+        },
+
+        onConfirm: confirmed => {
+            commitConstantLoadFromPopup({
+                direction,
+                magnitude: confirmed.value,
+                unit: confirmed.unit
+            });
+        },
+
+        onCancel: () => {
+            setToolMessage(
+                "Distributed load cancelled"
+            );
+
+            renderCurrentDrawing();
+        }
+    });
+}
+
+/*
+ * Commit the constant load the popup confirmed.
+ *
+ * The same commit the direct path used, with two differences: the
+ * magnitude is the number the student typed rather than the cursor
+ * distance, and the UNIT they chose is recorded on the load so the drawing
+ * and the Features panel state it the same way.
+ */
+function commitConstantLoadFromPopup({
+    direction,
+    magnitude,
+    unit
+}) {
     const previous =
         enggDrawingState.snapshotDrawing(
             drawingState
@@ -1545,16 +1868,19 @@ export function takeDistributedLoadVector(
 
     const created =
         commitConstantLoad(
-            degrees,
-            length
+            direction,
+            magnitude,
+            unit
         );
 
     if (!created) {
         setToolMessage(
-            "Specify load magnitude and direction - the loaded region is not usable"
+            "Specify load magnitude - the loaded region is not usable"
         );
 
-        return false;
+        renderCurrentDrawing();
+
+        return;
     }
 
     enggDrawingState.commitDrawingChange(
@@ -1568,10 +1894,15 @@ export function takeDistributedLoadVector(
         "Distributed load created"
     );
 
+    /*
+     * The load is left in edit view so the magnitude just typed is visible
+     * in its own panel, exactly as a sized Beam is.
+     */
+    editorState.featurePanelView = "edit";
+    editorState.featureTreePickedId = null;
+
     renderProperties();
     renderCurrentDrawing();
-
-    return true;
 }
 
 /*
@@ -1653,7 +1984,8 @@ export function constantLoadDraft(
  */
 function commitConstantLoad(
     direction,
-    magnitude
+    magnitude,
+    unit
 ) {
     const interaction =
         drawingState.interaction;
@@ -1711,10 +2043,23 @@ function commitConstantLoad(
             draft.start,
             draft.end,
             draft.magnitude,
-            staticsAttachedStyle(
-                drawingState.activeTool,
-                interaction.staticsTarget
-            )
+            {
+                ...staticsAttachedStyle(
+                    drawingState.activeTool,
+                    interaction.staticsTarget
+                ),
+
+                /*
+                 * THE UNIT THE STUDENT ENTERED THE MAGNITUDE IN. It is
+                 * recorded on the load so the drawing annotation and the
+                 * Features panel both state the value the same way - one
+                 * unit, one source.
+                 */
+                loadUnit:
+                    enggLoadProfile.loadUnit({
+                        loadUnit: unit
+                    })
+            }
         );
 
     object.geometry.direction =
@@ -1840,6 +2185,18 @@ export function finishDistributedLoadConstruction() {
 
     object.geometry.points =
         draft.points;
+
+    /*
+     * THE ONE UNIT FOR THE WHOLE PROFILE.
+     *
+     * Every point was entered in the unit the interaction recorded, so the
+     * finished load is stated in that same unit on the drawing and in the
+     * panel. It is written here rather than on each point because a profile
+     * has ONE unit - the points differ in magnitude, never in what the
+     * magnitude is measured in.
+     */
+    object.geometry.loadUnit =
+        loadUnitOfInteraction(interaction);
 
     object.geometry.intensity =
         draft.points.reduce(

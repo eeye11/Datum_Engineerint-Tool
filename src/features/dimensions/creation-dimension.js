@@ -629,6 +629,33 @@ function open(options = {}) {
     }, 0);
   });
 
+  /*
+   * ENTER CONFIRMS FROM ANY CONTROL IN THE POPUP.
+   *
+   * The student types the number, chooses the unit, then presses Enter - so
+   * the Enter often arrives while the UNIT SELECT has focus rather than the
+   * number. Listening on the popup catches every keydown inside it, from
+   * whichever control is being used, so that rhythm always commits and an
+   * Apply click is never needed.
+   *
+   * The number's own handler already stops its Enter from reaching here, so
+   * a single confirmation is never doubled.
+   */
+  popup.addEventListener("keydown", event => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    if (event.target === input) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    advance();
+  });
+
   renderStep();
 
   return popup;

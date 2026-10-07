@@ -501,7 +501,6 @@ function renderImage(state, points, options = {}) {
   if (!svg) {
     return null;
   }
-
   const canvas = document.createElement("canvas");
 
   canvas.width = Math.round(bounds.width);
@@ -520,6 +519,123 @@ function renderImage(state, points, options = {}) {
     context,
     bounds
   };
+}
+
+/*
+ * ========================================================
+ * A FITTED PREVIEW OF A STORED DOCUMENT
+ * ========================================================
+ *
+ * The one way anything that is NOT the open editor draws a drawing: a Recent
+ * file's thumbnail, a template's card, and the figure a written solution
+ * inserts.
+ *
+ * WHY IT IS A SEPARATE PATH, AND WHY THAT MATTERS
+ * -----------------------------------------------
+ * The editor's own bounds measure the LIVE document - the open sheet, at the
+ * editor's zoom, with the current Visual Force Scale. That is right for Fit and
+ * for a print of what is on screen. It is wrong for a stored drawing, and it is
+ * the reason a thumbnail could come out showing the whole workspace with a tiny
+ * figure in one corner: the bounds and the render were read from different
+ * places, and a calibrated or scaled sheet made them disagree.
+ *
+ * So this builds its OWN read-only state from the stored document - its sheets,
+ * its World Scale, a neutral camera - measures the bounds against THAT, and
+ * renders fitted. Nothing about the open document is read, and nothing about it
+ * is changed: the same call produces the same picture whatever the student
+ * happens to be looking at.
+ */
+function renderFittedDocument(documentBody, options = {}) {
+  const sheets = documentBody?.sheets || [];
+
+  const active =
+    sheets.find((sheet) => sheet.id === documentBody?.activeSheetId) ||
+    sheets[0] ||
+    null;
+
+  if (!active) {
+    return null;
+  }
+
+  const objects = active.objects || [];
+
+  if (!objects.length) {
+    return null;
+  }
+
+  /*
+   * The read-only state the renderer draws. It carries the sheet's OWN scale
+   * and units, so a calibrated drawing is measured and drawn in its own frame
+   * rather than in the open document's.
+   */
+  const state = {
+    objects,
+    scale: active.scale || null,
+    units: active.units || documentBody.units || "mm",
+    camera: { zoom: 1, panX: 0, panY: 0 },
+    selection: {
+      selectedObjectIds: [],
+      boxSelectionIds: [],
+      hoveredObjectId: null
+    },
+    interaction: { phase: "idle" }
+  };
+
+  const points = boundsProvider
+    ? boundsProvider(objects, 1)
+    : [];
+
+  if (!points.length) {
+    return null;
+  }
+
+  /*
+   * THE BOX IS THE DRAWING'S SHAPE, NOT A FIXED PAGE.
+   *
+   * `renderImage` fills a page of the size it is given, and with only a width
+   * supplied the height falls back to the printed-page default - so a thumbnail
+   * was drawn into a 160x1600 box with the figure adrift in the middle of a
+   * great deal of empty space. That is the "thumbnail shows the whole
+   * workspace" defect, and no amount of correct fitting inside the box fixes
+   * it: the box itself has to match the drawing.
+   *
+   * So the height is derived from the drawing's own extent, clamped to a sane
+   * range. The aspect ratio is preserved (the fit engine does that), and the
+   * picture now fills its card.
+   */
+  const width = Math.max(Number(options.width) || 160, 16);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  points.forEach((point) => {
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) {
+      return;
+    }
+
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  });
+
+  const spanX = Math.max(maxX - minX, 1e-6);
+  const spanY = Math.max(maxY - minY, 1e-6);
+
+  const aspect = spanX / spanY;
+
+  const height = Math.max(
+    16,
+    Math.min(Math.round(width / aspect), width * 4)
+  );
+
+  return renderImage(state, points, {
+    width,
+    height: options.height || height,
+    background: options.background || null
+  });
 }
 
 const enggDrawingExport = {
@@ -541,6 +657,7 @@ const enggDrawingExport = {
   drawnPoints,
   paddedBounds,
   renderClean,
+  renderFittedDocument,
   renderImage,
 
   /*

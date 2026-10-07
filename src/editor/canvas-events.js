@@ -4,6 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isIdleForEditing } from "./annotation-tool.js";
+import { beginCreationDrag, finishCreationDrag } from "./creation-drag.js";
 import { handleCanvasClick, openDimensionEditorFor, openNoteEditorFor, syncSelectionInteraction } from "./canvas-click.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
@@ -13,7 +14,7 @@ import { beginManipulationDrag, finishManipulationDrag, updateManipulationDrag }
 import { drawingState, editorState } from "./editor-state.js";
 import { objectAtPoint } from "./hit-testing.js";
 import { updateDrawingCoordinates } from "./pointer.js";
-import { beginSelectionDrag, cancelInteraction, finishPolyline, finishSelectionDrag, updateSelectionDrag } from "./selection.js";
+import { beginAnnotationDrag, beginSelectionDrag, cancelInteraction, finishPolyline, finishSelectionDrag, updateSelectionDrag } from "./selection.js";
 import { canvasPointFromEvent } from "./tool-activation.js";
 import { closeCoordinateSystemMenu } from "./tool-menus.js";
 import { setToolMessage } from "./toolbar-render.js";
@@ -77,80 +78,65 @@ export function installCanvasEvents() {
                         );
 
                     /*
-                     * A DIMENSION OR ANNOTATION MUST ALREADY BE SELECTED.
+                     * A DIMENSION OPENS ON A DIRECT DOUBLE-CLICK.
                      *
-                     * Selecting it and editing it are two different
-                     * acts, and the second one has to be asked for
-                     * separately. A dimension is a thing you place
-                     * and then push around the drawing until it sits
-                     * somewhere legible, so almost every interaction
-                     * with one is a click, a click-drag, or a
-                     * double-click that was really two slow clicks.
+                     * Double-clicking the number IS the request to change it,
+                     * so a dimension needs no prior selection: the gesture is
+                     * unambiguous, and requiring a selecting click first would
+                     * put the value one step further away than it needs to be.
                      *
-                     * Opening the editor from any of those would make
-                     * the drawing unusable: the student could not
-                     * select a dimension, could not nudge it into
-                     * position, and could not click near it without a
-                     * dialog appearing. So the editor needs the one
-                     * gesture that cannot be confused with any of
-                     * them - a double-click on something already
-                     * selected.
+                     * THIS DOES NOT MOVE THE DIMENSION. Opening the editor only
+                     * reports the value; only a press-and-drag changes where
+                     * the number sits.
+                     */
+                    if (pointed?.type === "dimension") {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        openDimensionEditorFor(pointed);
+
+                        return;
+                    }
+
+                    /*
+                     * ANNOTATION STILL NEEDS ITS SELECTING CLICK FIRST.
                      *
-                     * Being already selected is also the honest
-                     * signal. It says the student has finished
-                     * placing this dimension and is now working ON
-                     * it, rather than still putting it there.
-                     *
-                     * THE GUARD NAMES ANNOTATIONS TOO. It used to
-                     * name dimensions only, so a double-click on an
-                     * unselected annotation fell through to the
-                     * branch below - which stopped the event and
-                     * opened no editor, leaving an empty note with
-                     * no way to write in it. An annotation is placed
-                     * and then written into, and the same two-act
-                     * distinction applies, so a click on an
-                     * UNSELECTED one only selects it and the second
-                     * double-click opens the editor.
+                     * A note is placed and then written into, and almost
+                     * every interaction with one is a click or a drag to move
+                     * it - so an UNSELECTED one only selects on the first of
+                     * the pair, and the second double-click opens the editor.
+                     * That is the distinction which keeps a stray click from
+                     * opening a dialog nobody asked for.
                      */
                     if (
-                        (pointed?.type === "dimension" ||
-                         pointed?.type === "annotation") &&
+                        pointed?.type === "annotation" &&
                         !drawingState.selection
                             .selectedObjectIds.includes(
                                 pointed.id
                             )
                     ) {
                         /*
-                         * Deliberately NOT stopping the event. The
-                         * click that selected the dimension has
-                         * done its job, and letting the first click
-                         * of the pair stand as an ordinary selection
-                         * is what makes the second one meaningful.
+                         * Deliberately NOT stopping the event. The click that
+                         * selected the annotation has done its job, and letting
+                         * the first click of the pair stand as an ordinary
+                         * selection is what makes the second one meaningful.
                          */
                         return;
                     }
 
-                    if (
-                        pointed?.type === "dimension" ||
-                        pointed?.type === "annotation"
-                    ) {
+                    if (pointed?.type === "annotation") {
                         event.preventDefault();
                         event.stopPropagation();
 
                         /*
                          * The annotation's editor is the note editor.
-                         * openNoteEditorFor refuses a GENERATED
-                         * annotation, whose text is not writable, and
-                         * returns false for one - the double-click is
-                         * then swallowed rather than reinterpreted,
-                         * which is the honest outcome for a thing that
-                         * cannot be opened.
+                         * openNoteEditorFor refuses a GENERATED annotation,
+                         * whose text is not writable, and returns false for one
+                         * - the double-click is then swallowed rather than
+                         * reinterpreted, which is the honest outcome for a
+                         * thing that cannot be opened.
                          */
-                        if (pointed.type === "dimension") {
-                            openDimensionEditorFor(pointed);
-                        } else {
-                            openNoteEditorFor(pointed);
-                        }
+                        openNoteEditorFor(pointed);
 
                         return;
                     }
@@ -232,6 +218,43 @@ export function installCanvasEvents() {
                     return;
                 }
 
+                /*
+                 * A MAGNITUDE LABEL IS GRABBED BY ITS OWN TEXT.
+                 *
+                 * The text of "500 N" is a direct-manipulation target: a
+                 * press on it SELECTS the label and BEGINS moving it in one
+                 * gesture. This is tried before a creation tool's own press, so
+                 * dragging a number never starts a new feature through it; a
+                 * press that is not on a label falls straight through.
+                 */
+                if (
+                    beginAnnotationDrag(
+                        event
+                    )
+                ) {
+                    return;
+                }
+
+                /*
+                 * A CREATION IS STARTED BY THE PRESS.
+                 *
+                 * For a tool that takes its two points from one gesture,
+                 * the press IS the first point - so the feature begins
+                 * here, the pointer move updates its preview through the
+                 * existing pipeline, and the release commits it. Attempted
+                 * before direct manipulation and selection because a
+                 * creation tool's press is its own input, not a selection;
+                 * a press that lands on an existing feature is left to
+                 * those handlers by the tool question itself.
+                 */
+                if (
+                    beginCreationDrag(
+                        event
+                    )
+                ) {
+                    return;
+                }
+
                 if (
                     beginManipulationDrag(
                         event
@@ -249,6 +272,24 @@ export function installCanvasEvents() {
         drawingCanvas.addEventListener(
             "pointermove",
             event => {
+                /*
+                 * A DRAG-TO-CREATE KEEPS ITS PREVIEW LIVE.
+                 *
+                 * The ordinary `mousemove` listener already redraws the
+                 * construction preview, but that is a MOUSE event - a pen or
+                 * a touch pointer produces `pointermove` without it. Driving
+                 * the same update from here means the preview follows every
+                 * kind of pointer, and it is the same function the mouse
+                 * path calls, so the two cannot describe different geometry.
+                 */
+                if (editorState.creationDrag) {
+                    updateDrawingCoordinates(
+                        event
+                    );
+
+                    return;
+                }
+
                 if (editorState.manipulationDrag) {
                     updateManipulationDrag(
                         event
@@ -266,6 +307,33 @@ export function installCanvasEvents() {
         drawingCanvas.addEventListener(
             "pointerup",
             event => {
+                /*
+                 * A DRAG-TO-CREATE ENDS AT THE RELEASE.
+                 *
+                 * The final cursor position is the second point, so the
+                 * feature is committed here rather than waiting for a
+                 * second click. Tried first, because the gesture belongs
+                 * to the creation and must not be reinterpreted as the
+                 * end of a selection or manipulation drag.
+                 */
+                if (
+                    finishCreationDrag(
+                        event
+                    )
+                ) {
+                    /*
+                     * The browser will fire a `click` for this same
+                     * release. It is a consequence of the gesture that has
+                     * just committed a feature, not a new first point, so
+                     * it is marked consumed and the click handler drops it
+                     * instead of starting a second construction.
+                     */
+                    editorState.creationDragConsumedClick =
+                        true;
+
+                    return;
+                }
+
                 if (editorState.manipulationDrag) {
                     finishManipulationDrag(
                         event
@@ -303,11 +371,36 @@ export function installCanvasEvents() {
         drawingCanvas.addEventListener(
             "pointerdown",
             event => {
-                if (
-                    drawingState.activeTool !==
-                    "pan"
-                ) {
+                /*
+                 * THE MIDDLE BUTTON PANS, WHATEVER TOOL IS ARMED.
+                 *
+                 * This is the navigation an engineering CAD user already has in
+                 * their hands: press the wheel, move, release. It has to work
+                 * WITHOUT selecting the Pan tool first, because the whole point
+                 * of it is that looking around never interrupts what you are
+                 * doing - and it must not steal the tool's own click, so the
+                 * event is stopped only for the button that pans.
+                 *
+                 * The LEFT button keeps its meaning: it belongs to the armed
+                 * tool, and to Pan only when Pan is the armed tool.
+                 */
+                const middle = event.button === 1;
+
+                const panning =
+                    middle ||
+                    drawingState.activeTool === "pan";
+
+                if (!panning) {
                     return;
+                }
+
+                /*
+                 * The browser's own middle-click behaviours - autoscroll on
+                 * Windows, paste on Linux - are suppressed, because the middle
+                 * button is being used for something here.
+                 */
+                if (middle) {
+                    event.preventDefault();
                 }
 
                 drawingCanvas.setPointerCapture(
@@ -315,11 +408,15 @@ export function installCanvasEvents() {
                 );
 
                 editorState.panSession = {
-                    x:
-                        event.clientX,
+                    x: event.clientX,
+                    y: event.clientY,
 
-                    y:
-                        event.clientY
+                    /*
+                     * Remembered so the release can tell a middle-drag pan
+                     * from a Pan-tool pan: a middle click must not leave the
+                     * Pan tool armed afterwards.
+                     */
+                    middle
                 };
 
                 setToolMessage(

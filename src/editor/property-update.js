@@ -594,6 +594,21 @@ export function updateFeatureProperty(object, key, value) {
             return true;
         }
 
+        if (key === 'forceUnit') {
+            /*
+             * THE UNIT IS A LABEL, NOT A CONVERSION.
+             *
+             * 1 kN and 1000 N are the same force, so switching between the
+             * units leaves the stored magnitude exactly as it is and only
+             * changes how it is written. Rescaling the number (turning "1 kN"
+             * into "0.001 N") would silently change the force, which is the
+             * opposite of what choosing a unit means.
+             */
+            enggLoadProfile.setForceUnit(g, value);
+
+            return true;
+        }
+
         if (key === 'angle') {
             if (fixed('angle')) return false;
             enggLoadProfile.setForceVector(
@@ -685,6 +700,22 @@ export function updateFeatureProperty(object, key, value) {
                     { t: 1, magnitude: value }
                 ]
             );
+
+            return true;
+        }
+
+        if (key === 'loadUnit') {
+            /*
+             * THE UNIT IS A LABEL, NOT A CONVERSION.
+             *
+             * kN/m and N/mm are the same physical quantity - one
+             * kilonewton per metre IS one newton per millimetre - so switching
+             * between them leaves the stored magnitudes exactly as they are
+             * and only changes how they are written. Reinterpreting the number
+             * (turning "5 kN/m" into "0.005 N/mm") would silently change the
+             * load, which is the opposite of what changing a unit means.
+             */
+            enggLoadProfile.setLoadUnit(g, value);
 
             return true;
         }
@@ -1015,6 +1046,19 @@ export function updateFeatureProperty(object, key, value) {
             if (fixed(key)) return false;
             if (!Number.isFinite(value)) return false;
             g[key] = value;
+            return true;
+        }
+
+        if (key === 'momentUnit') {
+            /*
+             * THE MOMENT'S UNIT IS A LABEL, NOT A CONVERSION.
+             *
+             * 1 kN\u00b7m and 1000 N\u00b7m are the same moment, so switching
+             * between the units leaves the stored magnitude exactly as it is
+             * and only changes how it is written.
+             */
+            enggLoadProfile.setMomentUnit(g, value);
+
             return true;
         }
 
@@ -1357,6 +1401,49 @@ export function updateFeatureProperty(object, key, value) {
             g[key] = enggDimensions?.fromEngineering
                 ? enggDimensions.fromEngineering(drawingState, value, 'mm')
                 : value;
+
+            return true;
+        }
+
+        /*
+         * THE AXIS LABELS.
+         *
+         * The stored text is the user's, and an EMPTY string is stored as an
+         * empty string - clearing a label means "no label here", so falling
+         * back to "X" would silently undo the student's decision every time
+         * they cleared the field.
+         */
+        if (key === 'xLabel' || key === 'yLabel') {
+            g[key] = String(value ?? '');
+
+            return true;
+        }
+    }
+
+    if (object.type === 'variable-dimension') {
+        /*
+         * THE SYMBOL IS THE VALUE.
+         *
+         * Stored exactly as typed, INCLUDING an empty string: clearing the
+         * field is how a student says they have named the variable but not
+         * written it yet, so falling back to a default would overwrite their
+         * intent on every keystroke.
+         *
+         * Nothing else about the feature changes: the references, the placement
+         * and every relationship stay exactly as they were, so editing the
+         * symbol cannot detach the variable from the geometry it names.
+         */
+        if (key === 'symbol') {
+            g.symbol = String(value ?? '');
+
+            return true;
+        }
+
+        if (key.startsWith('placement.')) {
+            const axis = key.split('.')[1];
+
+            g.placement = g.placement || { x: 0, y: 0 };
+            g.placement[axis] = value;
 
             return true;
         }

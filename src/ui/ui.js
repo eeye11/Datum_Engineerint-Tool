@@ -272,6 +272,9 @@ function isDialogOpen() {
  *   options.fields      [{ name, label, value, type }]
  *   options.confirm     label for the confirming action
  *   options.cancel      label for the dismissing action
+ *   options.buttons     [{ id, label, primary }] - replaces the default
+ *                       cancel/confirm pair with an explicit set of choices
+ *   options.onChoose    (id) -> false to stay open. Used with `buttons`.
  *   options.onConfirm   ({ name: value }) -> false to stay open
  *
  * The dialog is a real element in the page, not a browser dialog.
@@ -299,6 +302,15 @@ function openDialog(options) {
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
 
+  /*
+   * A caller-supplied class, so a dialog that is a document launcher rather
+   * than a question can be wider and laid out its own way without every dialog
+   * becoming wide. `engg-dialog-lg` is the only one in use today.
+   */
+  if (options.className) {
+    dialog.className += ` ${options.className}`;
+  }
+
   if (options.title) {
     const heading =
       document.createElement("h2");
@@ -309,6 +321,23 @@ function openDialog(options) {
     heading.textContent = options.title;
 
     dialog.appendChild(heading);
+  }
+
+  /*
+   * A CUSTOM BODY, INSTEAD OF A LINE OF TEXT.
+   *
+   * A question is one sentence and needs nothing else. A document launcher is
+   * a small interface - sections, cards, a list - so the caller supplies an
+   * ELEMENT rather than a string, and this module positions and dismisses it
+   * without needing to know what is inside.
+   */
+  if (
+    options.body &&
+    typeof Element !== "undefined" &&
+    options.body instanceof Element
+  ) {
+    options.body.classList.add("engg-dialog-body");
+    dialog.appendChild(options.body);
   }
 
   if (options.description) {
@@ -400,24 +429,33 @@ function openDialog(options) {
   confirmButton.textContent =
     options.confirm || "OK";
 
-  actions.appendChild(cancelButton);
-  actions.appendChild(confirmButton);
+  /*
+   * AN EXPLICIT SET OF CHOICES.
+   *
+   * Most dialogs are yes/no and are built from the cancel/confirm pair
+   * above. Some questions genuinely have three answers - the Unsaved
+   * Changes prompt offers Save First, Discard Changes and Cancel - and
+   * squeezing those into two buttons forces one of the answers to be
+   * missing or mislabelled, which is exactly how a user ends up unable
+   * to leave a document without saving it.
+   *
+   * When `options.buttons` is given it REPLACES the pair, so every
+   * answer the caller names is a real button with a real meaning and
+   * the dialog can never show a choice the caller did not intend.
+   */
+  const explicitChoices =
+    Array.isArray(options.buttons) && options.buttons.length
+      ? options.buttons
+      : null;
 
-  dialog.appendChild(actions);
+  /*
+   * The dismissal for an explicit-choice dialog: the backdrop and Escape
+   * behave as the caller's `cancel` choice, so a dialog that offers a way
+   * out still has one by every conventional route.
+   */
+  let choose = null;
 
-  backdrop.appendChild(dialog);
-  document.body.appendChild(backdrop);
-
-  const values = () =>
-    Object.keys(fields).reduce(
-      (collected, name) => {
-        collected[name] =
-          fields[name].value;
-
-        return collected;
-      },
-      {}
-    );
+  let values = () => ({});
 
   const confirm = () => {
     /*
@@ -436,25 +474,96 @@ function openDialog(options) {
     closeDialog();
   };
 
-  const cancel = () => {
-    if (
-      typeof options.onCancel === "function"
-    ) {
-      options.onCancel();
-    }
+  let cancel = () => closeDialog();
 
-    closeDialog();
-  };
+  if (explicitChoices) {
+    /*
+     * The result the dialog resolves with is the chosen button's id, so a
+     * caller reads the answer directly rather than inferring it from which
+     * of two booleans came back.
+     */
+    choose = (id) => {
+      if (typeof options.onChoose === "function") {
+        options.onChoose(id);
+      }
 
-  cancelButton.addEventListener(
-    "click",
-    cancel
-  );
+      closeDialog();
+    };
 
-  confirmButton.addEventListener(
-    "click",
-    confirm
-  );
+    explicitChoices.forEach((choice) => {
+      const button =
+        document.createElement("button");
+
+      button.type = "button";
+      button.className = choice.primary
+        ? "engg-dialog-button engg-dialog-button-primary"
+        : "engg-dialog-button";
+      button.textContent = choice.label || choice.id;
+      button.dataset.choice = choice.id;
+      button.addEventListener("click", () =>
+        choose(choice.id)
+      );
+
+      actions.appendChild(button);
+    });
+
+    /*
+     * Backdrop clicks and Escape take the LAST choice when the caller
+     * names one that reads as a dismissal, and otherwise do nothing but
+     * close. Either way they never silently pick a destructive answer.
+     */
+    const dismissal =
+      explicitChoices.find((choice) => choice.dismiss) || null;
+
+    cancel = () =>
+      dismissal ? choose(dismissal.id) : closeDialog();
+
+    /*
+     * Enter takes the primary choice, which is what makes the dialog
+     * usable from the keyboard the way every other dialog here is.
+     */
+    const primary =
+      explicitChoices.find((choice) => choice.primary) ||
+      explicitChoices[0];
+
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        choose(primary.id);
+      }
+    });
+  } else {
+    actions.appendChild(cancelButton);
+    actions.appendChild(confirmButton);
+  }
+
+  dialog.appendChild(actions);
+
+  backdrop.appendChild(dialog);
+  document.body.appendChild(backdrop);
+
+  values = () =>
+    Object.keys(fields).reduce(
+      (collected, name) => {
+        collected[name] =
+          fields[name].value;
+
+        return collected;
+      },
+      {}
+    );
+
+  if (!explicitChoices) {
+    cancelButton.addEventListener(
+      "click",
+      cancel
+    );
+
+    confirmButton.addEventListener(
+      "click",
+      confirm
+    );
+  }
 
   /*
    * Clicking the dimmed area cancels. Clicking the dialog itself
@@ -474,7 +583,7 @@ function openDialog(options) {
   );
 
   dialog.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !explicitChoices) {
       event.preventDefault();
       confirm();
     }
@@ -527,9 +636,14 @@ function openDialog(options) {
   const firstField =
     Object.values(fields)[0];
 
+  const firstChoiceButton =
+    explicitChoices && actions.querySelector("button");
+
   if (firstField) {
     firstField.focus();
     firstField.select();
+  } else if (firstChoiceButton) {
+    firstChoiceButton.focus();
   } else {
     confirmButton.focus();
   }
@@ -614,19 +728,35 @@ function trapTab(event, dialog) {
 }
 
 function closeDialog() {
-  if (!activeDialog) {
-    return;
-  }
+  if (activeDialog) {
+    activeDialog.cleanup();
 
-  activeDialog.cleanup();
-
-  if (activeDialog.backdrop.parentNode) {
-    activeDialog.backdrop.parentNode.removeChild(
-      activeDialog.backdrop
-    );
+    if (activeDialog.backdrop.parentNode) {
+      activeDialog.backdrop.parentNode.removeChild(
+        activeDialog.backdrop
+      );
+    }
   }
 
   activeDialog = null;
+
+  /*
+   * EVERY DIALOG IS REMOVED, NOT ONLY THE ONE THIS MODULE LAST OPENED.
+   *
+   * The rule above is "one dialog at a time", and the module used to enforce
+   * it by removing only the backdrop it was tracking. That is not the same
+   * guarantee: a backdrop left in the page by any other route - a second copy
+   * of this module, an element added while this module was not looking - would
+   * survive, and the next dialog would stack on top of it. Two identical Open
+   * launchers on screen at once is exactly what that produced.
+   *
+   * Clearing by CLASS makes the guarantee true rather than merely intended:
+   * whatever put a backdrop in the page, opening a dialog now leaves exactly
+   * one.
+   */
+  document
+    .querySelectorAll(".engg-dialog-backdrop")
+    .forEach((backdrop) => backdrop.remove());
 }
 
 /*
@@ -710,13 +840,228 @@ function promptDialog(
   });
 }
 
+/*
+ * Ask a question with an explicit set of answers.
+ *
+ *   choiceDialog(message, {
+ *     title,
+ *     buttons: [{ id, label, primary, dismiss }]
+ *   })
+ *
+ * Resolves with the id of the chosen button, or null if the dialog was
+ * dismissed by a route the caller did not name as a choice (for example a
+ * backdrop click on a dialog with no dismiss button).
+ *
+ * This is the sibling of confirmDialog for questions that genuinely have more
+ * than two answers. The Unsaved Changes prompt is the reason it exists: "Save
+ * First", "Discard Changes" and "Cancel" are three different acts, and no
+ * yes/no pair can express them without hiding one.
+ */
+function choiceDialog(
+  message,
+  options = {}
+) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      resolve(result);
+    };
+
+    openDialog({
+      title: options.title || "Are you sure?",
+      description: message,
+      buttons: options.buttons || [],
+      onChoose: (id) => finish(id)
+    });
+  });
+}
+
+/*
+ * ========================================================
+ * A CONTEXT MENU
+ * ========================================================
+ *
+ *   openContextMenu(anchor, [{ id, label, onSelect }])
+ *
+ * A small menu anchored to a control - the three-dot button on a Recent file or
+ * a template.
+ *
+ * WHY THIS IS NOT A DIALOG. A dialog is MODAL: opening one closes whatever was
+ * open, because there is only ever one question at a time. A context menu is
+ * not a question - it belongs to the thing it is anchored to, and the surface
+ * that thing lives on (the Open launcher) must stay open behind it. Routing the
+ * menu through `openDialog` is what made clicking the three-dot button close
+ * the Open page before the menu appeared.
+ *
+ * So it is a plain positioned element with no backdrop, and it dismisses on a
+ * click outside itself or on Escape - neither of which touches anything else on
+ * screen.
+ */
+let activeMenu = null;
+
+function closeContextMenu() {
+  if (!activeMenu) {
+    return;
+  }
+
+  activeMenu.element.remove();
+
+  document.removeEventListener("pointerdown", activeMenu.onPointerDown, true);
+  document.removeEventListener("keydown", activeMenu.onKeyDown, true);
+
+  activeMenu = null;
+}
+
+function openContextMenu(anchor, items, point) {
+  closeContextMenu();
+
+  if (!anchor || !Array.isArray(items) || !items.length) {
+    return null;
+  }
+
+  const menu = document.createElement("div");
+
+  menu.className = "engg-context-menu";
+  menu.setAttribute("role", "menu");
+
+  items.forEach((item) => {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "engg-context-menu-item";
+    button.textContent = item.label;
+    button.setAttribute("role", "menuitem");
+
+    if (item.danger) {
+      button.classList.add("engg-context-menu-item-danger");
+    }
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      closeContextMenu();
+
+      if (typeof item.onSelect === "function") {
+        item.onSelect();
+      }
+    });
+
+    menu.appendChild(button);
+  });
+
+  /*
+   * PLACED AT THE CURSOR, THEN KEPT ON SCREEN.
+   *
+   * A context menu belongs where the user just clicked, not at a fixed spot on
+   * the page - so when the caller supplies the pointer position the menu opens
+   * there and grows DOWN AND RIGHT from it, which is the direction the eye
+   * expects.
+   *
+   * The clamp is what keeps it usable near an edge: a menu opened at the
+   * bottom-right is shifted up and left until all of it is visible, rather than
+   * running off the page where its items cannot be reached.
+   *
+   * With no pointer position the shared anchoring rule places it against the
+   * control instead, so a keyboard-launched menu still lands somewhere sensible.
+   */
+  document.body.appendChild(menu);
+
+  /*
+   * POSITIONED AND SIZED BEFORE IT IS MEASURED.
+   *
+   * The menu is a flex column with no intrinsic width, so appended and
+   * unpositioned it briefly lays out as a full-width block - 1280px on a
+   * laptop. Measuring THAT and then clamping against it collapsed the menu to
+   * the left edge, which is why it appeared at the far side of the window
+   * instead of under the cursor.
+   *
+   * `position: fixed` plus a width taken from the menu's own content gives it
+   * its real size before the arithmetic runs.
+   */
+  menu.style.position = "fixed";
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.style.width = "max-content";
+
+  const size = { width: menu.offsetWidth, height: menu.offsetHeight };
+
+  /*
+   * The screen is read through the SAME helper the floating-placement rule uses,
+   * so the cursor-anchored path and the anchored path cannot disagree about how
+   * large the window is - and neither can be defeated by a headless or embedded
+   * context where `innerWidth` is 0.
+   */
+  const screen = viewport();
+
+  const hasPoint =
+    point && Number.isFinite(point.x) && Number.isFinite(point.y);
+
+  if (hasPoint) {
+    menu.style.position = "fixed";
+    menu.style.left = `${clamp(
+      point.x + ANCHOR_GAP,
+      VIEWPORT_MARGIN,
+      screen.width - size.width - VIEWPORT_MARGIN
+    )}px`;
+    menu.style.top = `${clamp(
+      point.y + ANCHOR_GAP,
+      VIEWPORT_MARGIN,
+      screen.height - size.height - VIEWPORT_MARGIN
+    )}px`;
+  } else {
+    const position = placeFloating(anchor.getBoundingClientRect(), size, {
+      preferred: "below"
+    });
+
+    menu.style.position = "fixed";
+    menu.style.left = `${position.left}px`;
+    menu.style.top = `${position.top}px`;
+  }
+
+  const onPointerDown = (event) => {
+    if (!menu.contains(event.target)) {
+      closeContextMenu();
+    }
+  };
+
+  const onKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+
+      closeContextMenu();
+    }
+  };
+
+  /*
+   * Capture phase, so a click anywhere outside dismisses the menu WITHOUT being
+   * read as a click on whatever is underneath - the menu is dismissed first and
+   * the underlying control is not also activated by the same press.
+   */
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("keydown", onKeyDown, true);
+
+  activeMenu = { element: menu, onPointerDown, onKeyDown };
+
+  return { close: closeContextMenu };
+}
+
 const enggUi = {
   ANCHOR_GAP,
   VIEWPORT_MARGIN,
   anchorElement,
+  choiceDialog,
+  closeContextMenu,
   closeDialog,
   confirmDialog,
   isDialogOpen,
+  openContextMenu,
   openDialog,
   placeFloating,
   promptDialog

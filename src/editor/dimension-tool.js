@@ -8,6 +8,7 @@ import enggDimensions from "../core/scale/dimensions.js";
 import enggScaleCalibration from "../core/scale/scale-calibration.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggSmartDimension from "../features/dimensions/smart-dimension.js";
+import enggVariableDimension from "../features/dimensions/variable-dimension.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
@@ -15,14 +16,21 @@ import { distanceToSegment, objectAtPoint } from "./hit-testing.js";
 import { setToolMessage } from "./toolbar-render.js";
 
 /*
- * Is this one of the two dimension tools?
+ * Is this one of the dimension tools?
+ *
+ * THREE tools, one placement interaction: Dimension, Smart Dimension and
+ * Variable Dimension all pick references and then a placement point. They differ
+ * in what they CREATE - a chosen measurement, an inferred one, or a symbol - and
+ * in nothing else, which is why they are routed together and the difference is
+ * decided at the moment the feature is built.
  */
 export function isDimensionTool(
     toolId
 ) {
     return (
         toolId === "dimension" ||
-        toolId === "smart-dimension"
+        toolId === "smart-dimension" ||
+        toolId === "variable-dimension"
     );
 }
 
@@ -345,13 +353,33 @@ function commitDimensionNow({
             drawingState
         );
 
-    const object =
-        enggDrawingState.geometryFactories
-            .dimension({
-                dimensionType,
-                refs,
-                placement
-            });
+    /*
+     * WHICH KIND OF FEATURE THE STUDENT IS PLACING.
+     *
+     * The two tools share this whole path - the reference picking, the
+     * placement click, the commit, the selection - and differ only in what is
+     * created at the end. That is deliberate: a Variable Dimension is placed
+     * exactly like a dimension, because attaching it to the geometry is what
+     * makes it a statement ABOUT the drawing rather than a note beside it.
+     *
+     * A variable is created with the DEFAULT SYMBOL and no measurement. It never
+     * touches the calibration question either, because there is no measured
+     * length to convert - an unknown has no units until the student gives it
+     * one.
+     */
+    const variable =
+        drawingState.activeTool === "variable-dimension";
+
+    const object = variable
+        ? enggDrawingState.geometryFactories["variable-dimension"]({
+              refs,
+              placement
+          })
+        : enggDrawingState.geometryFactories.dimension({
+              dimensionType,
+              refs,
+              placement
+          });
 
     enggDrawingState.addObject(
         drawingState,
@@ -376,6 +404,17 @@ function commitDimensionNow({
         drawingState,
         object.id
     );
+
+    if (variable) {
+        setToolMessage(
+            `Variable placed - ${enggVariableDimension.variableText(object)}`
+        );
+
+        renderProperties();
+        renderCurrentDrawing();
+
+        return object;
+    }
 
     const measured =
         enggDimensionModel.formatMeasurement(
@@ -460,7 +499,7 @@ export function findDimensionTarget(
             continue;
         }
 
-        let anchors = null;
+        let anchors;
 
         try {
             /*
@@ -476,24 +515,34 @@ export function findDimensionTarget(
             anchors =
                 (enggMeasurement.anchorOptions(object) || [])
                     .map(
-                        name =>
-                            enggMeasurement.resolveAnchor(
+                        name => ({
+                            name: String(name),
+                            at: enggMeasurement.resolveAnchor(
                                 object,
                                 name
                             )
+                        })
                     );
         } catch (error) {
             anchors = null;
         }
 
-        const points = Object.values(
-            anchors || {}
-        ).filter(
-            anchor =>
-                anchor &&
-                Number.isFinite(anchor.x) &&
-                Number.isFinite(anchor.y)
-        );
+        /*
+         * Each anchor is kept with the NAME it was resolved from, because the
+         * name is what says whether it is a corner or a midpoint - the array
+         * INDEX says nothing. A midpoint lies on the outline and must not be
+         * treated as a corner in the interior test below.
+         */
+        const points = (anchors || [])
+            .map((entry) => ({
+                name: entry.name,
+                ...(entry.at || {})
+            }))
+            .filter(
+                anchor =>
+                    Number.isFinite(anchor.x) &&
+                    Number.isFinite(anchor.y)
+            );
 
         if (points.length === 0) {
             continue;
@@ -508,18 +557,23 @@ export function findDimensionTarget(
          * which is exactly where a student aims when they want to
          * dimension it.
          *
-         * So a click that falls within the outline the feature's own
-         * anchors describe counts as a hit on it. Anchors are used
-         * rather than a bounding box because they are the shape the
-         * feature actually has: a rotated rectangle's anchors bound the
-         * tilted body, while its bounding box would claim a much
-         * larger area that belongs to nothing.
+         * THE OUTLINE IS THE FEATURE'S UNIQUE CORNERS, IN ORDER.
+         *
+         * A triangle publishes nine anchors - start, midpoint and end for each
+         * of its three sides - and a side's end is the next side's start. Fed
+         * to a crossing test as-is, that list walks each edge twice and counts
+         * crossings wrongly, so clicking inside a triangle could resolve to
+         * nothing. Taking the corners and dropping repeats leaves the perimeter
+         * exactly once, in order, which is what the test needs.
          */
+        const cornersForOutline =
+            uniqueCornerOutline(points);
+
         if (
-            points.length >= 3 &&
+            cornersForOutline.length >= 3 &&
             pointInsideOutline(
                 point,
-                points
+                cornersForOutline
             )
         ) {
             return object;
@@ -558,6 +612,48 @@ export function findDimensionTarget(
     }
 
     return best;
+}
+
+/*
+ * The feature's perimeter: its corner anchors, with repeats removed, in the
+ * order they were published.
+ *
+ * A composite feature publishes an anchor per side - a start and an end - and a
+ * side's end is the next side's start. Kept as published, the list visits every
+ * corner twice and cannot be used as a polygon. Keeping the first occurrence of
+ * each corner leaves the outline exactly once, in order.
+ *
+ * Midpoint anchors are dropped: they lie ON an edge, and a crossing test given
+ * a point on its own boundary is a coin toss.
+ */
+function uniqueCornerOutline(points) {
+    const corners = [];
+
+    const seen = (point) =>
+        corners.some(
+            (kept) =>
+                Math.abs(kept.x - point.x) < 1e-9 &&
+                Math.abs(kept.y - point.y) < 1e-9
+        );
+
+    points.forEach((point) => {
+        if (/mid$/i.test(String(point?.name || ""))) {
+            return;
+        }
+
+        /*
+         * A coordinate already on the outline is the SAME corner, however many
+         * anchors name it. A triangle publishes its three vertices directly as
+         * `a`, `b`, `c`, and again as each side's start and end - keeping every
+         * occurrence would visit each corner three times and give the crossing
+         * test a shape that is not the triangle.
+         */
+        if (!seen(point)) {
+            corners.push(point);
+        }
+    });
+
+    return corners;
 }
 
 /*

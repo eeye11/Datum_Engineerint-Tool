@@ -9,26 +9,12 @@ const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-
  * DOES A REVERSED FORCE ACTUALLY DRAW POINTING BACKWARDS?
  * ========================================================
  *
- * The model was corrected so that reversing a force turns its direction
- * without moving the span it is drawn along. Every check on that passed, and
- * the arrow on the sheet did not move at all.
- *
- * WHY THE MODEL WAS NOT THE PROBLEM
- *
- * `reverseForceDirection` flipped the stored angle and left `start`/`end`
- * where they were; `forceVector` read the direction from the angle; the drawn
- * tip came out on the correct side. All of that was right, and all of it is
- * invisible to a student.
- *
- * The renderer was the part that never learned. Its "both ends stored" branch
- * measured the direction as `end - start` - which is the SPAN, not the sense -
- * so it drew a push to the right for a force whose angle said left. The model
- * was stored correctly and rendered wrongly, which is worse than either being
- * wrong, because every test of the model passed while the thing on screen did
- * not move.
- *
- * SO THIS FILE RENDERS. It builds the SVG and asks where the ink went, which
- * is the only question a student is actually asking.
+ * A force is drawn from its APPLICATION POINT along its stored direction,
+ * at the shared Visual Force Scale. Reversing the force turns the direction
+ * through a half turn, so the drawn line leaves the same application point in
+ * the opposite direction and the arrowhead arrives on the other side of it.
+ * This file RENDERS and asks where the ink went, which is the only question a
+ * student is actually asking.
  */
 
 
@@ -200,7 +186,11 @@ check(
 
 const tipBefore = before.find(line => Math.abs(line.y1 - line.y2) < 1e-6);
 
-const spanBefore = tipBefore
+/*
+ * THE APPLICATION POINT, which a reversal does not move. The force is drawn
+ * FROM it, so after a reversal the ink runs the other way from the same point.
+ */
+const applicationX = tipBefore
     ? Math.min(tipBefore.x1, tipBefore.x2)
     : null;
 
@@ -223,14 +213,12 @@ check(
 );
 
 check(
-  "the LINE is still the same line - the span did not move",
+  "the line still starts at the application point",
   horizontal.length > 0 &&
-    spanBefore !== null &&
+    applicationX !== null &&
     horizontal.some(
       line =>
-        Math.min(line.x1, line.x2) === spanBefore &&
-        Math.max(line.x1, line.x2) ===
-          Math.max(tipBefore.x1, tipBefore.x2),
+        Math.max(line.x1, line.x2) === applicationX,
     ),
   `before ${JSON.stringify(tipBefore)}, after ${JSON.stringify(horizontal)}`,
 );

@@ -75,9 +75,12 @@ const requirements = [
     note: "showReferencePositions !== false",
   },
   {
-    title: "the plot-area highlight is not shown until there is content",
-    met: /analysisHasContent/.test(renderer),
-    note: "background only drawn when analysisHasContent()",
+    title: "the plot-area highlight is not drawn on any diagram",
+    met:
+      /const highlighted = false;/.test(renderer) &&
+      !/function analysisHasContent/.test(renderer),
+    note:
+      "the tinted plot-area rectangle is gone; the axes and the curve say where the plot is",
   },
   {
     title: "an orphaned diagram is not drawn",
@@ -131,6 +134,35 @@ const requirements = [
      */
     met: editor.TOOLS.length === 4,
     note: "four tools, so no vertical jump among them",
+  },
+  {
+    title: "a sketch element is drawn by press, drag and release",
+    met:
+      /svg\.addEventListener\("pointerdown"/.test(sketch) &&
+      /svg\.addEventListener\("pointermove"/.test(sketch) &&
+      /svg\.addEventListener\("pointerup"/.test(sketch),
+    note: "pointerdown/move/up, not click-move-click",
+  },
+  {
+    title: "a release asks for the exact Y value",
+    met:
+      /function askForYValue/.test(sketch) &&
+      /finishLineStroke[\s\S]{0,900}askForY\(/.test(sketch),
+    note: "the cursor places the point, the popup states the ordinate",
+  },
+  {
+    title: "the Y value is asked in the diagram's own unit",
+    met:
+      /yUnit/.test(drawing) &&
+      /ANALYSIS_DIAGRAM_AXES/.test(drawing),
+    note: "kN for shear/axial, kN\u00b7m for bending moment",
+  },
+  {
+    title: "the x snaps to a body-element tick, but is not trapped by it",
+    met:
+      /function snapXToStations/.test(sketch) &&
+      /SNAP_TOLERANCE_PX/.test(sketch),
+    note: "a magnet within a few pixels; between ticks stays placeable",
   },
 ];
 

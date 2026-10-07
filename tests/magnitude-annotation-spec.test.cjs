@@ -339,7 +339,13 @@ console.log("\n  THE BOX IS INDEPENDENT OF THE FORCE\n");
   );
 
   /*
-   * AND EDITING THE FORCE MOVES THE NUMBER, NOT THE BOX.
+   * AND EDITING THE FORCE MOVES THE NUMBER, AND RE-ANCHORS THE BOX.
+   *
+   * The box's stored position is an OFFSET from where it naturally falls, and
+   * the force it describes is what that natural position is measured from. So
+   * editing the magnitude keeps the student's offset but follows the new
+   * endpoint: the box moves with the arrow it belongs to, and does not fall
+   * back onto the application point.
    */
   const edited = {
     id: "force-1",
@@ -355,11 +361,29 @@ console.log("\n  THE BOX IS INDEPENDENT OF THE FORCE\n");
     JSON.stringify(model.textFor(afterEdit, scene([edited]))),
   );
 
+  /*
+   * THE OFFSET IS PRESERVED, measured against the box's own natural anchor -
+   * which is what "the student's place is kept" means once the arrow the box
+   * describes has itself moved.
+   */
+  const plainEdited = model.derivedAnnotation(
+    { id: "force-1", type: "force", geometry: { ...geometry, magnitude: 250, magnitudeOffset: null } },
+    scene([
+      { id: "force-1", type: "force", geometry: { ...geometry, magnitude: 250, magnitudeOffset: null } },
+    ]),
+  );
+
   check(
-    "without the box going back to where it naturally falls",
-    afterEdit.placement.x === moved.placement.x &&
-      afterEdit.placement.y === moved.placement.y,
-    `box jumped to ${JSON.stringify(afterEdit.placement)}`,
+    "and the box keeps its own offset rather than falling onto the new endpoint",
+    Math.abs(afterEdit.placement.x - (plainEdited.placement.x + 30)) < 1e-6 &&
+      Math.abs(afterEdit.placement.y - (plainEdited.placement.y - 20)) < 1e-6,
+    `box at ${JSON.stringify(afterEdit.placement)}, natural ${JSON.stringify(plainEdited.placement)}`,
+  );
+
+  check(
+    "so it did not snap back onto the application point",
+    afterEdit.moved === true,
+    `moved = ${afterEdit.moved}`,
   );
 }
 

@@ -86,6 +86,8 @@ function appendCoordinateSystemVisual(
     object,
     isSelected = false
 ) {
+    const geometry = object.geometry;
+
     const bounds = {
         width:
             drawingCanvas.clientWidth,
@@ -245,140 +247,66 @@ function appendCoordinateSystemVisual(
         )
     );
 
-    const xPositiveLabel =
-        createSvgElement(
+    /*
+     * THE AXIS LABELS ARE THE FEATURE'S OWN TEXT.
+     *
+     * The four fixed "+X / -X / +Y / -Y" strings are gone. A coordinate system
+     * carries an X label and a Y label, drawn at the positive end of each axis,
+     * with "X" and "Y" as the values a new one starts with.
+     *
+     * AN EMPTY LABEL IS DRAWN AS NOTHING, deliberately. Clearing the field is how
+     * a student says "no label here", so rendering a fallback would silently
+     * overrule them.
+     *
+     * A label with a STORED POSITION is drawn there - that position is the
+     * student's, and it is what makes the label a movable annotation rather than
+     * a piece of the axis. Without one it sits at its automatic place beside the
+     * axis end, which is where it has always been drawn.
+     */
+    const labelText = (value) => String(value ?? "");
+    const xText = labelText(geometry.xLabel ?? "X");
+    const yText = labelText(geometry.yLabel ?? "Y");
+
+    const appendAxisLabel = (text, automatic, manual) => {
+        if (!text.trim()) {
+            return;
+        }
+
+        const label = createSvgElement(
             "text",
             {
-                x:
-                    origin.x +
-                    length +
-                    5,
+                x: Number.isFinite(manual?.x) ? manual.x : automatic.x,
+                y: Number.isFinite(manual?.y) ? manual.y : automatic.y,
+                fill: stroke,
+                "font-size": 13,
+                "font-family": "Arial, sans-serif",
+                "font-weight": "600",
 
-                y:
-                    origin.y -
-                    6,
-
-                fill:
-                    stroke,
-
-                "font-size":
-                    13,
-
-                "font-family":
-                    "Arial, sans-serif",
-
-                "font-weight":
-                    "600"
+                /*
+                 * Tagged so the SAME hit test that finds any other feature can
+                 * find this label, and so a drag can tell which of the two is
+                 * being moved. The tag is editor-only presentation metadata; it
+                 * is not part of the drawing's geometry.
+                 */
+                "data-axis-label": text === xText ? "x" : "y"
             }
         );
 
-    xPositiveLabel.textContent =
-        "+X";
+        label.textContent = text;
 
-    group.appendChild(
-        xPositiveLabel
+        group.appendChild(label);
+    };
+
+    appendAxisLabel(
+        xText,
+        { x: origin.x + length + 5, y: origin.y - 6 },
+        geometry.xLabelPosition
     );
 
-    const xNegativeLabel =
-        createSvgElement(
-            "text",
-            {
-                x:
-                    origin.x -
-                    length -
-                    20,
-
-                y:
-                    origin.y -
-                    6,
-
-                fill:
-                    stroke,
-
-                "font-size":
-                    13,
-
-                "font-family":
-                    "Arial, sans-serif",
-
-                "font-weight":
-                    "600"
-            }
-        );
-
-    xNegativeLabel.textContent =
-        "-X";
-
-    group.appendChild(
-        xNegativeLabel
-    );
-
-    const yPositiveLabel =
-        createSvgElement(
-            "text",
-            {
-                x:
-                    origin.x +
-                    6,
-
-                y:
-                    origin.y -
-                    length -
-                    5,
-
-                fill:
-                    stroke,
-
-                "font-size":
-                    13,
-
-                "font-family":
-                    "Arial, sans-serif",
-
-                "font-weight":
-                    "600"
-            }
-        );
-
-    yPositiveLabel.textContent =
-        "+Y";
-
-    group.appendChild(
-        yPositiveLabel
-    );
-
-    const yNegativeLabel =
-        createSvgElement(
-            "text",
-            {
-                x:
-                    origin.x +
-                    6,
-
-                y:
-                    origin.y +
-                    length +
-                    17,
-
-                fill:
-                    stroke,
-
-                "font-size":
-                    13,
-
-                "font-family":
-                    "Arial, sans-serif",
-
-                "font-weight":
-                    "600"
-            }
-        );
-
-    yNegativeLabel.textContent =
-        "-Y";
-
-    group.appendChild(
-        yNegativeLabel
+    appendAxisLabel(
+        yText,
+        { x: origin.x + 6, y: origin.y - length - 5 },
+        geometry.yLabelPosition
     );
 
     const originLabel =

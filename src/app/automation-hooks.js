@@ -13,12 +13,24 @@
  */
 import enggDocumentFile from "../file/document-file.js";
 import enggDrawingExport from "../file/document-export.js";
+import enggRecovery from "../file/document-recovery.js";
+import enggRecentFiles from "../file/recent-files.js";
+import enggTemplates from "../file/templates.js";
+import enggErrorLog from "./error-log.js";
+import enggAxisLabels from "../core/geometry/axis-labels.js";
+import enggVariableDimension from "../features/dimensions/variable-dimension.js";
+import enggDrawOrder from "../editor/draw-order.js";
+import * as enggHitTesting from "../editor/hit-testing.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
+import { editorState } from "../editor/editor-state.js";
 import enggDrawingReference from "../references/drawing-reference.js";
 import enggDrawingRenderer from "../rendering/renderer.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggSheets from "../sheets/sheets.js";
+import enggOpenPopup from "../ui/open-popup.js";
+import enggUi from "../ui/ui.js";
 import enggWrittenReferences from "../solution/written-references.js";
-import { enggDrawing, enggDrawingSheets } from "../editor/index.js";
+import { enggDrawing, enggDrawingSheets, enggTransforms } from "../editor/index.js";
 
 export function installAutomationHooks(target = window) {
     Object.assign(target, {
@@ -29,7 +41,20 @@ export function installAutomationHooks(target = window) {
         enggDrawingRenderer,
         enggDrawingSheets,
         enggDrawingState,
+        enggErrorLog,
+        enggAxisLabels,
+        enggVariableDimension,
+        enggDrawOrder,
+        enggHitTesting,
+        enggEditorState: editorState,
+        enggLoadProfile,
+        enggOpenPopup,
+        enggRecentFiles,
+        enggRecovery,
         enggSheets,
+        enggTemplates,
+        enggTransforms,
+        enggUi,
         enggWrittenReferences
     });
 }

@@ -90,21 +90,31 @@ function formatTable() {
   return [
     {
       id: "enggdraw",
-      label: "Datum drawing",
+
+      /*
+       * THE NATIVE FORMAT'S NAME.
+       *
+       * The software is Datum; the editable drawing format it reads and writes
+       * is EnggDraw, and the extension is .enggdraw. The type shown in the
+       * operating system's panel therefore reads "EnggDraw (*.enggdraw)" -
+       * naming the FORMAT, which is what the type control is for, rather than
+       * repeating the application's name.
+       */
+      label: "EnggDraw (*.enggdraw)",
       extensions: [`.${file.EXTENSION}`],
       mime: file.MEDIA_TYPE,
       image: false
     },
     {
       id: "png",
-      label: "PNG image",
+      label: "PNG image (*.png)",
       extensions: [".png"],
       mime: "image/png",
       image: true
     },
     {
       id: "jpg",
-      label: "JPG image",
+      label: "JPG image (*.jpg)",
       extensions: [".jpg", ".jpeg"],
       mime: "image/jpeg",
       image: true
@@ -306,15 +316,56 @@ async function save(documentBody) {
 
   const text = documentText(documentBody);
 
-  const writable = await currentHandle.createWritable();
+  /*
+   * THE WRITE IS COMMITTED, OR IT IS NOT.
+   *
+   * `createWritable()` gives a stream to a TEMPORARY file, and the real file is
+   * only replaced when `close()` succeeds. That is the browser's own
+   * atomic-commit behaviour, and it is exactly what protects the user's last
+   * good file: an interrupted write, a full disk or a failure between the two
+   * calls leaves the previous version on disk untouched, because the swap never
+   * happened.
+   *
+   * A failure is REPORTED rather than thrown past the caller. An exception here
+   * used to travel out of the Save button's handler, where nothing caught it:
+   * the document stayed dirty and the user was told nothing, which is the one
+   * outcome this must never produce.
+   */
+  try {
+    const writable = await currentHandle.createWritable();
 
-  await writable.write(
-    new Blob([text], {
-      type: enggDocumentFile.MEDIA_TYPE
-    }),
-  );
+    try {
+      await writable.write(
+        new Blob([text], {
+          type: enggDocumentFile.MEDIA_TYPE
+        }),
+      );
 
-  await writable.close();
+      await writable.close();
+    } catch (error) {
+      /*
+       * `abort()` discards the TEMPORARY file so a half-written one cannot be
+       * left behind. It is best-effort: the original file was never replaced,
+       * so a failure to abort must not replace the real error.
+       */
+      try {
+        if (typeof writable.abort === "function") {
+          await writable.abort();
+        }
+      } catch (ignored) {
+        /* Nothing to recover: the original file is already safe. */
+      }
+
+      throw error;
+    }
+  } catch (error) {
+    return {
+      error:
+        "Could not save the drawing. Your current work is still open and " +
+        "has not been discarded.",
+      detail: error
+    };
+  }
 
   return currentHandle.name;
 }
@@ -374,7 +425,21 @@ async function saveAs(documentBody, suggestedName, options = {}) {
         return null;
       }
 
-      throw error;
+      /*
+       * ANY OTHER FAILURE IS REPORTED, NOT THROWN.
+       *
+       * A picker that fails for a reason the user did not choose - a browser
+       * that refuses the call, a platform without the API despite claiming it -
+       * used to throw straight out of the Save button's handler. The document
+       * stayed dirty and nothing was said, so the honest answer is returned
+       * instead and the caller reports it.
+       */
+      return {
+        error:
+          "Could not open the save panel. Your current work is still open " +
+          "and has not been discarded.",
+        detail: error
+      };
     }
 
     /*
@@ -400,8 +465,31 @@ async function saveAs(documentBody, suggestedName, options = {}) {
 
     const writable = await handle.createWritable();
 
-    await writable.write(content.blob);
-    await writable.close();
+    try {
+      await writable.write(content.blob);
+      await writable.close();
+    } catch (error) {
+      /*
+       * The write is committed only by `close()`, so a failure here leaves the
+       * previous version of the file - if there was one - exactly as it was.
+       * Reported rather than thrown, so the caller can keep the document dirty
+       * and tell the user their work is still open.
+       */
+      try {
+        if (typeof writable.abort === "function") {
+          await writable.abort();
+        }
+      } catch (ignored) {
+        /* Nothing to recover: the target file was never replaced. */
+      }
+
+      return {
+        error:
+          "Could not save the drawing. Your current work is still open and " +
+          "has not been discarded.",
+        detail: error
+      };
+    }
 
     /*
      * Only a DOCUMENT save adopts the handle. An image save must not,

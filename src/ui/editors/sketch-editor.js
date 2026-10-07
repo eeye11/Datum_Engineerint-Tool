@@ -55,18 +55,29 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /*
- * The drawing frame. The same numbers the Plot editor uses, so the two
- * modes are literally the same size and the student does not have to
- * re-learn where things are when they switch between them.
+ * The drawing frame.
+ *
+ * WIDER AND TALLER THAN THE PLOT EDITOR'S, because a sketch is read as a
+ * SHAPE and the graph is its main workspace. The rectangle the axes are drawn
+ * into is what the student actually reads, so making the dialog bigger without
+ * making this bigger would only enlarge the frame around an unchanged graph.
  */
-const WIDTH = 560;
-const HEIGHT = 260;
+const WIDTH = 900;
+const HEIGHT = 320;
 const PAD = 18;
 
 const TOOLS = [
   { id: "select", label: "Select", hint: "Click an element to select it" },
-  { id: "line", label: "Straight Line", hint: "Click start, then end" },
-  { id: "curve", label: "Curve", hint: "Click points, then press Enter or double-click to finish" },
+  {
+    id: "line",
+    label: "Straight Line",
+    hint: "Drag from the start to the end, then release",
+  },
+  {
+    id: "curve",
+    label: "Curve",
+    hint: "Drag in three goes: Start, then Bend, then End",
+  },
   { id: "erase", label: "Erase", hint: "Click an element to remove it" },
 ];
 
@@ -161,6 +172,35 @@ function makeScale(range, elements) {
 }
 
 /*
+ * ========================================================
+ * BUILD ONE CURVE FROM THREE POINTS
+ * ========================================================
+ *
+ * The whole curve vocabulary in one function. Start and End are the ends of
+ * the drawn curve; Bend is the control point that says how far and which way
+ * it bows:
+ *
+ *   Bend on the Start-End line          -> a straight-ish segment
+ *   Bend above it                       -> a rise into a peak
+ *   Bend below it                       -> a fall into a trough
+ *   Bend to one side of a rise          -> concave up or concave down
+ *
+ * There is deliberately no per-shape tool. The student places three points,
+ * and the renderer draws a quadratic whose control IS the Bend - which gives
+ * every one of increasing, decreasing, extremal and concave shapes from the
+ * one tool.
+ */
+function buildThreePointCurve(id, start, bend, end) {
+  return {
+    id,
+    kind: "curve3",
+    start: { x: start.x, y: start.y },
+    bend: { x: bend.x, y: bend.y },
+    end: { x: end.x, y: end.y },
+  };
+}
+
+/*
  * The points an element is drawn through.
  *
  * A LINE has two and a CURVE has as many as were clicked. Reading them
@@ -171,6 +211,17 @@ function makeScale(range, elements) {
 function pointsOf(element) {
   if (!element) {
     return [];
+  }
+
+  /*
+   * A THREE-POINT CURVE reports Start, Bend and End. The Bend is included so
+   * the vertical scale makes room for the bulge it describes - a peak drawn
+   * by bending would otherwise run off the top of the graph.
+   */
+  if (element.kind === "curve3") {
+    return [element.start, element.bend, element.end].filter(
+      (point) => point && Number.isFinite(point.x),
+    );
   }
 
   return element.kind === "line"
@@ -201,6 +252,44 @@ function drawGraph(svg, elements, range, options) {
         x1="${PAD}" y1="${zeroY}" x2="${WIDTH - PAD}" y2="${zeroY}"/>
     `];
 
+  /*
+   * ========================================================
+   * THE TICKS ARE THE BODY'S OWN ELEMENT LOCATIONS
+   * ========================================================
+   *
+   * A diagram changes shape where something happens on the body - under a
+   * point force, at a support, where a load starts. Those places are the
+   * structural positions of the diagram, so the ticks along the graph are the
+   * BODY'S ELEMENT LOCATIONS, not evenly spaced graph-paper marks.
+   *
+   * They are derived, not stored: the caller passes the same station list the
+   * analysis layer already computes from the source body every pass, so a
+   * force that moves slides its tick with it, a deleted support takes its
+   * tick away, and a new load grows one - with nothing to rebuild and no
+   * second list to fall out of step.
+   *
+   * Each tick is drawn the full height of the plot so the vertical line reads
+   * as "something is at this station", and the horizontal axis keeps the same
+   * relationship to the body axis the diagram itself uses.
+   */
+  const stations = Array.isArray(options?.stations) ? options.stations : [];
+
+  stations.forEach(station => {
+    const x = Number(station?.position?.x);
+
+    if (!Number.isFinite(x)) {
+      return;
+    }
+
+    const screenX = scale.toScreen({ x, y: 0 }).x;
+
+    parts.push(`
+        <line class="sketch-editor-tick"
+          x1="${screenX}" y1="${PAD}"
+          x2="${screenX}" y2="${HEIGHT - PAD - 14}"/>
+      `);
+  });
+
   elements.forEach((element) => {
     const pts = pointsOf(element);
 
@@ -220,6 +309,48 @@ function drawGraph(svg, elements, range, options) {
             x1="${screen[0].x}" y1="${screen[0].y}"
             x2="${screen[1].x}" y2="${screen[1].y}"/>
         `);
+      return;
+    }
+
+    /*
+     * ========================================================
+     * A THREE-POINT CURVE: START -> BEND -> END
+     * ========================================================
+     *
+     * ONE smooth curve from three meaningful points. The Start and End are the
+     * curve's ends; the Bend is a CONTROL point that says how far and which way
+     * the curve bows, and it is drawn as a quadratic whose control is the Bend
+     * itself - so pulling the Bend out makes the bow stronger, and putting it
+     * above or below the Start-End line turns the same tool into a peak or a
+     * trough.
+     *
+     * The Bend is a control point, not a vertex of the result: the drawn curve
+     * passes through the Start and the End and is pulled toward the Bend, which
+     * is what makes one tool cover increasing, decreasing, concave and extremal
+     * shapes without a separate tool for each.
+     */
+    if (element.kind === "curve3") {
+      const s = scale.toScreen(element.start);
+      const b = scale.toScreen(element.bend || element.start);
+      const e = scale.toScreen(element.end);
+
+      parts.push(`
+          <path class="${cls}"
+            d="M ${s.x} ${s.y} Q ${b.x} ${b.y} ${e.x} ${e.y}"/>
+        `);
+
+      /*
+       * THE BEND HANDLE, SHOWN ONLY WHILE SELECTED. It is a control point, so
+       * it is an editing aid rather than part of the diagram - the finished
+       * result is the smooth curve alone.
+       */
+      if (selected) {
+        parts.push(`
+            <circle class="sketch-editor-bend-handle"
+              cx="${b.x}" cy="${b.y}" r="3.5"/>
+          `);
+      }
+
       return;
     }
 
@@ -366,6 +497,91 @@ function elementAt(screen, elements, scale) {
   return bestDistance <= 8 ? best : null;
 }
 
+/*
+ * ========================================================
+ * ASK FOR THE EXACT Y VALUE OF A PLACED POINT
+ * ========================================================
+ *
+ * The cursor decides WHERE on the sheet the point sits - which station along
+ * the body, and roughly how high - but the ordinate is an ENGINEERING VALUE,
+ * and asking the student to hit 250 kN by eye is asking them to aim at a
+ * number. So the placement gives the position and this gives the number.
+ *
+ * The unit is the graph's own: a shear diagram is kN, a moment diagram kN·m.
+ * It is passed in, because it belongs to the QUANTITY rather than to the
+ * editor.
+ *
+ * Returning the number, or null when the student cancels, keeps the caller in
+ * charge of the model: this only asks a question.
+ */
+function askForYValue({ label, value, unit, onCommit, onCancel }) {
+  const host = document.createElement("div");
+
+  host.className = "drawing-creation-dimension sketch-editor-y-popup";
+  host.setAttribute("role", "dialog");
+  host.setAttribute("aria-label", label);
+
+  host.innerHTML = `
+      <div class="drawing-creation-dimension-title">${escapeHtml(label)}</div>
+      <div class="drawing-creation-dimension-body">
+        <span class="drawing-creation-dimension-label">Y Value</span>
+        <span class="drawing-creation-dimension-input-wrap">
+          <input type="text" class="drawing-creation-dimension-input"
+              data-y-input inputmode="decimal" autocomplete="off"
+              aria-label="Y value">
+          <span class="drawing-creation-dimension-unit">${escapeHtml(
+            unit || "",
+          )}</span>
+        </span>
+      </div>
+    `;
+
+  document.body.appendChild(host);
+
+  const input = host.querySelector("[data-y-input]");
+
+  input.value = Number.isFinite(Number(value)) ? String(value) : "";
+
+  input.focus();
+  input.select();
+
+  const close = () => host.remove();
+
+  const confirm = () => {
+    const parsed = Number(input.value);
+
+    if (!Number.isFinite(parsed)) {
+      input.focus();
+      return;
+    }
+
+    close();
+    onCommit(parsed);
+  };
+
+  /*
+   * ENTER CONFIRMS FROM ANYWHERE IN THE POPUP, and Escape abandons it - the
+   * same two keys every other value popup in the application uses.
+   */
+  host.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      confirm();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      onCancel();
+    }
+  });
+
+  return host;
+}
+
 function pointFromEvent(event, svg, scale) {
   const rect = svg.getBoundingClientRect
     ? svg.getBoundingClientRect()
@@ -377,13 +593,72 @@ function pointFromEvent(event, svg, scale) {
   });
 }
 
+/*
+ * ========================================================
+ * SNAP THE X ONTO A BODY-ELEMENT TICK
+ * ========================================================
+ *
+ * A diagram changes shape where something happens on the body - under a point
+ * force, at a support, where a load starts - so those are the positions worth
+ * landing on, and the graph's ticks mark them.
+ *
+ * The snap is a MAGNET, NOT A WALL: only a point within a few pixels of a
+ * tick is pulled onto it, so the student can still place an element anywhere
+ * BETWEEN two events. A snap that captured the whole gap would make the middle
+ * of every span unreachable, which is the opposite of what a diagram needs -
+ * the interesting part of a curve is usually between the ticks.
+ *
+ * The tolerance is in SCREEN pixels, so the magnet feels the same at any zoom,
+ * and it is converted to the graph's own units through the scale.
+ */
+const SNAP_TOLERANCE_PX = 8;
+
+function snapXToStations(x, stations, scale, range) {
+  if (!Array.isArray(stations) || !stations.length) {
+    return x;
+  }
+
+  const span = (Number(range?.to) || 1) - (Number(range?.from) || 0) || 1;
+
+  const plotWidth = WIDTH - PAD * 2;
+
+  /* One screen pixel, in the graph's x units. */
+  const unitsPerPixel = span / plotWidth;
+
+  const tolerance = SNAP_TOLERANCE_PX * unitsPerPixel;
+
+  let best = x;
+  let bestDistance = tolerance;
+
+  stations.forEach(station => {
+    const sx = Number(station?.position?.x);
+
+    if (!Number.isFinite(sx)) {
+      return;
+    }
+
+    const distance = Math.abs(sx - x);
+
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = sx;
+    }
+  });
+
+  void scale;
+
+  return best;
+}
+
 function elementRowHtml(element, selectedId) {
   const pts = pointsOf(element);
 
   const label =
     element.kind === "line"
       ? `Line ${numberText(element.start.x)}, ${numberText(element.start.y)} to ${numberText(element.end.x)}, ${numberText(element.end.y)}`
-      : `Curve (${pts.length} points)`;
+      : element.kind === "curve3"
+        ? `Curve ${numberText(element.start.x)} to ${numberText(element.end.x)}`
+        : `Curve (${pts.length} points)`;
 
   const cls =
     element.id === selectedId
@@ -452,6 +727,15 @@ function open(options = {}) {
   const range = options.range || null;
 
   /*
+   * THE BODY'S ELEMENT STATIONS, read once from the caller's live list.
+   * Each carries the world x of an element on the parent body, which is what
+   * the graph's ticks mark.
+   */
+  const stations = Array.isArray(options.stations)
+    ? options.stations
+    : [];
+
+  /*
    * A COPY of the elements, edited here. The feature is not touched
    * until Apply, so Cancel is genuinely Cancel rather than a request to
    * put everything back afterwards.
@@ -489,36 +773,47 @@ function open(options = {}) {
         </div>
 
         <div class="plot-editor-body">
-          <div class="plot-editor-left">
-            <div class="plot-editor-section">TOOLS</div>
+          <!--
+            THE GRAPH COMES FIRST, AND ACROSS THE FULL WIDTH.
 
-            <div class="sketch-editor-tools" data-sketch-tools>
-              ${TOOLS.map(
-                (entry) => `
-                  <button type="button"
-                      class="sketch-editor-tool"
-                      data-sketch-tool="${escapeHtml(entry.id)}">
-                      ${escapeHtml(entry.label)}
-                  </button>
-                `,
-              ).join("")}
-            </div>
-
-            <div class="sketch-editor-hint" data-sketch-hint></div>
-
-            <div class="plot-editor-section">ELEMENTS</div>
-
-            <div class="sketch-editor-list" data-sketch-list></div>
-
-            <div data-sketch-detail></div>
-          </div>
-
-          <div class="plot-editor-right">
-            <div class="plot-editor-section">GRAPH</div>
-
+            A diagram is a SHAPE, and reading a shape is what the graph is
+            for - so it takes the whole width of the workspace rather than
+            sharing a row with the controls. The tools and the element's
+            properties sit BELOW it, where they are reached for only when
+            something is being placed or changed.
+          -->
+          <div class="sketch-editor-graph-area">
             <svg class="sketch-editor-graph" data-sketch-graph
                 viewBox="0 0 ${WIDTH} ${HEIGHT}"
                 preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+
+          <div class="sketch-editor-lower">
+            <div class="plot-editor-left">
+              <div class="plot-editor-section">TOOLS</div>
+
+              <div class="sketch-editor-tools" data-sketch-tools>
+                ${TOOLS.map(
+                  (entry) => `
+                    <button type="button"
+                        class="sketch-editor-tool"
+                        data-sketch-tool="${escapeHtml(entry.id)}">
+                        ${escapeHtml(entry.label)}
+                    </button>
+                  `,
+                ).join("")}
+              </div>
+
+              <div class="sketch-editor-hint" data-sketch-hint></div>
+            </div>
+
+            <div class="plot-editor-right">
+              <div class="plot-editor-section">ELEMENTS</div>
+
+              <div class="sketch-editor-list" data-sketch-list></div>
+
+              <div data-sketch-detail></div>
+            </div>
           </div>
         </div>
 
@@ -550,6 +845,13 @@ function open(options = {}) {
     scale = drawGraph(svg, elements, range, {
       selectedId,
       pending,
+
+      /*
+       * THE BODY'S STATIONS, for the ticks. Passed through unchanged from the
+       * caller's live reference list, so the ticks are the body's own element
+       * locations rather than anything the sketch maintains.
+       */
+      stations,
     });
 
     list.innerHTML = elements.length
@@ -602,6 +904,216 @@ function open(options = {}) {
   });
 
   /*
+   * ========================================================
+   * DRAWING IS PRESS, HOLD, DRAG, RELEASE
+   * ========================================================
+   *
+   * A sketch element is a start and an end, so it is drawn in ONE gesture: the
+   * press is the start, the drag follows the cursor, and the release fixes the
+   * end. The preview redraws on every move, so the shape is visible while it
+   * is being made, and the horizontal position snaps to a body-element tick
+   * whenever the cursor is near one.
+   *
+   * The three-point Curve is the same gesture THREE times - Start, then Bend,
+   * then End - each ending in a release, which is what lets the middle point be
+   * placed deliberately rather than guessed at the end.
+   *
+   * ON RELEASE THE Y IS ASKED FOR. The cursor decided WHERE the point is; the
+   * popup decides the exact ORDINATE, so a peak is entered as 250 kN rather
+   * than aimed at.
+   */
+  let dragging = null;
+
+  const worldPoint = (event) => {
+    const raw = pointFromEvent(event, svg, scale);
+
+    /*
+     * SNAP THE X TO A TICK, keep the Y the student is pointing at. The snap
+     * is horizontal only: the ordinate is the value being chosen, and pulling
+     * it would change the diagram's shape rather than its station.
+     */
+    return {
+      x: snapXToStations(raw.x, stations, scale, range),
+      y: raw.y,
+    };
+  };
+
+  svg.addEventListener("pointerdown", (event) => {
+    if (tool !== "line" && tool !== "curve") {
+      return;
+    }
+
+    event.preventDefault();
+
+    const point = worldPoint(event);
+
+    /*
+     * A LINE BEGINS A NEW STROKE; A CURVE CONTINUES ONE.
+     *
+     * A line is a single gesture - press, drag, release - so each press starts
+     * fresh. A curve is THREE gestures: the press commits the point that was
+     * being dragged (the Start, then the Bend), and the new cursor becomes the
+     * point now under the cursor. The third release has three committed points
+     * and the curve is built.
+     */
+    if (tool === "curve") {
+      if (!pending || pending.kind !== "curve3") {
+        pending = { kind: "curve3", points: [point], live: 1 };
+      } else {
+        pending.points = [...pending.points, point];
+        pending.live = pending.points.length;
+      }
+    } else {
+      pending = { kind: "line", points: [point, point] };
+    }
+
+    dragging = { pointerId: event.pointerId };
+
+    svg.setPointerCapture?.(event.pointerId);
+
+    redraw();
+  });
+
+  svg.addEventListener("pointermove", (event) => {
+    if (!dragging || dragging.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (!pending || !pending.points.length) {
+      return;
+    }
+
+    const point = worldPoint(event);
+
+    /*
+     * THE POINT UNDER THE CURSOR IS THE LAST ONE, and it is still MOVING.
+     *
+     * A line's start was fixed by the press, so the cursor is its end. A
+     * curve's already-committed points (the Start, then the Bend) stand; only
+     * the newest point follows the cursor until the next press fixes it.
+     */
+    if (tool === "line") {
+      pending.points = [pending.points[0], point];
+    } else {
+      pending.points = [
+        ...pending.points.slice(0, pending.live - 1),
+        point,
+      ];
+    }
+
+    redraw();
+  });
+
+  svg.addEventListener("pointerup", (event) => {
+    if (!dragging || dragging.pointerId !== event.pointerId) {
+      return;
+    }
+
+    dragging = null;
+
+    if (tool === "line") {
+      finishLineStroke();
+      return;
+    }
+
+    if (tool === "curve") {
+      finishCurveStroke();
+    }
+  });
+
+  /*
+   * A LINE IS DONE AT THE RELEASE. Its two points are the shape, so the
+   * element is committed, the end's ordinate is asked for, and the tool is
+   * ready for the next one.
+   */
+  function finishLineStroke() {
+    if (!pending || pending.points.length < 2) {
+      pending = null;
+      redraw();
+      return;
+    }
+
+    const [start, end] = pending.points;
+
+    const element = {
+      id: newId(++sequence),
+      kind: "line",
+      start: { x: start.x, y: start.y },
+      end: { x: end.x, y: end.y },
+    };
+
+    pending = null;
+
+    elements.push(element);
+
+    selectedId = element.id;
+
+    redraw();
+
+    askForY({
+      element,
+      pointKey: "end",
+      label: "Sketch Element",
+    });
+  }
+
+  /*
+   * A CURVE NEEDS THREE POINTS. The first two gestures place Start and Bend;
+   * the third places End and builds the curve, then asks for its ordinate.
+   */
+  function finishCurveStroke() {
+    if (!pending || pending.points.length < 3) {
+      redraw();
+      return;
+    }
+
+    const [start, bend, end] = pending.points;
+
+    const element = buildThreePointCurve(
+      newId(++sequence),
+      start,
+      bend,
+      end,
+    );
+
+    pending = null;
+
+    elements.push(element);
+
+    selectedId = element.id;
+
+    redraw();
+
+    askForY({
+      element,
+      pointKey: "end",
+      label: "Curve",
+    });
+  }
+
+  /*
+   * ASK FOR THE EXACT Y OF A JUST-PLACED POINT, then redraw at that value.
+   *
+   * The popup is opened with the ordinate the cursor gave as the suggestion,
+   * so a student who is happy with it presses Enter and one who wants a round
+   * number types it. The element is already on the sheet - the popup edits it
+   * - so cancelling simply leaves the placed value in place.
+   */
+  function askForY({ element, pointKey, label }) {
+    askForYValue({
+      label,
+      value: element[pointKey]?.y ?? 0,
+      unit: options.yUnit || "",
+      onCommit: (value) => {
+        element[pointKey] = { ...element[pointKey], y: value };
+
+        redraw();
+      },
+      onCancel: () => {},
+    });
+  }
+
+  /*
    * DRAWING ON THE GRAPH.
    *
    * The pointer position is converted through the SAME scale the axes
@@ -609,8 +1121,6 @@ function open(options = {}) {
    * pixel that happens to look right at the current zoom.
    */
   svg.addEventListener("click", (event) => {
-    const point = pointFromEvent(event, svg, scale);
-
     if (tool === "select") {
       const hit = elementAt(
         pointFromEvent(event, svg, {
@@ -649,71 +1159,36 @@ function open(options = {}) {
       return;
     }
 
-    if (tool === "line") {
-      const start = pending?.points?.[0];
-
-      if (!start) {
-        pending = { kind: "line", points: [point] };
-
-        redraw();
-
-        return;
-      }
-
-      elements.push({
-        id: newId(++sequence),
-        kind: "line",
-        start,
-        end: point,
-      });
-
-      pending = null;
-
-      selectedId = null;
-
-      redraw();
-
-      return;
-    }
-
-    if (tool === "curve") {
-      if (!pending) {
-        pending = { kind: "curve", points: [point] };
-
-        redraw();
-
-        return;
-      }
-
-      pending.points.push(point);
-
-      /*
-       * TWO POINTS IS ALREADY A SHAPE. Waiting for a third would mean the
-       * student cannot draw the simplest thing - a sloped line they want
-       * to look curved - without having to press a key they were never
-       * told about.
-       */
-      if (pending.points.length === 2) {
-        elements.push({
-          id: newId(++sequence),
-          kind: "curve",
-          points: pending.points.slice(),
-        });
-
-        pending = null;
-      }
-
-      redraw();
-    }
+    /*
+     * CREATION IS NOT HANDLED ON `click` ANY MORE.
+     *
+     * A Line and a Curve are drawn by PRESS, DRAG, RELEASE (see the
+     * `pointerdown`/`pointermove`/`pointerup` listeners), so the `click` that
+     * the browser fires afterwards is a leftover of that gesture and must not
+     * build a second element. Select and Erase still act on a click, because
+     * they are not gestures - they are a single act on an existing element.
+     */
   });
 
+  /*
+   * DOUBLE-CLICK FINISHES A LEGACY MULTI-POINT STROKE.
+   *
+   * The three-point Curve completes itself on its third release, so this only
+   * serves a legacy `curve` element - one drawn by clicking point after point.
+   * It is kept so an existing sketch still opens and can be extended the way
+   * it was made.
+   */
   svg.addEventListener("dblclick", (event) => {
     event.preventDefault();
 
-    if (pending?.points.length >= 2) {
+    if (
+      pending &&
+      pending.kind === "curve" &&
+      pending.points.length >= 2
+    ) {
       elements.push({
         id: newId(++sequence),
-        kind: pending.kind,
+        kind: "curve",
         points: pending.points.slice(),
       });
     }
@@ -724,20 +1199,24 @@ function open(options = {}) {
   });
 
   /*
-   * FINISHING A CURVE.
+   * ENTER FINISHES A LEGACY MULTI-POINT STROKE; ESCAPE ABANDONS ONE.
    *
-   * Enter completes what has been drawn so far. A stroke of one point is
-   * discarded: a curve needs two, and leaving it behind would put an
-   * element on the diagram that draws nothing.
+   * The Line and the three-point Curve complete on release, so Enter has
+   * nothing to finish for them. It is kept for a legacy `curve`, whose points
+   * are placed one click at a time.
    */
   dialog.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && pending) {
+    if (
+      event.key === "Enter" &&
+      pending &&
+      pending.kind === "curve"
+    ) {
       event.preventDefault();
 
       if (pending.points.length >= 2) {
         elements.push({
           id: newId(++sequence),
-          kind: pending.kind,
+          kind: "curve",
           points: pending.points.slice(),
         });
       }
@@ -889,6 +1368,9 @@ function handleEscape() {
 
 const enggSketchEditor = {
   TOOLS,
+  SNAP_TOLERANCE_PX,
+  askForYValue,
+  buildThreePointCurve,
   close,
   distanceToElement,
   handleEscape,
@@ -896,6 +1378,7 @@ const enggSketchEditor = {
   makeScale,
   open,
   pointsOf,
+  snapXToStations,
 };
 
 export default enggSketchEditor;

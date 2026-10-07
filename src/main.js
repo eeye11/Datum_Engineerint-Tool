@@ -16,11 +16,14 @@ import "./core/geometry/measurement-core.js";
 import "./core/units/quantities.js";
 import "./ui/feature-panel/property-panel.js";
 import "./features/dimensions/dimension-model.js";
+import "./features/dimensions/variable-dimension.js";
 import "./features/annotations/annotation-model.js";
 import "./features/dimensions/smart-dimension.js";
 import "./core/model/drawing-state.js";
 import "./file/document-file.js";
 import "./file/file-save.js";
+import "./file/recent-files.js";
+import "./file/templates.js";
 import "./file/document-export.js";
 import "./file/document-recovery.js";
 import "./core/scale/dimensions.js";
@@ -47,8 +50,16 @@ import "./editor/toolbar.js";
 import "./solution/written-references.js";
 import "./solution/writing-tab.js";
 import { installAutomationHooks } from "./app/automation-hooks.js";
+import enggErrorLog from "./app/error-log.js";
 import { createDatumApi } from "./api/datum-api.js";
 import { installEmbedBridge } from "./api/embed-bridge.js";
+
+/*
+ * Record failures from the places the application cannot catch: an error thrown
+ * inside an event listener, or a promise nobody awaited. Installed BEFORE
+ * anything else, so a failure during start-up is recorded rather than lost.
+ */
+enggErrorLog.installGlobalErrorHandlers();
 
 installAutomationHooks();
 

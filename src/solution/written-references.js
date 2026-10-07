@@ -35,6 +35,7 @@
  */
 import { enggDrawingSheets } from "../editor/index.js";
 import enggDrawingReference from "../references/drawing-reference.js";
+import enggErrorLog from "../app/error-log.js";
 import { emitDatumEvent } from "../api/events.js";
 
 const DEFAULT_WIDTH = 760;
@@ -201,7 +202,32 @@ function attach() {
         source.slice(cursor, reference.index)
       );
 
-      appendFigure(output, reference);
+      /*
+       * ONE FIGURE THAT CANNOT BE DRAWN DOES NOT TAKE THE SOLUTION DOWN.
+       *
+       * A reference points at a sheet, and a sheet can be missing, renamed or
+       * hold something a renderer cannot draw. The figures are independent of
+       * one another and of the prose, so a failure is contained to its own
+       * reference: the rest of the solution still typesets, and the one that
+       * failed says so in place rather than leaving a blank page or an editor
+       * that stops responding.
+       */
+      try {
+        appendFigure(output, reference);
+      } catch (error) {
+        enggErrorLog.reportError("render drawing reference", error, {
+          sheetId: reference.sheetId
+        });
+
+        const failed = document.createElement("div");
+
+        failed.className = "drawing-reference-empty";
+        failed.textContent =
+          "This figure could not be drawn. The sheet it refers to is " +
+          "still in the document.";
+
+        output.appendChild(failed);
+      }
 
       cursor = reference.index + reference.length;
     }
@@ -400,9 +426,33 @@ function attach() {
    * hold.
    */
   function refreshAll() {
-    refreshSheetList();
+    /*
+     * A REFRESH CANNOT TAKE THE WORKSPACE DOWN.
+     *
+     * `refreshAll` runs on a timer-like trigger - every window focus and every
+     * return to the tab - so a failure inside it would repeat forever and make
+     * the workspace look frozen or taken over. Each half is contained, so a
+     * broken figure list cannot stop the solution from rendering, and a broken
+     * render cannot stop the sheet list from updating.
+     */
+    try {
+      refreshSheetList();
+    } catch (error) {
+      enggErrorLog.reportError("refresh sheet list", error, {});
+    }
 
-    renderSolution();
+    try {
+      /*
+       * `renderSolution` is async, so its rejection is caught HERE rather than
+       * by the try - an un-awaited async call throws into nowhere, which is
+       * exactly the silent failure this is here to prevent.
+       */
+      Promise.resolve(renderSolution()).catch((error) => {
+        enggErrorLog.reportError("render written solution", error, {});
+      });
+    } catch (error) {
+      enggErrorLog.reportError("render written solution", error, {});
+    }
   }
 
   window.addEventListener(

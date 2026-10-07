@@ -284,6 +284,37 @@ export const MAGNITUDE_BEARING_TYPES = (() => {
 })();
 
 /*
+ * A UNIT SELECTOR FOR A FEATURE'S OWN QUANTITY.
+ *
+ * One control, used by every feature whose magnitude carries a unit - a load,
+ * a Point Force, a Moment. It is a SELECT rather than a text box, so the unit
+ * can only ever be one of the units the application understands, and the value
+ * shown beside it is read in that unit.
+ *
+ * CHANGING THE UNIT DOES NOT CHANGE THE QUANTITY. 1 kN and 1000 N are the same
+ * force; the stored number is relabelled, not rescaled, which is the rule the
+ * load already follows and the reason the same magnitude reads identically on
+ * the sheet and in the panel.
+ */
+export function unitSelectMarkup({
+    property,
+    units,
+    current,
+    label,
+}) {
+    const options = units
+        .map(
+            unit =>
+                `<option value="${unit}"${
+                    unit === current ? " selected" : ""
+                }>${unit}</option>`
+        )
+        .join("");
+
+    return `<select data-property="${property}" aria-label="${label}">${options}</select>`;
+}
+
+/*
  * The Arc Radius row for a rotational feature.
  *
  * PRESENTATION, and labelled as such.
@@ -1420,6 +1451,24 @@ export function distributedLoadPanelMarkup(
      * "magnitude", and the `?` control beside it marks the value unknown.
      * When unknown the field is blank â€” never zero.
      */
+    /*
+     * THE MAGNITUDE IS STATED IN THE LOAD'S OWN UNIT.
+     *
+     * The unit is a property of the load, not of the panel and not of the
+     * drawing: the same stored value is written here as on the sheet, so
+     * "5 kN/m" beside the member is "5 kN/m" in this field. The control
+     * beside the number CHANGES THE UNIT WITHOUT CHANGING THE LOAD, because
+     * kN/m and N/mm are the same quantity - see the loadUnit property.
+     */
+    const loadUnitValue = enggLoadProfile.loadUnit(geometry);
+
+    const loadUnitOptions = unitSelectMarkup({
+        property: "loadUnit",
+        units: ["kN/m", "N/mm"],
+        current: loadUnitValue,
+        label: "Load unit"
+    });
+
     rows.push(`
         <div class="drawing-property-grid drawing-property-grid-value${isMagnitudeUnknown ? " drawing-property-unknown" : ""}">
             <span class="drawing-property-grid-label">Magnitude</span>
@@ -1431,7 +1480,8 @@ export function distributedLoadPanelMarkup(
                         aria-label="Magnitude"
                         value="${number(magnitudeValue)}">`
             }
-            <span class="drawing-property-unit">N/mm${knownBox("magnitude", "Magnitude")}</span>
+            <span class="drawing-property-unit">
+                ${loadUnitOptions}${knownBox("magnitude", "Magnitude")}</span>
             <span></span>
         </div>
     `);

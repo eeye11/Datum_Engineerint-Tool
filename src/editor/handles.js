@@ -525,7 +525,21 @@ function manipulationHandles(
         const graphics =
             safeDimensionGraphics(object);
 
+        /*
+         * THE HANDLE SITS ON THE DIMENSION'S TEXT.
+         *
+         * A dimension is moved to make its number legible, and the number is
+         * the thing the student aims at - so the grab target IS the text.
+         *
+         * It used to be the dimension LINE's first point, which is at one end
+         * of the line rather than under the number: pressing the text missed
+         * the handle entirely, so a dimension could only be moved by first
+         * selecting it and then pressing somewhere else. Using the text
+         * anchor makes "press the number and drag it" work directly, and it
+         * is the same point the renderer places the text at.
+         */
         const anchor =
+            graphics?.textAnchor ||
             graphics?.line?.[0] ||
             graphics?.arc?.[0];
 
@@ -867,12 +881,25 @@ export function handleAtPoint(
 
     drawingState.objects.forEach(
         object => {
+            /*
+             * A DIMENSION'S TEXT HANDLE IS ALWAYS LIVE.
+             *
+             * Every other handle belongs to a selected feature: you select a
+             * beam, then drag its endpoint. A dimension's handle IS its text,
+             * and the text is the thing the student sees and aims at - so
+             * requiring a select first would mean "click the number, then
+             * click it again to drag it", which is the second positioning
+             * step the direct drag exists to remove. A press that does not
+             * move still selects, so the two gestures stay distinct.
+             */
+            const selected =
+                drawingState.selection.selectedObjectIds.includes(
+                    object.id
+                );
+
             if (
-                !drawingState.selection
-                    .selectedObjectIds
-                    .includes(
-                        object.id
-                    )
+                !selected &&
+                object.type !== "dimension"
             ) {
                 return;
             }

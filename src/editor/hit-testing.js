@@ -12,8 +12,9 @@ import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import { distance } from "./construction-geometry.js";
 import { drawingCanvas } from "./dom.js";
+import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
+import { axisLabelPositions } from "../core/geometry/axis-labels.js";
 import { drawingState } from "./editor-state.js";
-import { rectangleCorners } from "./handles.js";
 import { isLoadGeometry } from "./relative-coordinates.js";
 import { momentDirectionOf } from "./statics-panel.js";
 import { isConnectionType, isSupportType } from "../core/model/feature-types.js";
@@ -108,59 +109,6 @@ export function distanceToSegment(
                 ratio * dy
         }
     );
-}
-
-/*
- * Ray-casting point-in-polygon test, used so clicking
- * inside a closed feature selects it.
- */
-function pointInsidePolygon(
-    point,
-    corners
-) {
-    if (
-        !Array.isArray(corners) ||
-        corners.length < 3
-    ) {
-        return false;
-    }
-
-    let inside =
-        false;
-
-    for (
-        let index = 0, previous = corners.length - 1;
-        index < corners.length;
-        previous = index, index += 1
-    ) {
-        const a =
-            corners[index];
-
-        const b =
-            corners[previous];
-
-        if (!a || !b) {
-            continue;
-        }
-
-        const straddles =
-            a.y > point.y !== b.y > point.y;
-
-        if (!straddles) {
-            continue;
-        }
-
-        const intersectX =
-            ((b.x - a.x) * (point.y - a.y)) /
-                (b.y - a.y) +
-            a.x;
-
-        if (point.x < intersectX) {
-            inside = !inside;
-        }
-    }
-
-    return inside;
 }
 
 /*
@@ -831,21 +779,23 @@ export function objectAtPoint(
                             tolerance
                         );
 
+                    /*
+                     * SELECTED BY ITS EDGES, NOT BY ITS INTERIOR.
+                     *
+                     * The four sides were already tested above; the extra
+                     * point-in-polygon clause made the whole rectangle a
+                     * clickable SURFACE, so a line drawn inside it could never
+                     * be reached - the rectangle swallowed every click within
+                     * its perimeter.
+                     *
+                     * Datum has no Fill tool, so a rectangle is a collection of
+                     * edges rather than a filled region, and selection must
+                     * follow what is actually drawn. Removing the clause is
+                     * what lets inner geometry be selected through the shape.
+                     */
                     return (
                         nearHorizontal ||
-                        nearVertical ||
-                        /*
-                         * Clicking inside a closed shape
-                         * selects it, which is what a CAD
-                         * user expects, not only clicking
-                         * its outline.
-                         */
-                        pointInsidePolygon(
-                            point,
-                            rectangleCorners(
-                                geometry
-                            )
-                        )
+                        nearVertical
                     );
                 }
 
@@ -942,6 +892,16 @@ export function objectAtPoint(
                      * Hit-test the three real sides, so
                      * clicking any visible edge selects
                      * the whole triangle as one feature.
+                     *
+                     * THE INTERIOR IS NOT A HIT TARGET.
+                     *
+                     * A triangle is its three edges, not a filled region -
+                     * Datum has no Fill tool - so treating the inside as part
+                     * of the feature made the triangle block every click
+                     * within its perimeter and hid anything drawn inside it.
+                     * Selecting an edge still selects the triangle as one
+                     * feature; what the triangle no longer does is swallow the
+                     * geometry drawn through it.
                      */
                     const corners =
                         (geometry.points || []).filter(
@@ -952,34 +912,28 @@ export function objectAtPoint(
                         return false;
                     }
 
-                    return (
-                        corners.some(
-                            (
-                                corner,
-                                index
-                            ) => {
-                                const next =
-                                    corners[
-                                        (
-                                            index + 1
-                                        ) %
-                                        corners.length
-                                    ];
+                    return corners.some(
+                        (
+                            corner,
+                            index
+                        ) => {
+                            const next =
+                                corners[
+                                    (
+                                        index + 1
+                                    ) %
+                                    corners.length
+                                ];
 
-                                return (
-                                    distanceToSegment(
-                                        point,
-                                        corner,
-                                        next
-                                    ) <=
-                                    tolerance
-                                );
-                            }
-                        ) ||
-                        pointInsidePolygon(
-                            point,
-                            corners
-                        )
+                            return (
+                                distanceToSegment(
+                                    point,
+                                    corner,
+                                    next
+                                ) <=
+                                tolerance
+                            );
+                        }
                     );
                 }
 
@@ -1445,6 +1399,83 @@ function pickDimensionOrAnnotation(
  * tell "what was clicked" apart from "what may be dragged", and a derived
  * value has neither a features-panel entry nor an undo step of its own.
  */
+/*
+ * The axis label under the cursor, if any.
+ *
+ * Newest feature first and, within a feature, the later label first - so where
+ * two labels overlap the one drawn on top is the one picked.
+ */
+function pickAxisLabel(point, padding) {
+    const model = enggAnnotationModel;
+
+    if (!model?.drawnTextBounds || !model?.textBoundsContainPoint) {
+        return null;
+    }
+
+    for (let i = drawingState.objects.length - 1; i >= 0; i -= 1) {
+        const object = drawingState.objects[i];
+
+        if (object.type !== COORDINATE_SYSTEM_TYPE) {
+            continue;
+        }
+
+        const labels = axisLabelPositions(object);
+
+        for (let j = labels.length - 1; j >= 0; j -= 1) {
+            const label = labels[j];
+
+            const bounds = model.drawnTextBounds(
+                label.text,
+                label.position,
+                13
+            );
+
+            if (
+                bounds &&
+                model.textBoundsContainPoint(bounds, point, padding)
+            ) {
+                return {
+                    area: bounds.width * bounds.height,
+                    id: label.id,
+                    type: "axis-label",
+                    axis: label.axis,
+                    sourceFeatureId: object.id,
+                    label
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+/*
+ * ========================================================
+ * A MAGNITUDE LABEL IS PICKED BY ITS TEXT
+ * ========================================================
+ */
+/*
+ * The magnitude label under the cursor, if any.
+ *
+ * A label is DRAWN somewhere the student chose, and that is what they aim at -
+ * not the feature it describes. Measuring the text's own box, rather than the
+ * annotation's anchor point or the source load's extent, is what makes a moved
+ * label reachable: otherwise a box dragged clear of its arrow can never be
+ * grabbed again, because every click resolves to the arrow underneath.
+ *
+ * The box JOINs the feature's extent for the purposes of Fit and export, but
+ * for picking it is the box alone that counts.
+ *
+ * A HIT ON THE BOX IS NOT A HIT ON THE FORCE. Clicking the arrow still
+ * selects the force - the arrow IS the force - but clicking the number the
+ * student deliberately moved out of the way means the number. Resolving both
+ * to the feature would make the moved box impossible to move again: every
+ * drag would grab the arrow underneath instead.
+ *
+ * IT REPORTS A PSEUDO-OBJECT, not a document id, because the caller needs to
+ * tell "what was clicked" apart from "what may be dragged", and a derived
+ * value has neither a features-panel entry nor an undo step of its own.
+ */
 export function pickDerivedMagnitude(
     point
 ) {
@@ -1473,6 +1504,22 @@ export function pickDerivedMagnitude(
         );
 
     let best = null;
+
+    /*
+     * AXIS LABELS ARE PICKED BY THE SAME RULE, AND FIRST.
+     *
+     * A coordinate system's X and Y labels are drawing text like any other, so
+     * they are picked by measuring the text's own box - the same estimate the
+     * renderer lays them out with - rather than by the axis line they sit near.
+     * They are considered before annotations because a label the student moved
+     * onto a magnitude label should still be grabbable, and the one drawn last
+     * is the one on top.
+     */
+    const axisLabel = pickAxisLabel(point, padding);
+
+    if (axisLabel) {
+        best = axisLabel;
+    }
 
     /*
      * Newest feature first, so where two labels overlap the one drawn on

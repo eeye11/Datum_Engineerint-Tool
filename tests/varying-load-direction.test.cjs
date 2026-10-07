@@ -70,11 +70,13 @@ const horizontalBeam = () => ({
 const near = (first, second, tolerance = 1e-6) =>
   Math.abs(first - second) <= tolerance;
 
-console.log("\n  the direction follows the raw cursor vector\n");
+console.log("\n  inside the span the direction is perpendicular to it\n");
 
 /*
- * The vector runs from the FIXED reference point (the span's midpoint) to the
- * cursor, and its angle is the load's direction. Up from the midpoint is 90.
+ * WITHIN THE SPAN the direction is the span's perpendicular, and the
+ * cursor's position inside the region does NOT rotate it. A cursor above a
+ * horizontal span gives an upward load; the same cursor pulled further up
+ * only grows the magnitude.
  */
 {
   const interaction = horizontalBeam();
@@ -85,58 +87,77 @@ console.log("\n  the direction follows the raw cursor vector\n");
   });
 
   check(
-    "a cursor straight up gives an upward load",
+    "a cursor within the span gives the perpendicular direction",
     draft &&
       draft.directionChosen === true &&
-      near(draft.direction, 90),
+      near(Math.abs(draft.direction), 90),
     `direction was ${draft?.direction}`,
   );
 }
 
 /*
- * Straight right, from the midpoint to a cursor east of it.
+ * THE CURSOR'S HORIZONTAL POSITION INSIDE THE SPAN DOES NOT TURN THE LOAD. A
+ * cursor near the start, near the end, or in the middle - always within the
+ * span - all give the same perpendicular direction. This is the rule that
+ * stops the load spinning as the student drags along it.
  */
 {
-  const interaction = horizontalBeam();
+  const probes = [
+    { x: 20, y: 40 },
+    { x: 100, y: 40 },
+    { x: 180, y: 40 },
+  ];
 
-  const draft = loadTool.distributedLoadDraft(interaction, {
-    x: 240,
-    y: 0,
+  const directions = probes.map((cursor) => {
+    const draft = loadTool.distributedLoadDraft(
+      horizontalBeam(),
+      cursor,
+    );
+
+    return draft?.direction;
+  });
+
+  const allUp =
+    directions.every((d) => d !== null && near(d, 90));
+
+  check(
+    "the cursor's place within the span does not rotate the load",
+    allUp,
+    `directions were ${JSON.stringify(directions)}`,
+  );
+}
+
+/*
+ * Straight up is the perpendicular; straight DOWN from the span's own axis is
+ * the SAME direction line, and the side is chosen from where the cursor is.
+ */
+{
+  const up = loadTool.distributedLoadDraft(horizontalBeam(), {
+    x: 100,
+    y: 50,
+  });
+
+  const down = loadTool.distributedLoadDraft(horizontalBeam(), {
+    x: 100,
+    y: -50,
   });
 
   check(
-    "a cursor to the right gives a horizontal load",
-    draft && near(draft.direction, 0),
-    `direction was ${draft?.direction}`,
+    "a cursor below the span gives the downward perpendicular",
+    down && near(down.direction, -90),
+    `direction was ${down?.direction}`,
   );
-}
-
-/*
- * Down and to the left, to prove the sign is real rather than an axis.
- */
-{
-  const interaction = horizontalBeam();
-
-  const draft = loadTool.distributedLoadDraft(interaction, {
-    x: 40,
-    y: -60,
-  });
 
   check(
-    "a down-left cursor gives the down-left diagonal",
-    draft &&
-      near(
-        draft.direction,
-        (Math.atan2(-60, 40 - 100) * 180) / Math.PI,
-      ),
-    `direction was ${draft?.direction}`,
+    "so the two sides are opposite perpendiculars",
+    up && down && near(Math.abs(up.direction - down.direction), 180),
+    `up ${up?.direction}, down ${down?.direction}`,
   );
 }
 
 /*
- * On an ANGLED span the direction still comes from the cursor, not from the
- * beam. A 45-degree member with the cursor straight up gives a vertical load,
- * which is what proves the span orientation is not being read into it.
+ * ON AN ANGLED SPAN the perpendicular is square to THAT member, not to the
+ * world axes: the span's own direction is the reference.
  */
 {
   const interaction = {
@@ -145,22 +166,61 @@ console.log("\n  the direction follows the raw cursor vector\n");
     distributedLoadEnd: { x: 200, y: 200 },
   };
 
-  /* Midpoint is (100, 100); straight up from there is 90 degrees. */
+  /*
+   * The member runs up-right at 45 degrees, so its perpendicular is -45
+   * (down-right) or 135 (up-left). A cursor above-left of the span picks the
+   * 135-degree side.
+   */
   const draft = loadTool.distributedLoadDraft(interaction, {
-    x: 100,
-    y: 180,
+    x: 60,
+    y: 140,
   });
 
   check(
-    "on an angled span the cursor still sets the direction",
-    draft && near(draft.direction, 90),
+    "on an angled span the direction is square to that span",
+    draft && near(Math.abs(draft.direction), 135),
+    `direction was ${draft?.direction}`,
+  );
+}
+
+console.log("\n  a different direction needs the cursor past an END\n");
+
+/*
+ * BEYOND THE START: the cursor has left the loaded region past its start end,
+ * so the direction is the vector from that end to the cursor - the LEFT side.
+ */
+{
+  const draft = loadTool.distributedLoadDraft(horizontalBeam(), {
+    x: -60,
+    y: -60,
+  });
+
+  check(
+    "past the left end the direction comes from the start end",
+    draft && near(draft.direction, -135),
     `direction was ${draft?.direction}`,
   );
 }
 
 /*
- * A cursor toward an END of the span, but separated from it, gives the angle
- * of the cursor vector - not the angle to the endpoint.
+ * BEYOND THE END: the same on the right side, read from the far end.
+ */
+{
+  const draft = loadTool.distributedLoadDraft(horizontalBeam(), {
+    x: 260,
+    y: -60,
+  });
+
+  check(
+    "past the right end the direction comes from the end",
+    draft && near(draft.direction, -45),
+    `direction was ${draft?.direction}`,
+  );
+}
+
+/*
+ * A cursor within the span but far off the member is STILL perpendicular - the
+ * whole point of the rule is that only the ends allow a different direction.
  */
 {
   const interaction = horizontalBeam();
@@ -170,13 +230,10 @@ console.log("\n  the direction follows the raw cursor vector\n");
     y: 60,
   });
 
-  const expected =
-    (Math.atan2(60, 10 - 100) * 180) / Math.PI;
-
   check(
-    "toward an end, the direction is the cursor vector's angle",
-    draft && near(draft.direction, expected),
-    `direction was ${draft?.direction}, expected ${expected}`,
+    "toward an end but inside it, the direction is still perpendicular",
+    draft && near(Math.abs(draft.direction), 90),
+    `direction was ${draft?.direction}`,
   );
 }
 
@@ -186,19 +243,20 @@ console.log("\n  a snapped endpoint cannot distort the direction\n");
  * THE BUG. The construction point is snapped: a cursor near the span's end
  * resolves to the end EXACTLY. If the direction is read from that snapped
  * point, every cursor position near the end produces the same fixed diagonal
- * (midpoint -> endpoint) instead of the angle the student aimed.
+ * instead of the direction the student is describing.
  *
  * These drive the two different pointers the draft takes: the snapped point
  * as `cursor` and the raw pointer as `directionCursor`. The direction must
  * follow the RAW one and ignore the snapped endpoint entirely.
+ *
+ * Both cases are WITHIN the span, so the correct answer is now the
+ * perpendicular - which is what proves the snapped endpoint (a point on the
+ * span) is not being read into the direction at all.
  */
 {
   const spanEnd = { x: 0, y: 0 };
 
   const rawCursor = { x: 30, y: 70 };
-
-  const expected =
-    (Math.atan2(70, 30 - 100) * 180) / Math.PI;
 
   const draft = loadTool.distributedLoadDraft(
     horizontalBeam(),
@@ -211,9 +269,9 @@ console.log("\n  a snapped endpoint cannot distort the direction\n");
   );
 
   check(
-    "the direction comes from the raw cursor, not the snapped endpoint",
-    draft && near(draft.direction, expected),
-    `direction was ${draft?.direction}, expected ${expected}`,
+    "the direction ignores the snapped endpoint and stays perpendicular",
+    draft && near(Math.abs(draft.direction), 90),
+    `direction was ${draft?.direction}`,
   );
 
   /*
@@ -232,9 +290,6 @@ console.log("\n  a snapped endpoint cannot distort the direction\n");
 {
   const rawCursor = { x: 170, y: 80 };
 
-  const expected =
-    (Math.atan2(80, 170 - 100) * 180) / Math.PI;
-
   const draft = loadTool.distributedLoadDraft(
     horizontalBeam(),
     { x: 200, y: 0 },
@@ -242,9 +297,9 @@ console.log("\n  a snapped endpoint cannot distort the direction\n");
   );
 
   check(
-    "toward the far end the raw cursor still decides",
-    draft && near(draft.direction, expected),
-    `direction was ${draft?.direction}, expected ${expected}`,
+    "toward the far end, inside the span, it is still perpendicular",
+    draft && near(Math.abs(draft.direction), 90),
+    `direction was ${draft?.direction}`,
   );
 }
 
@@ -324,23 +379,27 @@ console.log("\n  a chosen direction is consistent for every point\n");
   );
 }
 
-console.log("\n  zero-length and invalid vectors\n");
+console.log("\n  a degenerate span has no direction to read\n");
 
 /*
- * A cursor exactly on the reference point cannot select a direction, so the
- * build refuses the first point rather than inventing one - and in particular
- * it does not fall back to the span's perpendicular.
+ * A SPAN WITH NO LENGTH has no axis, so it has no perpendicular and no end to
+ * read a direction from. That is the one case in which no direction can be
+ * derived, and it reports so rather than inventing one.
  */
 {
-  const interaction = horizontalBeam();
+  const interaction = {
+    ...horizontalBeam(),
+    distributedLoadStart: { x: 100, y: 0 },
+    distributedLoadEnd: { x: 100, y: 0 },
+  };
 
   const draft = loadTool.distributedLoadDraft(interaction, {
-    x: 100,
+    x: 140,
     y: 0,
   });
 
   check(
-    "a cursor on the reference point chooses no direction",
+    "a zero-length span chooses no direction",
     draft && draft.directionChosen === false,
     `directionChosen was ${draft?.directionChosen}`,
   );

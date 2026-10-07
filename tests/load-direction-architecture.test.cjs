@@ -348,8 +348,9 @@ console.log("\n  varying load: one common direction from the fixed reference\n")
 }
 
 /*
- * Moving the cursor toward an end must not swing the direction, and the
- * profile points must not pull it either.
+ * Moving the cursor along the span must not swing the direction: inside the
+ * loaded region the direction stays square-on to the span, whatever the
+ * profile says and wherever along the span the cursor is.
  */
 {
   [
@@ -363,8 +364,6 @@ console.log("\n  varying load: one common direction from the fixed reference\n")
       { t: 1, magnitude: 15 },
     ]);
 
-    const expected = degreesOf(levelSpan.reference, cursor);
-
     const draft = loadTool.distributedLoadDraft(
       drawingState.interaction,
       cursor,
@@ -372,9 +371,9 @@ console.log("\n  varying load: one common direction from the fixed reference\n")
     );
 
     check(
-      `at x=${cursor.x} the varying direction is the cursor's angle`,
-      draft && near(draft.direction, expected, 1e-9),
-      `direction was ${draft?.direction}, expected ${expected}`,
+      `at x=${cursor.x} the varying direction is the span's perpendicular`,
+      draft && near(Math.abs(draft.direction), 90, 1e-9),
+      `direction was ${draft?.direction}`,
     );
   });
 }
@@ -452,8 +451,9 @@ console.log("\n  varying load: profile points are not direction anchors\n");
 console.log("\n  a direction nobody chose is never committed\n");
 
 /*
- * A cursor sitting on the reference aims nowhere. The draft must report that
- * no direction was chosen, so the build cannot store a placeholder.
+ * A cursor INSIDE the loaded span still has a direction - the span's
+ * perpendicular - so the first point can be placed without dragging off the
+ * load. Only a degenerate span leaves no direction to read.
  */
 {
   withVarying(levelSpan, []);
@@ -465,9 +465,11 @@ console.log("\n  a direction nobody chose is never committed\n");
   );
 
   check(
-    "a cursor on the reference reports no direction chosen",
-    draft && draft.directionChosen === false,
-    `directionChosen was ${draft?.directionChosen}`,
+    "a cursor within the span reports the perpendicular direction",
+    draft &&
+      draft.directionChosen === true &&
+      near(Math.abs(draft.direction), 90),
+    `directionChosen ${draft?.directionChosen}, direction ${draft?.direction}`,
   );
 }
 

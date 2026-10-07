@@ -79,6 +79,25 @@ export function handleCanvasClick(
     }
 
     /*
+     * THE CLICK AFTER A DRAG-TO-CREATE GESTURE.
+     *
+     * A held drag that created a feature also fires a `click` on release.
+     * That click is part of the gesture that has already committed the
+     * feature, not a new first point - so it is dropped here, once, and
+     * the tool stays armed for the next feature. Without this the release
+     * would be read twice and the student would find themselves starting
+     * a second shape at the point they had just released.
+     */
+    if (
+        editorState.creationDragConsumedClick
+    ) {
+        editorState.creationDragConsumedClick =
+            false;
+
+        return;
+    }
+
+    /*
      * Resolve the exact click position again.
      *
      * This is important because relying on the

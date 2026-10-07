@@ -14,6 +14,7 @@ import { isRectangleLike, objectAtPoint } from "./hit-testing.js";
 import { resolvePointerEvent, updateInteractionFeedback } from "./pointer.js";
 import { applyRigidBodyHandle, applyStaticsManipulation, isStaticsFeature, moveTrussJoint } from "./statics-attachment.js";
 import { canvasPointFromEvent } from "./tool-activation.js";
+import { setToolMessage } from "./toolbar-render.js";
 
 export function beginManipulationDrag(
     event
@@ -64,6 +65,35 @@ export function beginManipulationDrag(
             point
         );
 
+    /*
+     * A LOCKED FEATURE DOES NOT MOVE.
+     *
+     * Locking is about SPATIAL manipulation and nothing else: a locked feature
+     * is still selectable, still inspectable, still listed in the tree, and its
+     * properties are still editable through the panel - the lock stops it being
+     * dragged, which is what makes it a way to protect a finished part of a
+     * drawing while working around it.
+     *
+     * The check is made here, at the ONE place every manipulation drag begins,
+     * rather than in each handle's own branch. A handle added next month is
+     * therefore covered without anyone remembering to check.
+     */
+    const locked =
+        (hit && hit.object && hit.object.locked) ||
+        (() => {
+            const under = objectAtPoint(point);
+
+            return under && under.locked ? under : null;
+        })();
+
+    if (locked) {
+        setToolMessage(
+            `${locked.name || "This feature"} is locked. Unlock it to move it.`
+        );
+
+        return false;
+    }
+
     if (hit) {
         /*
          * originals is keyed by object id so the commit
@@ -111,6 +141,66 @@ export function beginManipulationDrag(
     }
 
     /*
+     * ========================================================
+     * A DIMENSION IS MOVED BY PRESSING ITS NUMBER
+     * ========================================================
+     *
+     * A coordinate dimension is a thin line with a number on it, and the
+     * number is what the student aims at. Pressing it and dragging moves the
+     * dimension, with no selecting click first - the press both selects and
+     * begins the move.
+     *
+     * This is claimed for a DIMENSION ONLY, and only when the press is on the
+     * dimension itself. Every other feature keeps the rule below, where a
+     * press on a selected feature is armed as a possible body drag: claiming
+     * that unconditionally is what once stopped a Statics tool receiving its
+     * own click.
+     *
+     * It is armed, not performed: the drag becomes a move only when the
+     * pointer actually travels, so a press that stays put is still a click -
+     * which selects the dimension, exactly as a click on it always did.
+     */
+    const overlay =
+        objectAtPoint(
+            point
+        );
+
+    if (overlay?.type === "dimension") {
+        /*
+         * ARMED, NOT CLAIMED.
+         *
+         * The pointer is NOT captured here, and the dimension is not yet
+         * moved. A press that stays put must remain an ordinary click - and,
+         * when it is the first of a pair, must leave the browser free to fire
+         * the `dblclick` that opens the value editor. Capturing the pointer on
+         * the press is what stopped that: the capture redirected the second
+         * click, so the editor could never be opened by double-clicking the
+         * number.
+         *
+         * The move begins on the first `pointermove` that actually travels,
+         * in `updateManipulationDrag`, which is where the drag is promoted.
+         */
+        editorState.manipulationDrag = {
+            pointerId: event.pointerId,
+            object: overlay,
+            kind: "annotation-offset",
+            moved: false,
+            pending: true,
+            start: { ...point },
+            originals: {
+                [overlay.id]:
+                    JSON.parse(
+                        JSON.stringify(
+                            overlay
+                        )
+                    )
+            }
+        };
+
+        return true;
+    }
+
+    /*
      * Dragging the body of a selected object translates the
      * whole selection.
      *
@@ -131,10 +221,7 @@ export function beginManipulationDrag(
      * only becomes a manipulation if the pointer moves; a press
      * that stays put is left for the tool.
      */
-    const object =
-        objectAtPoint(
-            point
-        );
+    const object = overlay;
 
     if (
         object &&
@@ -198,11 +285,62 @@ export function updateManipulationDrag(
             event
         );
 
+    /*
+     * A DIMENSION FOLLOWS THE CURSOR EXACTLY.
+     *
+     * Every other manipulation writes a VALUE that snapping may legitimately
+     * constrain - an endpoint lands on a joint, a body sits on a grid line.
+     * A dimension's drag writes a DRAWING position: it says where the number
+     * is printed, not what the number measures. Snapping it would pull the
+     * text onto whatever geometry happened to be near, so a small drag could
+     * jump the label somewhere the student never pointed - and the further
+     * they dragged, the more the label would wander from the cursor.
+     *
+     * So a dimension is moved from the RAW pointer, and the drag offset keeps
+     * the text exactly where it was grabbed.
+     */
+    const draggingDimension =
+        editorState.manipulationDrag.object
+            ?.type === "dimension";
+
     const point =
-        resolution.effectiveConstructionPoint;
+        draggingDimension
+            ? resolution.rawPointerPoint ||
+              resolution.effectiveConstructionPoint
+            : resolution.effectiveConstructionPoint;
 
     if (!point) {
         return;
+    }
+
+    /*
+     * THE DRAG BEGINS ON THE FIRST REAL MOVEMENT.
+     *
+     * A dimension press arrives here as a PENDING drag - armed on the press
+     * but not yet a move, so that a press which stays put can still be a click
+     * or the first half of a double-click. The first move that actually
+     * travels promotes it: the pointer is captured, the dimension is selected,
+     * and from here on it is a live drag.
+     */
+    if (editorState.manipulationDrag.pending) {
+        editorState.manipulationDrag.pending =
+            false;
+
+        enggDrawingState.selectObject(
+            drawingState,
+            editorState.manipulationDrag.object.id
+        );
+
+        try {
+            drawingCanvas.setPointerCapture(
+                event.pointerId
+            );
+        } catch (error) {
+            /*
+             * A pointer already released cannot be captured, which is
+             * harmless: the drag simply does not continue.
+             */
+        }
     }
 
     editorState.manipulationDrag.moved =
@@ -265,6 +403,23 @@ export function finishManipulationDrag(
          */
         editorState.selectionClickSuppressed =
             false;
+
+        /*
+         * A PRESS ON A DIMENSION THAT DID NOT MOVE IS A CLICK, so it selects
+         * the dimension. The double-click path then opens the value editor
+         * with the dimension already selected, and a single click leaves it
+         * selected with its handles shown - which is what a click on a
+         * dimension has always meant.
+         */
+        if (drag.object?.type === "dimension") {
+            enggDrawingState.selectObject(
+                drawingState,
+                drag.object.id
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
+        }
 
         return;
     }

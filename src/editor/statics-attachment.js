@@ -296,14 +296,32 @@ export function applyStaticsManipulation(
             return;
         }
 
+        /*
+         * A CONSTRAINED COORDINATE DOES NOT MOVE.
+         *
+         * The X and Y checkboxes in the Features panel lock one coordinate
+         * each, so a drag must respect them per axis rather than being blocked
+         * or ignored as a whole. Dragging a point with X constrained and Y free
+         * slides it vertically; with both constrained it does not move at all;
+         * with neither it moves normally. The constraint is read from the
+         * feature's own model, which is the same state the panel shows.
+         */
+        const pinnedX =
+            object.constraints?.["position.x"] === true;
+
+        const pinnedY =
+            object.constraints?.["position.y"] === true;
+
         g.position = {
-            x: point.x,
-            y: point.y
+            x: pinnedX ? g.position.x : point.x,
+            y: pinnedY ? g.position.y : point.y
         };
 
         updateAttachment(
             object,
-            point
+            pinnedX || pinnedY
+                ? { x: g.position.x, y: g.position.y }
+                : point
         );
     }
 }

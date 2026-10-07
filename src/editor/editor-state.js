@@ -56,6 +56,24 @@ export const editorState = {
 
     selectionDrag: null,
 
+    /*
+     * A feature being created by a held drag.
+     *
+     * Present while the pointer is down on a creation tool that takes
+     * its two points from one press - a Line, a Rectangle, a Circle, a
+     * span, a Point Force. It records which pointer owns the gesture, so
+     * the release can commit the feature and the trailing click can be
+     * swallowed. See creation-drag.js for the whole rule.
+     */
+    creationDrag: null,
+
+    /*
+     * Set when a drag-to-create gesture has just consumed its release, so
+     * the `click` the browser fires afterwards is not read a second time
+     * as the first point of a new feature. Cleared the moment it is read.
+     */
+    creationDragConsumedClick: false,
+
     panSession: null,
 
     /*

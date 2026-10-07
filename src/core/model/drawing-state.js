@@ -1,6 +1,7 @@
 /* Central source of truth for structured engineering drawings. */
 import enggAnnotationModel from "../../features/annotations/annotation-model.js";
 import enggDimensionModel from "../../features/dimensions/dimension-model.js";
+import enggVariableDimension from "../../features/dimensions/variable-dimension.js";
 import enggMeasurement from "../geometry/measurement-core.js";
 import enggDrawingSnap from "../snapping/object-snap.js";
 
@@ -884,7 +885,17 @@ const geometryFactories = {
                 start,
                 end,
                 startIntensity,
-                endIntensity
+                endIntensity,
+
+                /*
+                 * ONE UNIT FOR THE WHOLE PROFILE. Every point of a varying
+                 * load is stated in the same unit, so it lives on the
+                 * geometry rather than on each point - a profile whose points
+                 * disagreed about their units could not be drawn on one axis.
+                 */
+                loadUnit:
+                    options?.loadUnit ??
+                    "kN/m"
             },
             options
         ),
@@ -914,6 +925,15 @@ const geometryFactories = {
                     -90,
 
                 interval: 20,
+
+                /*
+                 * THE UNIT THE MAGNITUDE IS STATED IN. kN/m is the drawing's
+                 * long-standing unit and the default; the student may switch
+                 * the load to N/mm, which is the same physical quantity.
+                 */
+                loadUnit:
+                    options?.loadUnit ??
+                    "kN/m",
 
                 points: [
                     {
@@ -1371,6 +1391,35 @@ const geometryFactories = {
                         created.orientation,
                     resolved:
                         created.resolved
+                }
+            }
+        );
+    },
+
+    "variable-dimension": (options = {}) => {
+        const created =
+            enggVariableDimension
+                .createVariableDimension(options);
+
+        /*
+         * THE SYMBOL TRAVELS IN `content`, like a dimension's measurement.
+         *
+         * The panel, the renderer and the hit test all read `variable.symbol`
+         * off the feature itself, so it has to arrive at that level rather than
+         * one layer down. The name is left to `addObject`, which numbers it -
+         * so a list of them reads "Variable Dimension 1, 2, 3".
+         */
+        return createGeometryObject(
+            "variable-dimension",
+            {},
+            {
+                id: created.id,
+                content: {
+                    sourceRefs: created.sourceRefs,
+                    symbol: created.symbol,
+                    label: created.label,
+                    placement: created.placement,
+                    orientation: created.orientation
                 }
             }
         );
@@ -2669,6 +2718,78 @@ function screenToEngineering(
     };
 }
 
+/*
+ * A feature as it is written to a file: a faithful deep copy of everything the
+ * feature carries, not a hand-picked list of fields.
+ *
+ * The whole object is spread first, so any property a feature has - a
+ * dimension's source references, an annotation's placement and its
+ * placement mode, a load's intensity and direction, a support's body link,
+ * a feature's parent id and its own id - survives without this function
+ * having to name it. Fields left unnamed are exactly the fields that were
+ * silently dropped when this was a fixed list, so nothing here is picked out
+ * field by field.
+ *
+ * `geometry` is DEEP-copied, because it is the one field whose sub-objects
+ * are edited in place elsewhere and must not be shared with the live model
+ * across a serialise. It is copied only when it exists: an annotation or a
+ * dimension has no `geometry` at all, and the previous version of this code
+ * called JSON.parse(JSON.stringify(undefined)), which throws. That made
+ * SAVING A DRAWING THAT CONTAINED ANY ANNOTATION fail outright, and it is the
+ * reason an annotated sheet could not be saved and reopened.
+ */
+function cloneFeatureForSave(object) {
+    const copy = { ...object };
+
+    if (object.geometry !== undefined) {
+        copy.geometry = JSON.parse(
+            JSON.stringify(object.geometry)
+        );
+    }
+
+    /*
+     * The optionally-present sub-objects are copied when they are there, and
+     * left absent when they are not - never materialised as an empty object,
+     * so a reopened feature is the same shape it was saved as.
+     */
+    if (object.style !== undefined) {
+        copy.style = JSON.parse(
+            JSON.stringify(object.style)
+        );
+    }
+
+    if (object.metadata !== undefined) {
+        copy.metadata = JSON.parse(
+            JSON.stringify(object.metadata)
+        );
+    }
+
+    /*
+     * The remaining plain sub-objects a feature may carry: a dimension's
+     * placement, an annotation's placement, a load's profile, a moment's
+     * direction. Copied the same way, for the same reason - so the file is a
+     * snapshot at the moment of saving rather than a live reference.
+     */
+    [
+        "placement",
+        "sourceRefs",
+        "anchorRef",
+        "leader",
+        "engineering",
+        "constraints",
+        "load",
+        "profile"
+    ].forEach((key) => {
+        if (object[key] !== undefined) {
+            copy[key] = JSON.parse(
+                JSON.stringify(object[key])
+            );
+        }
+    });
+
+    return copy;
+}
+
 function serializeDrawing(state) {
     return JSON.stringify(
         {
@@ -2713,21 +2834,7 @@ function serializeDrawing(state) {
                 ...state.styleDefaults
             },
             objects: state.objects.map(
-                object => ({
-                    ...object,
-                    geometry:
-                        JSON.parse(
-                            JSON.stringify(
-                                object.geometry
-                            )
-                        ),
-                    style: {
-                        ...object.style
-                    },
-                    metadata: {
-                        ...object.metadata
-                    }
-                })
+                object => cloneFeatureForSave(object)
             )
         },
         null,

@@ -57,6 +57,14 @@ export function featureHeaderMarkup(
             })
             : "";
 
+    /*
+     * THE LOCK IS NOT HERE.
+     *
+     * It lives with the POSITION properties (see `lockRow`), because it controls
+     * whether the feature can be REPOSITIONED - it is not an identification
+     * property like the name and the label, and putting it between them made it
+     * read as one.
+     */
     return name + nameField;
 }
 
@@ -387,9 +395,9 @@ export function featurePropertyMarkup(object) {
      * order is always Label -> Input -> Unit -> Fix.
      */
     const fixBox = (key, label) => `
-        <label class="drawing-property-fix" title="Constrain ${label}">
+        <label class="drawing-property-fix" title="${fixed(key) ? `Unconstrain ${label}` : `Constrain ${label}`}">
             <input type="checkbox" data-fix="${key}"
-                aria-label="Constrain ${label}"
+                aria-label="${fixed(key) ? `Unconstrain ${label}` : `Constrain ${label}`}"
                 ${fixed(key) ? "checked" : ""}>
         </label>
     `;
@@ -406,6 +414,53 @@ export function featurePropertyMarkup(object) {
      */
     const known = key =>
         object.unknownValues?.[key] !== true;
+
+    /*
+     * A FREE-TEXT PROPERTY ROW.
+     *
+     * A label is not a number and not a choice, so it gets a text field in the
+     * same row shape as every other property - which is what keeps it aligned
+     * with the numeric rows above it instead of introducing a second layout.
+     *
+     * An EMPTY string is passed through unchanged: for an axis label that is a
+     * deliberate state ("no label here"), not a missing value.
+     */
+    const textField = (label, key, value) => `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">${label}</span>
+            <input type="text"
+                data-property="${key}"
+                aria-label="${label}"
+                value="${String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+
+    /*
+     * THE FEATURE LOCK, AS A COMPACT BOOLEAN PROPERTY.
+     *
+     * `Locked` says whether the feature can be repositioned, so it belongs with
+     * the POSITION properties rather than beside the name - and it is rendered
+     * as a label with a small checkbox beside it, not as a wide value field
+     * with a checkbox stranded in the middle of it. The control is ALWAYS
+     * rendered and only its `checked` state changes, so it can be toggled back
+     * off without Undo.
+     */
+    const lockRow = () => `
+        <div class="drawing-property-grid drawing-property-grid-value drawing-property-grid-lock">
+            <span class="drawing-property-grid-label">Locked</span>
+            <span class="drawing-property-lock">
+                <label class="drawing-property-fix" title="${object.locked ? "Unlock this feature so it can be moved" : "Lock this feature so it cannot be moved"}">
+                    <input type="checkbox" data-feature-lock
+                        aria-label="${object.locked ? "Unlock this feature" : "Lock this feature"}"
+                        ${object.locked ? "checked" : ""}>
+                </label>
+            </span>
+            <span></span>
+            <span></span>
+        </div>
+    `;
 
     /*
      * A compact `?` toggle, placed after the unit. It reads
@@ -536,6 +591,70 @@ export function featurePropertyMarkup(object) {
     };
 
     /*
+     * A MAGNITUDE WITH A CHANGEABLE UNIT.
+     *
+     *   [ 5.0 ] [ kN/m \u25be ]
+     *
+     * The same field as `scalar`, except that the unit cell is a SELECT rather
+     * than text - which is what makes the unit editable directly from the
+     * feature's own panel. It is used by every feature whose magnitude carries
+     * a unit (a load, a Point Force, a Moment), so the control is the same one
+     * in each and cannot drift between them.
+     *
+     * CHANGING THE UNIT DOES NOT CHANGE THE QUANTITY. The stored number is
+     * relabelled, not rescaled, exactly as the load already behaves - so the
+     * magnitude on the sheet and the magnitude here stay one value.
+     */
+    const quantityWithUnit = (
+        label,
+        key,
+        value,
+        unitProperty,
+        units,
+        currentUnit,
+        editable = true
+    ) => {
+        const isUnknown = showKnown && !known(key);
+
+        const options = units
+            .map(
+                unit =>
+                    `<option value="${unit}"${
+                        unit === currentUnit ? " selected" : ""
+                    }>${unit}</option>`
+            )
+            .join("");
+
+        return `
+            <div class="drawing-property-grid drawing-property-grid-value${
+                isUnknown ? " drawing-property-unknown" : ""
+            }">
+                <span class="drawing-property-grid-label">${label}</span>
+                ${
+                    isUnknown
+                        ? `<span class="drawing-property-readonly"></span>`
+                        : `<input type="number" step="any"
+                            data-property="${key}"
+                            aria-label="${label}"
+                            ${
+                                !editable || fixed(key)
+                                    ? "disabled"
+                                    : ""
+                            }
+                            value="${number(value)}">`
+                }
+                <span class="drawing-property-unit">
+                    <select data-property="${unitProperty}" aria-label="${label} unit">${options}</select>${
+                        showKnown ? knownBox(key, label) : ""
+                    }</span>
+                <span class="drawing-property-state">${
+                    !isUnknown && editable ? fixBox(key, label) : ""
+                }</span>
+            </div>
+        `;
+    };
+
+    /*
      * ONE COORDINATE FIELD.
      *
      * `label` is the whole label the student reads - "Start X", or "X" under a
@@ -586,7 +705,17 @@ export function featurePropertyMarkup(object) {
             value: shown,
             unit: converts ? mmOf(value).unit : unit,
             disabled: fixed(key),
-            state: fixed(key) ? "" : fixBox(key, label),
+
+            /*
+             * THE CONSTRAIN CONTROL IS ALWAYS RENDERED.
+             *
+             * It used to be omitted when the property was already fixed, so
+             * CLICKING it made it vanish - the one thing a persistent control
+             * must never do, because the only way back was Undo. A control's
+             * VISIBILITY and its STATE are separate: the checkbox is always
+             * here, and `checked` is what changes.
+             */
+            state: fixBox(key, label),
         });
 
         return field;
@@ -702,16 +831,14 @@ export function featurePropertyMarkup(object) {
 
         const name = panels.text(object.name);
 
-        return panels.section("ANNOTATION", [
-            panels.row({
-                label: "Label",
-                control: `<input type="text"
-                    data-object-label
-                    class="drawing-property-input"
-                    aria-label="Label"
-                    value="${escapeHtmlText(name === null ? "" : name)}">`,
-            }),
-        ]);
+        return panels.row({
+            label: "Label",
+            control: `<input type="text"
+                data-object-label
+                class="drawing-property-input"
+                aria-label="Label"
+                value="${escapeHtmlText(name === null ? "" : name)}">`,
+        });
     };
 
     /*
@@ -872,11 +999,29 @@ export function featurePropertyMarkup(object) {
             "analysis-diagram": "Analysis Diagram",
             "force-components": "Force Components",
             resultant: "Resultant",
+            /*
+             * NAMED IN FULL, because it is the heading the student reads. The
+             * raw type would print "variable-dimension", which names a storage
+             * shape rather than the thing they placed.
+             */
+            "variable-dimension": "Variable Dimension",
+            dimension: "Dimension",
         }[object.type];
 
     const typeLabel = displayLabel || object.type;
 
     rows.push(featureHeaderMarkup(object, typeLabel));
+
+    /*
+     * LABEL SITS BESIDE FEATURE NAME.
+     *
+     * The two together are the feature's identity - what it is called in a
+     * schedule, and the symbol it is written under on the sheet - so they
+     * belong together at the top. Pushing it here rather than at the foot of
+     * each type's block is what keeps that placement consistent for every
+     * feature without repeating the call.
+     */
+    rows.push(labelRow(object));
 
     if (object.type === "line") {
         const dx = geometry.end.x - geometry.start.x;
@@ -906,6 +1051,7 @@ export function featurePropertyMarkup(object) {
         rows.push(section("POSITION"));
         rows.push(coordinate("X", "position.x", position.x, "mm", true));
         rows.push(coordinate("Y", "position.y", position.y, "mm", true));
+        rows.push(lockRow());
         rows.push(section("APPEARANCE"));
         rows.push(pointSizeMarkup(object));
 
@@ -950,8 +1096,6 @@ export function featurePropertyMarkup(object) {
 
         rows.push(section("APPEARANCE"));
         rows.push(pointSizeMarkup(object));
-
-        rows.push(labelRow(object));
 
         /*
          * APPEARANCE was added above for the marker size, so the
@@ -1211,6 +1355,7 @@ export function featurePropertyMarkup(object) {
         rows.push(coordinate("Start Y", "start.y", geometry.start.y, "mm", true));
         rows.push(coordinate("End X", "end.x", geometry.end.x, "mm", true));
         rows.push(coordinate("End Y", "end.y", geometry.end.y, "mm", true));
+        rows.push(lockRow());
 
         rows.push(section("ORIENTATION"));
         rows.push(derived("Angle",
@@ -1239,8 +1384,6 @@ export function featurePropertyMarkup(object) {
                     "slider-connection"
                 ])));
         }
-
-        rows.push(labelRow(object));
     } else if (object.type === "force") {
         /*
          * A Point Force is one vector with two equally valid
@@ -1263,6 +1406,14 @@ export function featurePropertyMarkup(object) {
             enggLoadProfile.forceVector(
                 geometry
             );
+
+        /*
+         * THE FORCE'S OWN UNIT, read from the feature so the panel and the
+         * drawing state the magnitude the same way. A force entered in kN
+         * reads "kN" here and on the sheet; there is one source for it.
+         */
+        const forceUnitValue =
+            enggLoadProfile.forceUnit(geometry);
 
         /*
          * THE LABEL IS A FEATURE PROPERTY, AND IT SITS WITH THE NAME.
@@ -1301,12 +1452,23 @@ export function featurePropertyMarkup(object) {
         `);
 
         if (mode === "polar") {
+            /*
+             * THE FORCE'S MAGNITUDE, WITH ITS UNIT EDITABLE HERE.
+             *
+             * A Point Force is stated in a force unit, and the student can
+             * change that unit from the feature's own panel - the same control
+             * a load uses. The number is relabelled, not rescaled: 1 kN and
+             * 1000 N are the same force, and the sheet says what this field
+             * says.
+             */
             rows.push(
-                scalar(
+                quantityWithUnit(
                     "Magnitude",
                     "magnitude",
                     vector.magnitude,
-                    "N"
+                    "forceUnit",
+                    enggLoadProfile.FORCE_UNITS,
+                    forceUnitValue
                 )
             );
 
@@ -1336,7 +1498,7 @@ export function featurePropertyMarkup(object) {
                     "X Component",
                     "forceX",
                     vector.fx,
-                    "N"
+                    forceUnitValue
                 )
             );
 
@@ -1345,7 +1507,7 @@ export function featurePropertyMarkup(object) {
                     "Y Component",
                     "forceY",
                     vector.fy,
-                    "N"
+                    forceUnitValue
                 )
             );
         }
@@ -1388,8 +1550,25 @@ export function featurePropertyMarkup(object) {
          * resizing the arc must never look like it changes the moment.
          */
         rows.push(section("VALUE"));
-        rows.push(scalar("Magnitude", "magnitude",
-            Number(geometry.magnitude) || 0, geometry.unit || "N·m"));
+
+        /*
+         * THE MOMENT'S UNIT IS EDITABLE HERE, like a load's and a force's.
+         *
+         * A moment is stated in N\u00b7m or kN\u00b7m, and the student chooses
+         * which from the feature's own panel. The stored number is relabelled,
+         * not rescaled - 1 kN\u00b7m and 1000 N\u00b7m are the same moment - so the
+         * value on the sheet and the value in this field stay one number.
+         */
+        rows.push(
+            quantityWithUnit(
+                "Magnitude",
+                "magnitude",
+                Number(geometry.magnitude) || 0,
+                "momentUnit",
+                enggLoadProfile.MOMENT_UNITS,
+                enggLoadProfile.momentUnit(geometry)
+            )
+        );
 
         rows.push(magnitudeLabelRow({
             object,
@@ -1644,6 +1823,41 @@ export function featurePropertyMarkup(object) {
         rows.push(scalar("Y Negative Length", "yNegativeLength",
                 axisMm(geometry.yNegativeLength ?? geometry.axisLength ?? 25).value,
                 axisMm(geometry.yNegativeLength ?? geometry.axisLength ?? 25).unit));
+
+        /*
+         * THE AXIS LABELS.
+         *
+         * A text field each, read from the feature and written back to it, so
+         * what the sheet shows is what is stored. An EMPTY label is a real,
+         * meaningful state - the student has said they want no label there - so
+         * it is passed through as an empty string rather than being replaced by
+         * the default. The default is only ever applied when the feature is
+         * CREATED, in geometry-creation.js.
+         */
+        rows.push(section("AXIS LABELS"));
+        rows.push(textField("X Label", "xLabel", geometry.xLabel ?? ""));
+        rows.push(textField("Y Label", "yLabel", geometry.yLabel ?? ""));
+    } else if (object.type === "variable-dimension") {
+        /*
+         * A VARIABLE DIMENSION.
+         *
+         *     VARIABLE
+         *     [ x ]
+         *
+         * One editable field: the SYMBOL. There is no measurement field and no
+         * unit, because an unknown quantity has neither - offering a number box
+         * here would invite the student to type a value into a feature whose
+         * whole purpose is to say the value is not known.
+         *
+         * The field is left EMPTY when the symbol is empty, which is a real
+         * state - named but not yet written - and never filled with a default.
+         *
+         * The reference rows above are the shared ones: a variable attaches to
+         * the same geometry a dimension does, so it is measured and reported the
+         * same way.
+         */
+        rows.push(section("VARIABLE"));
+        rows.push(textField("Variable", "symbol", geometry.symbol ?? ""));
     }
 
     rows.push(appearanceMarkup(object));

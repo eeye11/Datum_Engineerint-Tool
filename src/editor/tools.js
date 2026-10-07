@@ -52,6 +52,16 @@ export const toolIcons = {
 	 */
 	Dimension: drawingIcon(`<path ${iconStroke} d="M4 6v12M16 6v12M4 12h12M4 12l3-2M4 12l3 2M16 12l-3-2M16 12l-3 2"/>`),
 	"Smart Dimension": drawingIcon(`<path ${iconStroke} d="M4 6l2-2 2 2M6 4v12M4 14l2 2 2-2M11 5h5M11 10h4M11 15h5"/>`),
+
+	/*
+	 * VARIABLE DIMENSION - a symbol, not a measurement.
+	 *
+	 * The icon says so: the same dimension's witness lines and arrows, with an
+	 * `x` on the value instead of a ruled bar. A student glancing at the
+	 * Annotate toolset should be able to tell at once which of the two states a
+	 * MEASURED number and which states an UNKNOWN one.
+	 */
+	"Variable Dimension": drawingIcon(`<path ${iconStroke} d="M4 6v12M16 6v12M4 12h12M4 12l3-2M4 12l3 2M16 12l-3-2M16 12l-3 2"/><path ${iconStroke} d="M8 9.5l4 5M12 9.5l-4 5"/>`),
 	"Annotation": drawingIcon(`<path ${iconStroke} d="M4 5h8M4 9h8M4 13h5"/><path ${iconStroke} d="M12 16l1.5-4L18 7l-4.5 1.5L12 13"/>`),
 	"Note / Text": drawingIcon(`<path ${iconStroke} d="M4 4h12v9H9l-4 3v-3H4zM7 7h6M7 10h4"/>`),
 	Leader: drawingIcon(`<path ${iconStroke} d="M4 15L15 5M12 5h4v4"/><circle ${iconStroke} cx="4" cy="15" r="1"/>`),
@@ -439,7 +449,7 @@ export const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool
 
 export const engineeringTools = {
 	GEOMETRY: sidebarToolDefinitions.map(tool => tool.label),
-	ANNOTATE: ["Dimension", "Smart Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
+	ANNOTATE: ["Dimension", "Smart Dimension", "Variable Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
 	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Moment", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
 	DYNAMICS: ["Particle", "Rigid Body", "Velocity", "Acceleration", "Rotation", "Motion Path"],
 	FLUIDS: ["Pipe", "Reservoir", "Valve", "Pump", "Flow Arrow", "Pressure"],

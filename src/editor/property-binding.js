@@ -883,7 +883,26 @@ export function bindFeaturePropertyControls(object) {
     });
 
     /*
-     * ========================================================
+     * THE FEATURE LOCK.
+     *
+     * A one-line document change: the flag is set or cleared, committed, and the
+     * panel re-rendered. It is deliberately NOT special-cased anywhere else -
+     * the drag entry point is the single place that reads it, so a locked
+     * feature behaves exactly like any other until someone tries to move it.
+     */
+    drawingProperties.querySelectorAll('[data-feature-lock]').forEach(input => {
+        input.addEventListener('change', () => {
+            const previous = enggDrawingState.snapshotDrawing(drawingState);
+
+            object.locked = input.checked;
+
+            enggDrawingState.commitDrawingChange(drawingState, previous);
+            renderProperties();
+            renderCurrentDrawing();
+        });
+    });
+
+    /*
      * WHETHER THIS FEATURE'S MAGNITUDE BOX IS SHOWN
      * ========================================================
      *

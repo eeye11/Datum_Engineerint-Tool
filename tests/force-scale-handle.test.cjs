@@ -3,23 +3,20 @@ const path = require("path");
 
 const { loadModule, locate, modulePath, sourceDir } = require("./helpers/source-path.cjs");
 /*
- * A FORCE'S ARROWHEAD, AGAINST ITS STORED SPAN.
+ * A FORCE'S DRAWN LINE, AGAINST THE SHARED VECTOR SCALE.
  *
- * A Point Force stores a SPAN - `start` to `end` - and that span is what the
- * arrow is drawn along, at every vector scale. The arrowhead sits at one end of
- * it or the other, according to which way the force pushes.
+ * A Point Force stores an APPLICATION POINT, a MAGNITUDE and a DIRECTION.
+ * The line it is drawn along is rebuilt from those three facts and the current
+ * Visual Force Scale: it runs from the application point, along the stored
+ * direction, for `magnitude x scale`. Nothing about the drawn endpoint is
+ * remembered between frames, so changing the scale moves the endpoint and every
+ * consumer - the line, the arrowhead, the handle, the annotation - reads the
+ * same recalculated endpoint.
  *
- * The earlier design drew the arrow at `magnitude x vectorScale` from the
- * application point and kept the stored span for something else. That made a
- * reversal look like the arrow had moved: reversing moved the head to the far
- * end of the span, so the line was redrawn from the application point across
- * to wherever the head had gone - the same length, somewhere else on the
- * sheet. Reversing a force now moves the HEAD and nothing else.
- *
- * So the display scale no longer stretches a force that has a span: the span
- * is what the student drew and what they drag. The scale is still what decides
- * the drawn length of a force that has no span to draw along, and it is still
- * what scales every other Statics arrow on the sheet.
+ * REVERSING A FORCE turns the direction through a half turn. The line then
+ * runs the other way from the same application point, and the head arrives at
+ * the other end of it - exactly as a Distributed Load's arrowheads move when
+ * it is reversed while its span stays put.
  */
 
 
@@ -108,11 +105,13 @@ const at = (scale, magnitude = 100, angle = 0) => {
 });
 
 /*
- * --- AND THE LINE IS THE SAME LINE EITHER WAY ROUND, AT ANY SCALE.
+ * --- THE LINE IS REBUILT FROM THE VECTOR, SO A REVERSAL TURNS IT ROUND.
  *
- * The property the last fix was for, and the one a change to the scale must not
- * be allowed to take away: the scale moves both ends of the shaft together, so
- * a reversal still only swaps which end carries the head.
+ * The drawn line runs from the APPLICATION POINT along the stored direction.
+ * Reversing the force turns the direction through a half turn, so the line
+ * leaves the same application point in the opposite direction. The head is at
+ * the far end of the new line and the tail at the application point - the same
+ * arrangement a Distributed Load has when it is reversed.
  */
 [0.001, 1, 1000].forEach((scale) => {
   const state = { statics: { vectorScale: scale } };
@@ -125,20 +124,26 @@ const at = (scale, magnitude = 100, angle = 0) => {
     angle: 0,
   };
 
-  const line = () =>
-    [profile.drawnForceTail(state, geometry), profile.drawnForceEnd(state, geometry)]
-      .map(p => `${p.x},${p.y}`)
-      .sort()
-      .join(" -> ");
-
-  const before = line();
+  const tipBefore = profile.drawnForceEnd(state, geometry);
 
   profile.reverseForceDirection(geometry);
 
+  const tipAfter = profile.drawnForceEnd(state, geometry);
+  const tailAfter = profile.drawnForceTail(state, geometry);
+
   check(
-    `at ${scale}x a reversal does not move the line`,
-    line() === before,
-    `${before} became ${line()}`,
+    `at ${scale}x a reversal turns the drawn line round its application point`,
+    near(tailAfter.x, 100) &&
+      near(tailAfter.y, 50) &&
+      near(tipAfter.x, 100 - 50 * scale, 1e-6),
+    `tail ${tailAfter.x},${tailAfter.y}, head ${tipAfter.x},${tipAfter.y}`,
+  );
+
+  check(
+    `at ${scale}x the head moved across the application point`,
+    near(tipBefore.x, 100 + 50 * scale, 1e-6) &&
+      near(tipAfter.x, 100 - 50 * scale, 1e-6),
+    `head went ${tipBefore.x} -> ${tipAfter.x}`,
   );
 });
 
@@ -403,10 +408,11 @@ console.log("\n  a force describes itself consistently, whichever way it is read
 }
 
 /*
- * --- REVERSING MOVES THE HEAD. THE LINE DOES NOT MOVE.
+ * --- REVERSING TURNS THE DRAWN LINE AROUND ITS APPLICATION POINT.
  *
- * This is the reported fault, stated as a check: the span is where it was, and
- * the arrowhead is at the other end of it.
+ * The line is rebuilt from the application point along the stored direction, so
+ * a reversal sends the head to the opposite side of the same point - the
+ * application point is where the force acts and it does not move.
  */
 {
   const state = { statics: { vectorScale: 1 } };
@@ -429,7 +435,7 @@ console.log("\n  a force describes itself consistently, whichever way it is read
   const tail = profile.drawnForceTail(state, geometry);
 
   check(
-    "the span is untouched by a reversal",
+    "the stored span is untouched by a reversal",
     geometry.start.x === 100 &&
       geometry.start.y === 50 &&
       geometry.end.x === 150 &&
@@ -438,11 +444,11 @@ console.log("\n  a force describes itself consistently, whichever way it is read
   );
 
   check(
-    "the head moved to the OTHER end of that same span",
+    "the head moved to the other side of the application point",
     near(before.x, 150) &&
-      near(after.x, 100) &&
+      near(after.x, 50) &&
       near(after.y, 50) &&
-      near(tail.x, 150) &&
+      near(tail.x, 100) &&
       near(tail.y, 50),
     `head went ${before.x} -> ${after.x}, tail is now ${tail.x}`,
   );

@@ -31,6 +31,196 @@
     const DEFAULT_LOAD_INTERVAL = 20;
     const MAX_LOAD_ARROWS = 200;
 
+    /*
+     * ========================================================
+     * ONE UNIT FOR A LOAD'S MAGNITUDE
+     * ========================================================
+     *
+     * A distributed load's intensity is stated in kN/m or N/mm, and those
+     * two are the SAME physical quantity - one kilonewton per metre is one
+     * newton per millimetre - so the STORED NUMBER does not change when the
+     * unit does. Only the LABEL changes, and that is what keeps the drawing,
+     * the Features panel and every popup reading the same figure rather than
+     * two equivalent ones in different clothes.
+     *
+     * The unit is recorded ON THE LOAD, once, and read from there by
+     * everything that displays the magnitude. There is deliberately no
+     * drawing-unit and features-unit kept apart, because two copies of one
+     * fact are free to drift and a drawing showing 5 kN/m beside a panel
+     * showing 5 N/mm is exactly that drift.
+     */
+    const DEFAULT_LOAD_UNIT = "kN/m";
+
+    const LOAD_UNITS = ["kN/m", "N/mm"];
+
+    function isLoadUnit(value) {
+        return (
+            value === "kN/m" ||
+            value === "N/mm"
+        );
+    }
+
+    /*
+     * The unit a load's magnitude is stated in, defaulting for a load that
+     * was written before the unit was recorded. The default is the one the
+     * drawing has always used, so an older file reads exactly as it did.
+     */
+    function loadUnit(geometry) {
+        const stored = geometry?.loadUnit;
+
+        return isLoadUnit(stored)
+            ? stored
+            : DEFAULT_LOAD_UNIT;
+    }
+
+    function setLoadUnit(geometry, unit) {
+        if (!geometry) {
+            return DEFAULT_LOAD_UNIT;
+        }
+
+        geometry.loadUnit = isLoadUnit(unit)
+            ? unit
+            : DEFAULT_LOAD_UNIT;
+
+        return geometry.loadUnit;
+    }
+
+    /*
+     * ========================================================
+     * A FORCE'S MAGNITUDE IS STATED IN kN OR N
+     * ========================================================
+     *
+     * Same rule as a load's unit, for the same reason: the quantity is what
+     * decides the unit, and the unit is recorded ON THE FEATURE so the drawing
+     * and the Features panel state the value the same way.
+     *
+     * kN and N are the same family of quantity - a force - and the student
+     * chooses which to read it in. As with a load, switching the unit RELABELS
+     * the number rather than reinterpreting it, so a force entered as "250 N"
+     * is not silently turned into 0.25 kN by the act of changing the label.
+     */
+    const DEFAULT_FORCE_UNIT = "N";
+
+    const FORCE_UNITS = ["N", "kN"];
+
+    function isForceUnit(value) {
+        return value === "N" || value === "kN";
+    }
+
+    function forceUnit(geometry) {
+        const stored = geometry?.unit;
+
+        return isForceUnit(stored)
+            ? stored
+            : DEFAULT_FORCE_UNIT;
+    }
+
+    function setForceUnit(geometry, unit) {
+        if (!geometry) {
+            return DEFAULT_FORCE_UNIT;
+        }
+
+        geometry.unit = isForceUnit(unit)
+            ? unit
+            : DEFAULT_FORCE_UNIT;
+
+        return geometry.unit;
+    }
+
+    /*
+     * A MOMENT'S OWN UNIT.
+     *
+     * The same rule as a force's, applied to the other quantity a feature
+     * carries: the unit belongs to the FEATURE, so the panel and the annotation
+     * beside the curved arrow state the same thing, and changing the unit
+     * relabels the value rather than scaling it.
+     *
+     * The unit is stored on the feature's geometry under its own key, so a
+     * moment and a force can be written in different units without either
+     * overwriting the other.
+     */
+    const DEFAULT_MOMENT_UNIT = "N\u00b7m";
+
+    const MOMENT_UNITS = ["N\u00b7m", "kN\u00b7m"];
+
+    function isMomentUnit(value) {
+        return MOMENT_UNITS.includes(value);
+    }
+
+    function momentUnit(geometry) {
+        const stored = geometry?.momentUnit;
+
+        return isMomentUnit(stored)
+            ? stored
+            : DEFAULT_MOMENT_UNIT;
+    }
+
+    function setMomentUnit(geometry, unit) {
+        if (!geometry) {
+            return DEFAULT_MOMENT_UNIT;
+        }
+
+        geometry.momentUnit = isMomentUnit(unit)
+            ? unit
+            : DEFAULT_MOMENT_UNIT;
+
+        return geometry.momentUnit;
+    }
+
+    /*
+     * A NUMBER AND A UNIT READ OFF ONE EDIT, for a popup or a panel field.
+     *
+     * The value is not converted: kN/m and N/mm are numerically identical,
+     * so "5 kN/m" and "5 N/mm" are the same load written two ways. What the
+     * student typed is what is stored, with the unit they named beside it.
+     */
+    function readLoadValue(text, fallbackUnit) {
+        const source = String(text ?? "").trim();
+
+        /*
+         * A NUMBER, AND OPTIONALLY THE UNIT IT IS IN.
+         *
+         * The unit may be a load unit (kN/m, N/mm) or an engineering unit a
+         * force or a moment is stated in (N, kN, N·m). The token is captured
+         * generically and then checked against what the quantity ALLOWS, so
+         * the one reader serves every value popup without a per-quantity
+         * regex. A unit the quantity does not accept reads as no unit at all,
+         * which falls back to the popup's own choice.
+         */
+        const match = source.match(
+            /^(-?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*([A-Za-z\u00b7\/]+)?$/
+        );
+
+        if (!match) {
+            return null;
+        }
+
+        const value = Number(match[1]);
+
+        if (!Number.isFinite(value)) {
+            return null;
+        }
+
+        const named = match[2];
+
+        /*
+         * THE TYPED UNIT WINS; otherwise the popup's own unit is kept as-is.
+         * The fallback is whatever the unit control is showing, which is
+         * already the right quantity's unit - a force reads "N" and a load
+         * reads "kN/m" - so it is passed through rather than forced to the
+         * load default.
+         */
+        const fallback =
+            typeof fallbackUnit === "string" && fallbackUnit.length
+                ? fallbackUnit
+                : DEFAULT_LOAD_UNIT;
+
+        return {
+            value,
+            unit: named || fallback
+        };
+    }
+
     function finite(value, fallback = 0) {
         const number = Number(value);
 
@@ -1237,10 +1427,23 @@ function unitVector(degrees) {
      * any other choice would claim something about the force that nothing
      * supports.
      *
-     * NO USABLE SPAN - and a zero-length one, which is the same thing - leaves
-     * no line to stretch, so the arrow runs from the point the force acts at
-     * along the vector at `magnitude x scale`, which is what it has always
-     * done.
+     * THE DISPLAY SCALE STRETCHES THE WHOLE VECTOR FROM THE POINT THE FORCE
+     * ACTS AT.
+     *
+     * The drawn line runs from `start` along the STORED DIRECTION by
+     * `magnitude x scale`. It is therefore rebuilt entirely from the
+     * authoritative facts - application point, stored magnitude, stored
+     * direction, current display scale - every time it is asked for. There is
+     * no second, screen-space endpoint kept anywhere: `start` and `end` are
+     * both computed here, so the line, its arrowhead, the handle and the
+     * magnitude annotation cannot drift apart.
+     *
+     * CHANGING THE SCALE THEREFORE MOVES THE ENDPOINT, which is what lets an
+     * annotation anchored to that endpoint follow the arrow. And a REVERSAL
+     * only swaps which end of the SAME line carries the head: the line is
+     * built from `start` outward along the direction, not from the stored
+     * span's far end, so turning the force round does not relocate the
+     * drawing.
      */
     function drawnForceAxis(state, geometry) {
         const vector = forceVector(geometry);
@@ -1250,61 +1453,62 @@ function unitVector(degrees) {
             y: finite(geometry?.start?.y),
         };
 
-        const stored =
-            geometry?.end &&
-            Number.isFinite(geometry.end.x) &&
-            Number.isFinite(geometry.end.y)
-                ? {
-                      x: Number(geometry.end.x),
-                      y: Number(geometry.end.y),
-                  }
-                : null;
-
         const magnitude = Math.abs(vector.magnitude);
 
-        const scaled = (reach) => {
-            const radians = (vector.angle * Math.PI) / 180;
+        /*
+         * NO USABLE MAGNITUDE leaves no vector to draw, so the stored span is
+         * reported back - a force that is momentarily empty is still shown
+         * where it was, rather than collapsing onto its application point.
+         */
+        if (!(magnitude > 1e-9)) {
+            const stored =
+                geometry?.end &&
+                Number.isFinite(geometry.end.x) &&
+                Number.isFinite(geometry.end.y)
+                    ? {
+                          x: Number(geometry.end.x),
+                          y: Number(geometry.end.y),
+                      }
+                    : null;
 
-            return {
-                x:
-                    start.x +
-                    zeroIfAxis(Math.cos(radians)) * reach,
-                y:
-                    start.y +
-                    zeroIfAxis(Math.sin(radians)) * reach,
-            };
-        };
-
-        const spanLength = stored
-            ? Math.hypot(stored.x - start.x, stored.y - start.y)
-            : 0;
-
-        if (!(spanLength > 1e-9) || !(magnitude > 1e-9)) {
             return {
                 tail: start,
-                head: stored && !(magnitude > 1e-9) ? stored : scaled(
-                    vectorScale(state, vector.magnitude)
-                ),
+                head: stored || start,
             };
         }
 
-        const reach = spanLength * vectorScaleFor(state);
+        const radians = (vector.angle * Math.PI) / 180;
 
-        const grown = {
-            x: start.x + ((stored.x - start.x) / spanLength) * reach,
-            y: start.y + ((stored.y - start.y) / spanLength) * reach,
+        const reach = vectorScale(state, vector.magnitude);
+
+        /*
+         * The tip is the application point plus the direction at the drawn
+         * length, which is exactly `magnitude x scale`. The components are
+         * cleaned with `zeroIfAxis`, so a force drawn straight along an axis
+         * lands exactly on it rather than a sliver off it.
+         */
+        const tip = {
+            x: start.x + zeroIfAxis(Math.cos(radians)) * reach,
+            y: start.y + zeroIfAxis(Math.sin(radians)) * reach,
         };
 
-        const along =
-            ((stored.x - start.x) / spanLength) * (vector.fx / magnitude) +
-            ((stored.y - start.y) / spanLength) * (vector.fy / magnitude);
+        /*
+         * WHICH END CARRIES THE HEAD.
+         *
+         * The arrow is drawn from the application point outward, so the head
+         * is normally at the tip and the tail at `start`. A REVERSED force is
+         * the same line read the other way - the head goes to `start` and the
+         * tail to the tip - so the drawing stays put and only the arrowhead
+         * moves, exactly as a Distributed Load reversal does.
+         */
+        const reversed =
+            vector.fx * zeroIfAxis(Math.cos(radians)) +
+                vector.fy * zeroIfAxis(Math.sin(radians)) <
+            0;
 
-        const headAtGrownEnd = along > -1e-9;
-
-        return {
-            tail: headAtGrownEnd ? start : grown,
-            head: headAtGrownEnd ? grown : start,
-        };
+        return reversed
+            ? { tail: tip, head: start }
+            : { tail: start, head: tip };
     }
 
     /*
@@ -1323,17 +1527,28 @@ function unitVector(degrees) {
         /*
          * THE DRAG IS TAKEN BACK OFF THE DISPLAY SCALE.
          *
-         * The drawn line is the span at `vectorScale`, so a drag of it is a
+         * The drawn line is the vector at `vectorScale`, so a drag of it is a
          * drag of something longer than the stored geometry by that factor.
          * Storing the drawn distance unconverted is what makes a force grow
          * every time it is grabbed, and the scale is a DRAWING setting, so the
          * conversion has to happen here rather than being left to the user.
+         *
+         * THE LENGTH IS MEASURED FROM THE APPLICATION POINT, which is the
+         * fixed end of the vector - it is where the force acts, and a drag of
+         * the head does not move it. Measuring from the arrowHEAD instead was
+         * fine while the head always sat at the far end, but a REVERSED force
+         * carries its head at the application point: measuring from there
+         * would give the drag a zero length and turn every grab of a reversed
+         * force into a no-op.
          */
-        const tail = drawnForceTail(state, geometry);
+        const start = {
+            x: finite(geometry?.start?.x, finite(geometry?.position?.x)),
+            y: finite(geometry?.start?.y, finite(geometry?.position?.y)),
+        };
 
         const length = Math.hypot(
-            point.x - tail.x,
-            point.y - tail.y
+            point.x - start.x,
+            point.y - start.y
         );
 
         const scale = vectorScaleFor(state);
@@ -1346,8 +1561,8 @@ function unitVector(degrees) {
         }
 
         const radians = Math.atan2(
-            point.y - tail.y,
-            point.x - tail.x
+            point.y - start.y,
+            point.x - start.x
         );
 
         return {
@@ -1391,6 +1606,46 @@ function unitVector(degrees) {
      */
     function drawnForceEnd(state, geometry) {
         return drawnForceAxis(state, geometry).head;
+    }
+
+    /*
+     * ============================================================
+     * THE WHOLE DRAWN FORCE, FROM ONE CALCULATION.
+     * ============================================================
+     *
+     * The single authoritative answer to "where is this force drawn, and which
+     * way does it push". Every consumer that needs the force's current drawn
+     * geometry asks for it HERE - the line and its arrowhead, the handle, the
+     * hit test, the selection bounds, and the magnitude annotation's anchor -
+     * so none of them can hold a stale copy of an endpoint from another scale,
+     * direction or application point.
+     *
+     * The two ends come from `drawnForceAxis`, which already decides which end
+     * carries the head; it is asked once and both readings are taken from the
+     * one result, so the pair cannot disagree about which end is which.
+     *
+     *   start      the application point - where the force acts
+     *   end        the drawn arrowhead
+     *   tail       the other end of the drawn line
+     *   direction  the direction the force pushes, in degrees
+     *   length     the drawn length, `magnitude x scale`
+     */
+    function forceGeometry(state, geometry) {
+        const axis = drawnForceAxis(state, geometry);
+
+        const vector = forceVector(geometry);
+
+        return {
+            start: axis.tail,
+            end: axis.head,
+            tail: axis.tail,
+            head: axis.head,
+            direction: finite(vector.angle),
+            length: Math.hypot(
+                axis.head.x - axis.tail.x,
+                axis.head.y - axis.tail.y
+            ),
+        };
     }
 
     /*
@@ -1704,9 +1959,15 @@ function unitVector(degrees) {
   }
 
   const enggLoadProfile = {
-        DEFAULT_LOAD_DIRECTION,
-        DEFAULT_LOAD_INTERVAL,
-        CUSTOM_VECTOR_SCALE,
+      DEFAULT_LOAD_DIRECTION,
+      DEFAULT_LOAD_INTERVAL,
+      DEFAULT_LOAD_UNIT,
+      DEFAULT_FORCE_UNIT,
+      DEFAULT_MOMENT_UNIT,
+      FORCE_UNITS,
+      LOAD_UNITS,
+      MOMENT_UNITS,
+      CUSTOM_VECTOR_SCALE,
         MAX_VECTOR_SCALE,
         MIN_VECTOR_SCALE,
         VECTOR_SCALE_OPTIONS,
@@ -1716,6 +1977,7 @@ function unitVector(degrees) {
         drawnForceTail,
         drawnForceAxis,
         drawnProfile,
+        forceGeometry,
         forceVector,
         forceVectorFromDrawnPoint,
         fractionAlong,
@@ -1723,6 +1985,13 @@ function unitVector(degrees) {
         loadBodyNormal,
         loadDirection,
         loadInterval,
+        loadUnit,
+        forceUnit,
+        setForceUnit,
+        isForceUnit,
+        isMomentUnit,
+        momentUnit,
+        setMomentUnit,
         loadContainsPoint,
         loadNormalSide,
         loadStationUnit,
@@ -1733,11 +2002,13 @@ function unitVector(degrees) {
         profilePointById,
         profilePointPositions,
         profilePoints,
+        readLoadValue,
         reverseForceDirection,
         reverseLoadDirection,
         setForceVector,
         setLoadDirection,
         setLoadInterval,
+        setLoadUnit,
         setProfilePoints,
         unitVector,
         vectorScale,

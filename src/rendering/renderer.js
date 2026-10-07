@@ -1,14 +1,17 @@
 /* SVG renderer for the engineering drawing workspace. */
+import enggErrorLog from "../app/error-log.js";
 import enggBodyFrames from "../core/geometry/body-frames.js";
 import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import { coordinateSystemArms, rigidBodyHandles, trussJoints } from "../core/geometry/feature-handles.js";
 import enggMeasurement from "../core/geometry/measurement-core.js";
 import enggDrawingState from "../core/model/drawing-state.js";
+import { axisLabelPositions } from "../core/geometry/axis-labels.js";
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
+import enggVariableDimension from "../features/dimensions/variable-dimension.js";
 
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -291,77 +294,6 @@ import enggDimensionModel from "../features/dimensions/dimension-model.js";
             padding: ANALYSIS_FRAME.paddingPx,
             radius: ANALYSIS_FRAME.radiusPx
         };
-    }
-
-    /*
-     * DOES THE STUDENT HAVE PUT ANYTHING ON THIS YET?
-     *
-     * The plot-area highlight appears only once there is something to
-     * highlight. An empty frame with a large tinted region over it reads
-     * as a finished diagram with nothing in it, which is a different
-     * thing from a blank sheet waiting to be worked on.
-     *
-     * Tested rather than assumed, because "has content" has three
-     * independent answers - Plot segments, a sketch, or an in-progress
-     * preview - and a highlight that appeared on any one of them while
-     * another meant "not yet" would flicker.
-     */
-    function analysisHasContent(
-        geometry,
-        interaction
-    ) {
-        const equations =
-            enggDiagramEquations;
-
-        /*
-         * WHATEVER THE PLOT IS STORED AS.
-         *
-         * This used to look for a typed equation on the old segment
-         * shape only. A plot stored as relations - including one holding
-         * nothing but a vertical line, which IS content - would read as
-         * empty here and lose its highlight while still showing a curve,
-         * so the two halves of the file disagreed about the same drawing.
-         */
-        if (equations) {
-            const expressions =
-                equations.readPlot(geometry);
-
-            const drawn = equations.sampleExpressions(
-                expressions
-            );
-
-            if (drawn.length) {
-                return true;
-            }
-        }
-
-        /*
-         * A SKETCH: THE STUDENT'S OWN LINES AND ARCS ON THE FRAME.
-         *
-         * A sketch draws nothing itself - the student puts the answer on
-         * the frame with the ordinary Line and Arc tools - so the only
-         * honest answer here is what those tools produced, and the only
-         * field that can carry it is `sketchContent`.
-         *
-         * THIS USED TO BE AN INVERTED TEST, and inverting it is exactly
-         * backwards. It read `geometry.sketchContent !== false` and
-         * returned FALSE - "no content" - whenever the field was absent,
-         * which is the case for a sketch that has just been created and
-         * for every sketch a student has drawn by hand, because nothing
-         * in the tool sets it. So a sketch never earned its highlight
-         * and a Plot could, which is not what either mode is for. Absent
-         * must mean "nothing yet"; only an explicit `true` counts.
-         */
-        if (geometry.sketchContent === true) {
-            return true;
-        }
-
-        /* A live preview of something not yet committed. */
-        return Boolean(
-            interaction &&
-            Array.isArray(interaction.previewObjects) &&
-            interaction.previewObjects.length
-        );
     }
 
     const ANALYSIS_DIAGRAM_AXES = {
@@ -888,6 +820,114 @@ import enggDimensionModel from "../features/dimensions/dimension-model.js";
         }
 
         appendDimensionText(svg, graphics.text, graphics.textFrame, stroke, toScreen);
+    }
+
+    /*
+     * A VARIABLE DIMENSION IS DRAWN LIKE A DIMENSION, WITH A SYMBOL.
+     *
+     * The witness lines, the arrowheads and the text frame all come from the
+     * SAME model call a measured dimension uses, against a descriptor the
+     * dimension model accepts - so `x` sits in exactly the place a `500 mm`
+     * would, in the same style, and the two cannot drift apart in appearance.
+     *
+     * The one difference is the value: the text frame is filled with the
+     * SYMBOL rather than a measurement. Building the frame from the symbol's own
+     * length also keeps the box the right size for what it contains - a box
+     * sized for "500 mm" around an "x" would look like a value had failed to
+     * load.
+     */
+    function appendVariableDimensionEntity(svg, entity, state, toScreen, style) {
+        const model = enggDimensionModel;
+
+        if (!model) {
+            return;
+        }
+
+        const symbol = enggVariableDimension.variableText(entity);
+
+        if (!symbol.trim()) {
+            return;
+        }
+
+        /*
+         * The geometry, from the shared model. A variable has no measurement
+         * type, so it is described as a plain linear span - which is what the
+         * placement, the witness lines and the arrows are computed from, and
+         * has nothing to do with what the text says.
+         */
+        const graphics = model.graphicsFor(
+            {
+                ...entity,
+                dimensionType: entity.dimensionType || "linear"
+            },
+            state
+        );
+
+        if (!graphics) {
+            return;
+        }
+
+        const stroke = style.stroke || "#000000";
+        const lineWidth = Number(style.lineWidth) || 0.5;
+
+        graphics.lines?.forEach((segment) => {
+            const a = toScreen(segment.from);
+            const b = toScreen(segment.to);
+
+            svg.appendChild(
+                createSvgElement("line", {
+                    x1: a.x,
+                    y1: a.y,
+                    x2: b.x,
+                    y2: b.y,
+                    stroke,
+                    "stroke-width": Math.max(0.6, lineWidth * 1.4)
+                })
+            );
+        });
+
+        /*
+         * The text is the SYMBOL, in a frame measured from the symbol itself.
+         * `textFrame` is recomputed here rather than reused, because the model
+         * sized it for a number this feature does not have.
+         */
+        const anchor = graphics.text?.position || graphics.textFrame?.centre;
+
+        if (!anchor) {
+            return;
+        }
+
+        const screen = toScreen(anchor);
+
+        const fontSize = Number(entity.style?.fontSize) || 12;
+
+        const width = Math.max(18, symbol.length * fontSize * 0.72);
+        const height = fontSize * 1.5;
+
+        svg.appendChild(
+            createSvgElement("rect", {
+                x: screen.x - width / 2,
+                y: screen.y - height / 2,
+                width,
+                height,
+                fill: "#ffffff",
+                stroke: "none"
+            })
+        );
+
+        const label = createSvgElement("text", {
+            x: screen.x,
+            y: screen.y + fontSize * 0.36,
+            fill: stroke,
+            "font-size": fontSize,
+            "font-family": "Arial, sans-serif",
+            "font-weight": "600",
+            "text-anchor": "middle"
+        });
+
+        label.textContent = symbol;
+
+        svg.appendChild(label);
     }
 
     /*
@@ -2257,6 +2297,33 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         }
 
         /*
+         * A VARIABLE DIMENSION.
+         *
+         * Drawn with the SAME machinery a dimension is: the same witness
+         * lines, the same arrowheads, the same text frame and the same font -
+         * so `x` sits on the drawing exactly where a measured length would, and
+         * the two read as members of one family.
+         *
+         * What differs is only the TEXT: a variable states its SYMBOL, and no
+         * measurement is taken. An empty symbol draws NOTHING - the student has
+         * named it but not written it, and inventing `0` or `?` would turn
+         * their deliberate unknown into a failure.
+         *
+         * It follows the same SHOW DIMENSIONS toggle, because a variable is a
+         * dimension in everything but its value - a student hiding their
+         * dimensions does not want the symbolic ones left floating.
+         */
+        if (entity.type === "variable-dimension") {
+            if (state.display?.showDimensions === false) {
+                return;
+            }
+
+            appendVariableDimensionEntity(svg, entity, state, toScreen, style);
+            parentSvg.appendChild(svg);
+            return;
+        }
+
+        /*
          * SHOW MAGNITUDES.
          *
          * A generated value that is switched off is not drawn at all -
@@ -2470,12 +2537,27 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                  * student should not have to open the model to tell them
                  * apart.
                  */
-                const highlighted =
-                    geometry.backgroundVisible !== false &&
-                    analysisHasContent(
-                        geometry,
-                        state.interaction
-                    );
+                /*
+                 * THE PLOT-AREA HIGHLIGHT IS GONE.
+                 *
+                 * A tinted rectangle used to be laid over the plot area once
+                 * the diagram had content. It read as a filled SHAPE rather
+                 * than as a frame - and on a BMD/SFD/AFD a filled region is a
+                 * statement about the diagram, not about the paper it sits on.
+                 * A student looking at a tinted box under a curve cannot tell
+                 * the tint from the sick work.
+                 *
+                 * The axes, the value labels and the curve itself are what say
+                 * where the plot area is, so the rectangle added nothing they
+                 * did not already say. It is therefore not drawn at all, for
+                 * ANY diagram - plot or sketch - so the two modes stay the same
+                 * sheet.
+                 *
+                 * `analysisHasContent` and `backgroundVisible` are left in
+                 * place: the flag is still read elsewhere, and removing the
+                 * test with the rectangle would change more than the tint.
+                 */
+                const highlighted = false;
 
                 let background = null;
 
@@ -2499,12 +2581,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                         stroke: "none"
                     });
 
-                    /*
-                     * `pointer-events: none` either way. The highlight is
-                     * never the thing being aimed at - the axes and the
-                     * curve are - so it must not swallow a click meant for
-                     * them, and must not be pickable itself.
-                     */
                     background.setAttribute(
                         "pointer-events",
                         "none"
@@ -2512,6 +2588,10 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
                     svg.appendChild(background);
                 }
+
+                /* `highlighted` is always false now; kept so the dead branch
+                 * reads as deliberate rather than as a leftover. */
+                void background;
 
                 /*
                  * The zero axis, at the FEATURE'S OWN line weight.
@@ -6579,11 +6659,29 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          * never reach paper or a file. It disappears on deselect
          * because it is drawn fresh on every frame from the selection.
          */
+        const selectionPaddingPx =
+            (state.selection?.annotationPickPaddingPx ?? 2);
+
         const model = enggAnnotationModel;
 
         if (model && typeof model.derivedAnnotations === "function") {
-            const paddingPx =
-                (state.selection?.annotationPickPaddingPx ?? 5);
+            /*
+             * A TIGHT BOX AROUND THE ACTUAL RENDERED TEXT.
+             *
+             * The label is drawn as SVG text at `fontSize` SCREEN pixels - it
+             * does not scale with the camera - so its box is measured in
+             * screen pixels too, from the same placement point and the same
+             * font size the text node is built with. Measuring it in world
+             * units and projecting that would tie the box to the zoom and
+             * make it many times larger than the glyphs it is meant to
+             * outline.
+             *
+             * The padding is a couple of pixels on every side: enough to read
+             * as a frame around the text, not the large surrounding rectangle
+             * it used to be. It is an editor aid only - drawn fresh from the
+             * selection every frame, and cleared for the clean renders that
+             * print and export use - so it never reaches paper or a file.
+             */
 
             /*
              * The box is keyed by the DERIVED annotation's id - the same
@@ -6595,23 +6693,63 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 (model.derivedAnnotations(object, state) || []).forEach(annotation => {
                     if (!selected.has(annotation.id)) return;
 
-                    const box = model.annotationTextBounds(annotation, state);
+                    const placement = annotation.placement;
 
-                    if (!box) return;
+                    if (
+                        !placement ||
+                        !Number.isFinite(placement.x) ||
+                        !Number.isFinite(placement.y)
+                    ) {
+                        return;
+                    }
+
+                    const text = String(
+                        model.textFor(annotation, state) || ""
+                    );
+
+                    const lines = text.split("\n");
+
+                    const fontSize =
+                        Number(annotation.style?.fontSize) || 12;
+
+                    const lineHeight = fontSize * 1.2;
+
+                    const longest = lines.reduce(
+                        (max, line) => Math.max(max, line.length),
+                        0
+                    );
 
                     /*
-                     * Screen Y grows DOWNWARD, so the world's minY maps
-                     * to the larger screen Y. The rect is normalized from
-                     * the min of each axis, because a negative width or
-                     * height is not a valid SVG attribute.
+                     * The same character-width estimate the hit test uses,
+                     * so what is outlined is what a click can grab.
                      */
-                    const cornerA = toScreen({ x: box.minX, y: box.minY });
-                    const cornerB = toScreen({ x: box.maxX, y: box.maxY });
+                    const textWidth =
+                        longest * fontSize * 0.62;
 
-                    const x = Math.min(cornerA.x, cornerB.x) - paddingPx;
-                    const y = Math.min(cornerA.y, cornerB.y) - paddingPx;
-                    const width = Math.abs(cornerB.x - cornerA.x) + paddingPx * 2;
-                    const height = Math.abs(cornerB.y - cornerA.y) + paddingPx * 2;
+                    const textHeight = Math.max(
+                        fontSize * 1.2,
+                        lines.length * lineHeight
+                    );
+
+                    /*
+                     * The text is centred on the placement point (the
+                     * renderer uses text-anchor: middle), so the box is
+                     * centred there too and grows by the padding on each
+                     * side.
+                     */
+                    const origin = toScreen(placement);
+
+                    const x =
+                        origin.x - textWidth / 2 - selectionPaddingPx;
+
+                    const y =
+                        origin.y - textHeight / 2 - selectionPaddingPx;
+
+                    const width =
+                        textWidth + selectionPaddingPx * 2;
+
+                    const height =
+                        textHeight + selectionPaddingPx * 2;
 
                     svg.appendChild(createSvgElement("rect", {
                         x,
@@ -6623,6 +6761,53 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 });
             });
         }
+
+        /*
+         * THE SELECTED AXIS LABEL'S BOX.
+         *
+         * A coordinate system's X and Y labels are drawing-space text, so they
+         * get the same tight box a magnitude label gets - around THE TEXT, from
+         * the same character-width estimate the hit test uses, so what is
+         * outlined is exactly what a click can grab.
+         *
+         * It is measured in SCREEN pixels because the label is drawn at a fixed
+         * screen font size rather than scaling with the camera, and it is drawn
+         * fresh from the selection every frame - so it is editor-only by
+         * construction and cannot reach paper or a file.
+         */
+        state.objects.forEach(object => {
+            if (object.type !== "coordinate-system-2d") {
+                return;
+            }
+
+            const labels = axisLabelPositions(object);
+
+            labels.forEach((label) => {
+                if (!selected.has(label.id)) {
+                    return;
+                }
+
+                const fontSize = 13;
+
+                const width =
+                    label.text.length * fontSize * 0.62 +
+                    selectionPaddingPx * 2;
+
+                const height =
+                    fontSize * 1.2 + selectionPaddingPx * 2;
+
+                const origin = toScreen(label.position);
+
+                svg.appendChild(createSvgElement("rect", {
+                    x: origin.x - width / 2,
+                    y: origin.y - height / 2,
+                    width,
+                    height,
+                    class: "drawing-annotation-selection-box"
+                }));
+            });
+        });
+
         state.objects.forEach(object => {
             if (!selected.has(object.id)) return;
             const geometry = object.geometry || {};
@@ -7888,6 +8073,45 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
      * ========================================================
      */
 
+    /*
+     * Report features that could not be drawn.
+     *
+     * Collected for the whole pass and reported once, so a drawing with a dozen
+     * broken features does not fill the console with a dozen identical stacks.
+     *
+     * The failures are LOGGED, never swallowed and never turned into a change
+     * to the document: an error in one feature's renderer is a bug to be fixed,
+     * and the evidence for it is the error and the feature's type and id.
+     * Nothing here removes a feature, so a rendering problem can never become
+     * data loss.
+     */
+    let lastRenderFailureSignature = null;
+
+    function reportRenderFailures(failures) {
+        const signature = failures
+            .map(failure => `${failure.type}:${failure.error && failure.error.message}`)
+            .join("|");
+
+        /*
+         * Reported when it CHANGES, rather than on every frame. A render runs
+         * on every pointermove during a drag, and the same broken feature would
+         * otherwise log continuously.
+         */
+        if (signature === lastRenderFailureSignature) {
+            return;
+        }
+
+        lastRenderFailureSignature = signature;
+
+        failures.forEach(failure => {
+            enggErrorLog.reportError(
+                "render feature",
+                failure.error,
+                { featureId: failure.id, featureType: failure.type }
+            );
+        });
+    }
+
     function renderDrawing(
         state,
         canvas
@@ -7914,17 +8138,47 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
         /*
          * Committed geometry
+         *
+         * EVERY FEATURE IS DRAWN IN ITS OWN TRY, AND A FAILURE IN ONE DOES
+         * NOT STOP THE OTHERS.
+         *
+         * A drawing is a set of independent features, but the renderer draws
+         * them in one pass - so an exception anywhere used to abandon the whole
+         * repaint and leave a blank or half-drawn canvas, which is the moment a
+         * student most fears their work is gone. The feature that failed is
+         * almost never the only thing on the sheet.
+         *
+         * Containing it here keeps the guarantee the rest of the application
+         * depends on: the MODEL stays authoritative. The feature that could not
+         * be drawn is still in `state.objects`, still selectable, still
+         * saveable - only its picture is missing. It is reported once per
+         * render so the failure is visible rather than silent, and never
+         * deleted.
          */
+        const renderFailures = [];
+
         state.objects.forEach(
             entity => {
-                appendEntity(
-                    svg,
-                    entity,
-                    state,
-                    bounds
-                );
+                try {
+                    appendEntity(
+                        svg,
+                        entity,
+                        state,
+                        bounds
+                    );
+                } catch (error) {
+                    renderFailures.push({
+                        id: entity && entity.id,
+                        type: entity && entity.type,
+                        error
+                    });
+                }
             }
         );
+
+        if (renderFailures.length) {
+            reportRenderFailures(renderFailures);
+        }
 
         /*
          * Live construction preview

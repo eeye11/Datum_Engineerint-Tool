@@ -5,6 +5,7 @@
 import { trussJoints } from "../core/geometry/feature-handles.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
 import { analysisSourceBody, selectedStaticsFeatures } from "./analysis-tools.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { COORDINATE_SYSTEM_LENGTH, COORDINATE_SYSTEM_TYPE, staticsForceLineWidth } from "./constants.js";
@@ -13,6 +14,7 @@ import { beginCreationDimensioning, commitCreatedFeature } from "./creation-sizi
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { objectAtPoint } from "./hit-testing.js";
+import { openLoadValuePopup } from "../ui/editors/load-value-popup.js";
 import { LOAD_BUILD_PHASES, beginDistributedLoadConstruction, continueDistributedLoadBuild, distributedLoadDirectionCursor, distributedLoadPointOnBody, distributedLoadRegionMidpoint, isVaryingLoadTool, startDistributedLoadBuild, takeDistributedLoadEnd, takeDistributedLoadStart, takeDistributedLoadVector } from "./load-tool.js";
 import { commitMomentPlacement } from "./preview.js";
 import { beginStaticsAttachment, continueStaticsAttachment, staticsBodyAtPoint } from "./statics-attachment.js";
@@ -1323,6 +1325,124 @@ export function beginOrCompleteGeometry(
                 drawingState
             );
 
+        /*
+         * ========================================================
+         * A POINT FORCE ASKS FOR ITS MAGNITUDE, IN A POPUP
+         * ========================================================
+         *
+         * The drag already decided WHERE the force acts and WHICH WAY it
+         * points, and the cursor distance is offered as the SUGGESTED
+         * magnitude - so a student happy with the size they dragged presses
+         * Enter, and one who wants a round number types it. Either way the
+         * stored magnitude is a real physical value the student stated, not a
+         * screen distance silently reinterpreted.
+         *
+         * The force is NOT created until the popup is confirmed, so a
+         * cancelled popup leaves nothing behind - the same guarantee the
+         * creation-size popup gives for a Beam.
+         *
+         * THE CURSOR-DRIVEN CREATION IS UNTOUCHED. The drag still defines the
+         * application point, the direction and the initial drawn length; this
+         * only asks what the number IS. Vector Scale is not consulted here, so
+         * it cannot make the student drag further.
+         */
+        if (
+            drawingState.activeTool ===
+            "point-force"
+        ) {
+            const geometry =
+                object.geometry || {};
+
+            const suggested =
+                Number(geometry.magnitude) || 0;
+
+            openLoadValuePopup({
+                title: "Point Force",
+                label: "Magnitude",
+                value: suggested.toFixed(2),
+                unit: enggLoadProfile.DEFAULT_FORCE_UNIT,
+
+                /*
+                 * A FORCE IS STATED IN kN OR N.
+                 *
+                 * The popup is shared with the load magnitudes, so its unit
+                 * list is given here rather than assumed - a force offered
+                 * kN/m would name the wrong quantity entirely. These are the
+                 * force units, and the student picks which to read in.
+                 */
+                units: enggLoadProfile.FORCE_UNITS,
+
+                onOpen: () => {
+                    setToolMessage(
+                        "Enter the force magnitude"
+                    );
+                },
+
+                onConfirm: confirmed => {
+                    const magnitude =
+                        Math.max(
+                            0,
+                            Number(confirmed.value) || 0
+                        );
+
+                    /*
+                     * THE CHOSEN UNIT IS RECORDED ON THE FORCE, so the
+                     * annotation and the Features panel write the magnitude
+                     * the way the student stated it.
+                     */
+                    enggLoadProfile.setForceUnit(
+                        object.geometry,
+                        confirmed.unit
+                    );
+
+                    /*
+                     * THE VECTOR IS REBUILT FROM THE NEW MAGNITUDE.
+                     *
+                     * `setForceVector` is the ONE place a force's stored
+                     * magnitude, angle, components and end are written
+                     * together, so the drawn arrow cannot be left describing a
+                     * different force from the number just entered. The
+                     * direction is the one the drag chose.
+                     */
+                    const vector =
+                        enggLoadProfile.forceVector(
+                            object.geometry
+                        );
+
+                    enggLoadProfile.setForceVector(
+                        object.geometry,
+                        magnitude,
+                        vector.angle
+                    );
+
+                    commitCreatedFeature(
+                        object,
+                        false,
+                        previousObjects
+                    );
+
+                    setToolMessage(
+                        staticsInstruction(
+                            drawingState.activeTool
+                        )
+                    );
+
+                    renderProperties();
+                    renderCurrentDrawing();
+                },
+
+                onCancel: () => {
+                    setToolMessage(
+                        "Point force cancelled"
+                    );
+
+                    renderCurrentDrawing();
+                }
+            });
+
+            return;
+        }
+
         beginCreationDimensioning(
             object,
             previousObjects,
@@ -1763,7 +1883,26 @@ export function add2DCoordinateSystem(
                     COORDINATE_SYSTEM_LENGTH,
 
                 yNegativeLength:
-                    COORDINATE_SYSTEM_LENGTH
+                    COORDINATE_SYSTEM_LENGTH,
+
+                /*
+                 * THE AXIS LABELS ARE STORED VALUES, NOT PLACEHOLDERS.
+                 *
+                 * "X" and "Y" are the DEFAULTS a new coordinate system is
+                 * created with. They are written into the document here, so
+                 * from this moment on the stored text is what is drawn - which
+                 * is what lets the user clear a label and have it stay cleared,
+                 * rather than the panel re-inventing the default every time.
+                 *
+                 * Their POSITIONS start unset: a label with no stored position
+                 * is drawn at its automatic place beside the axis, and the
+                 * moment the student drags one, the position they chose is
+                 * stored and used from then on.
+                 */
+                xLabel: "X",
+                yLabel: "Y",
+                xLabelPosition: null,
+                yLabelPosition: null
             },
             {
                 name:

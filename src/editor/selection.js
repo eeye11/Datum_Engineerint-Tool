@@ -31,6 +31,252 @@ import { renderEngineeringTools, setToolMessage } from "./toolbar-render.js";
 import { finishTrussConstruction } from "./truss-tool.js";
 import { clearGlobalToolHighlight } from "./workspace-controls.js";
 
+/*
+ * ========================================================
+ * MOVING A MAGNITUDE LABEL BY ITS OWN TEXT
+ * ========================================================
+ *
+ * A derived magnitude - "500 N" beside a force, "w1 = 5 kN/m" beside a
+ * profile point - is drawn, not stored, so it is NOT in the selection and
+ * the ordinary feature drag never sees it. It is picked by its own hit test
+ * and moved by writing an offset onto the feature it belongs to.
+ *
+ * ONE GESTURE DOES BOTH: the press SELECTS the label and BEGINS its move,
+ * so a student who wants the number somewhere else just grabs the number and
+ * drags it. There is no separate "click to select, then drag" step.
+ *
+ * THE DRAG STARTS FROM WHERE THE TEXT CURRENTLY IS, with the click offset
+ * preserved, so the label never jumps to its anchor or to the cursor before
+ * following the pointer. See the note on `derived` below.
+ */
+function startDerivedAnnotationDrag(
+    event,
+    picked
+) {
+    const point =
+        canvasPointFromEvent(
+            event,
+            false
+        );
+
+    if (!picked || !point) {
+        return false;
+    }
+
+    /*
+     * SELECT THE LABEL, so its tight editor box appears while it is dragged
+     * and stays afterwards. The derived annotation's own id is what the
+     * renderer and the hit test agree on, so selecting it here is the same
+     * selection a click would make.
+     */
+    enggDrawingState.selectObject(
+        drawingState,
+        picked.annotation.id
+    );
+
+    editorState.selectionDrag = {
+        pointerId: event.pointerId,
+        start: point,
+        current: point,
+        moved: false,
+        box: null,
+
+        /*
+         * The magnitude being moved, kept apart from `box` so the marquee
+         * code does not try to draw one.
+         *
+         * WHICH MAGNITUDE is carried whole - the derived annotation itself,
+         * which knows its own point. A varying load has one label per point,
+         * so "the magnitude" is not enough to identify what is being
+         * dragged: two of them answer to the same source feature, and only
+         * the anchor tells them apart.
+         *
+         * THE DRAG BEGINS FROM WHERE THE LABEL CURRENTLY IS. A moved label
+         * stores an offset from its automatic anchor, applied on top of the
+         * anchor every frame; the label's ACTUAL CURRENT PLACEMENT is what
+         * the drag adds the pointer's travel to, and the offset is re-derived
+         * against the anchor, so the text starts exactly under the cursor and
+         * never jumps back to the anchor first.
+         */
+        derived: {
+            sourceFeatureId: picked.sourceFeatureId,
+            annotation: picked.annotation,
+
+            /*
+             * The anchor the stored offset is measured from, taken fresh from
+             * the model so the drag and the placement it writes agree about
+             * where "naturally falls" is - a force whose scale changed while
+             * the label sat away from it must not drag against the old anchor.
+             */
+            natural:
+                enggAnnotationModel.annotationAnchor(
+                    picked.annotation,
+                    drawingState
+                ) || picked.annotation.placement,
+
+            /*
+             * The label's ACTUAL CURRENT POSITION, which is where the drag
+             * starts: clicking a moved label selects it exactly where it is.
+             */
+            placement: {
+                ...picked.annotation.placement
+            },
+
+            offsetX: 0,
+            offsetY: 0
+        }
+    };
+
+    drawingCanvas.setPointerCapture(
+        event.pointerId
+    );
+
+    /*
+     * THE CLICK THAT FOLLOWS THE RELEASE BELONGS TO THIS GESTURE.
+     *
+     * A press-then-release on the canvas also fires a `click`, and with a
+     * creation tool armed that click would be read as the tool's first point -
+     * starting a new feature the moment the student finished moving a label.
+     * The flag is honoured once by the click handler, so the gesture that moved
+     * the number does not also create anything.
+     */
+    editorState.selectionClickSuppressed =
+        true;
+
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+/*
+ * Begin moving a magnitude label, if the press landed on one.
+ *
+ * Attempted BEFORE a creation tool's own press, because the text of a label
+ * is a direct-manipulation target in its own right: grabbing "500 N" moves
+ * the number, and must never start a new feature through it. A press that is
+ * not on a label returns false, so creation, manipulation and selection all
+ * carry on exactly as they did.
+ */
+export function beginAnnotationDrag(
+    event
+) {
+    if (
+        event.button !== 0 ||
+        event.shiftKey
+    ) {
+        return false;
+    }
+
+    const point =
+        canvasPointFromEvent(
+            event,
+            false
+        );
+
+    if (!point) {
+        return false;
+    }
+
+    /*
+     * AN AXIS LABEL IS DRAGGED BY THE SAME INTERACTION AS ANY OTHER DRAWING
+     * TEXT: press on the text and it follows the pointer. It is checked
+     * alongside the magnitude labels, from the same hit test, so "click the
+     * label to move it" is one rule rather than two.
+     */
+    const picked =
+        pickDerivedMagnitude(
+            point
+        );
+
+    if (!picked) {
+        return false;
+    }
+
+    if (picked.type === "axis-label") {
+        return startAxisLabelDrag(
+            event,
+            picked,
+            point
+        );
+    }
+
+    return startDerivedAnnotationDrag(
+        event,
+        picked
+    );
+}
+
+/*
+ * START DRAGGING AN AXIS LABEL.
+ *
+ * The label's position is ABSOLUTE - the coordinate system stores where its X
+ * and Y labels were put, so the drag works the way every direct manipulation
+ * works:
+ *
+ *     dragOffset = pointerAtPress - labelPositionAtPress
+ *     newPosition = pointerNow - dragOffset
+ *
+ * The offset is what preserves the grab point: the label keeps the exact spot
+ * under the cursor it was grabbed by, so it neither jumps to the pointer nor
+ * flies away. The press position and the label's start position are both taken
+ * ONCE, at the press, so nothing re-derives a position mid-drag and makes the
+ * text stutter.
+ */
+function startAxisLabelDrag(event, picked, point) {
+    const object = drawingState.objects.find(
+        (candidate) => candidate.id === picked.sourceFeatureId
+    );
+
+    if (!object) {
+        return false;
+    }
+
+    const start = {
+        x: Number(picked.label.position?.x) || 0,
+        y: Number(picked.label.position?.y) || 0
+    };
+
+    /*
+     * SELECT THE LABEL, so its tight editor box appears while it is dragged and
+     * stays afterwards - the same behaviour every other drawing-space text has.
+     * The label's own pseudo-id is what the renderer and the hit test agree on.
+     */
+    enggDrawingState.selectObject(drawingState, picked.id);
+
+    editorState.selectionDrag = {
+        pointerId: event.pointerId,
+        start: point,
+        current: point,
+        moved: false,
+        box: null,
+
+        axisLabel: {
+            sourceFeatureId: picked.sourceFeatureId,
+            axis: picked.axis,
+
+            /*
+             * `null` until the first move, so a press that never travels is a
+             * click and writes nothing - which is what keeps the label at its
+             * automatic place until the student actually moves it.
+             */
+            position: null,
+            dragOffset: {
+                x: point.x - start.x,
+                y: point.y - start.y
+            }
+        }
+    };
+
+    drawingCanvas.setPointerCapture(event.pointerId);
+
+    setToolMessage(
+        picked.axis === "x" ? "Move X label" : "Move Y label"
+    );
+
+    return true;
+}
+
 export function beginSelectionDrag(
     event
 ) {
@@ -74,55 +320,9 @@ export function beginSelectionDrag(
             );
 
         if (picked) {
-            const source =
-                drawingState.objects.find(
-                    candidate =>
-                        candidate.id ===
-                        picked.sourceFeatureId
-                );
-
-            editorState.selectionDrag = {
-                pointerId:
-                    event.pointerId,
-                start: point,
-                current: point,
-                moved: false,
-                box: null,
-
-                /*
-                 * The magnitude being moved, kept apart from `box` so the
-                 * marquee code does not try to draw one.
-                 *
-                 * WHICH MAGNITUDE is carried whole - the derived
-                 * annotation itself, which knows its own point. A varying
-                 * load has one label per point, so "the magnitude" is not
-                 * enough to identify what is being dragged: two of them
-                 * answer to the same source feature, and only the anchor
-                 * tells them apart.
-                 */
-                derived: {
-                    sourceFeatureId:
-                        picked.sourceFeatureId,
-
-                    annotation:
-                        picked.annotation,
-
-                    /*
-                     * The position the grab started from, so the pointer's
-                     * travel is added to where the label already is rather
-                     * than snapping it to the cursor - the grab offset the
-                     * student began with is preserved.
-                     */
-                    natural:
-                        picked.annotation
-                            .placement,
-                    offsetX: 0,
-                    offsetY: 0
-                }
-            };
-
-            drawingCanvas.setPointerCapture(
-                event.pointerId
+            startDerivedAnnotationDrag(
+                event,
+                picked
             );
 
             return;
@@ -207,21 +407,89 @@ export function updateSelectionDrag(
         moved;
 
     /*
-     * A MAGNITUDE DRAG: the offset follows the pointer, and only the offset.
+     * A MAGNITUDE DRAG: the label follows the pointer from where it already is.
      *
      * The value itself is still derived, so the box cannot be dragged into
      * disagreeing with the force it belongs to - moving it changes where the
      * number is, never what it says.
+     *
+     * THE TRAVEL IS A DELTA FROM THE PRESS, added to the label's position as
+     * it was when the drag began - not the press position itself. So clicking
+     * a little off-centre keeps that offset for the whole drag, and the label
+     * is never snapped to the cursor.
+     *
+     * The offset that gets STORED is re-derived against the label's current
+     * automatic anchor, because that is the frame the feature keeps it in.
+     * Deriving it from the drag's own start instead discarded wherever the
+     * student had already put the label, which is what made it jump back to
+     * its anchor on the first frame.
      */
+    /*
+     * AN AXIS LABEL DRAG: the text follows the pointer, keeping the grab point.
+     *
+     * `position = pointerNow - dragOffset`, where the offset was measured once
+     * at the press. That is what keeps the label under the exact spot on the
+     * text the student grabbed, rather than snapping it to the cursor - and the
+     * offset is applied to the position captured at the press, so a label that
+     * had already been moved does not fly back to its automatic place first.
+     *
+     * Only the LABEL's position is written. The coordinate system's origin, its
+     * axes and its scale are untouched, so moving a label never moves the
+     * drawing it labels.
+     */
+    if (editorState.selectionDrag.axisLabel) {
+        const drag = editorState.selectionDrag.axisLabel;
+
+        const placed = {
+            x: point.x - drag.dragOffset.x,
+            y: point.y - drag.dragOffset.y
+        };
+
+        drag.position = placed;
+
+        const source = drawingState.objects.find(
+            (candidate) => candidate.id === drag.sourceFeatureId
+        );
+
+        if (source?.geometry) {
+            if (drag.axis === "x") {
+                source.geometry.xLabelPosition = { ...placed };
+            } else {
+                source.geometry.yLabelPosition = { ...placed };
+            }
+        }
+
+        renderCurrentDrawing();
+
+        return;
+    }
+
     if (editorState.selectionDrag.derived) {
-        editorState.selectionDrag.derived.offsetX =
-            point.x - start.x;
-
-        editorState.selectionDrag.derived.offsetY =
-            point.y - start.y;
-
         const derivation =
             editorState.selectionDrag.derived;
+
+        /*
+         * WHERE THE LABEL IS NOW = where it was, plus how far the pointer has
+         * travelled since the press.
+         */
+        const placed = {
+            x:
+                (derivation.placement?.x ?? start.x) +
+                (point.x - start.x),
+            y:
+                (derivation.placement?.y ?? start.y) +
+                (point.y - start.y)
+        };
+
+        /*
+         * THE OFFSET IS RE-DERIVED AGAINST THE CURRENT ANCHOR, so the label
+         * lands exactly on `placed` however the anchor has moved under it.
+         */
+        derivation.offsetX =
+            placed.x - (derivation.natural?.x ?? placed.x);
+
+        derivation.offsetY =
+            placed.y - (derivation.natural?.y ?? placed.y);
 
         const source =
             objectsByIds([
@@ -349,6 +617,37 @@ export function finishSelectionDrag(
      * deliberately so - a dragged label and a dragged beam are the same kind
      * of act to the student.
      */
+    if (currentSelection.axisLabel) {
+        /*
+         * ONE UNDO STEP FOR THE WHOLE DRAG.
+         *
+         * The position was written on every frame so the text followed the
+         * pointer; recording that per frame would fill Undo with the
+         * intermediate positions of a single movement. So the state from BEFORE
+         * the drag is snapshotted here and the drag committed against it, and a
+         * press that never travelled commits nothing - the label simply keeps
+         * the position it had.
+         */
+        if (currentSelection.moved && currentSelection.axisLabel.position) {
+            const previous =
+                enggDrawingState.snapshotDrawing(drawingState);
+
+            enggDrawingState.commitDrawingChange(drawingState, previous);
+
+            setToolMessage(
+                currentSelection.axisLabel.axis === "x"
+                    ? "Moved the X label"
+                    : "Moved the Y label"
+            );
+        }
+
+        editorState.selectionDrag = null;
+
+        renderCurrentDrawing();
+
+        return;
+    }
+
     if (currentSelection.derived) {
         if (currentSelection.moved) {
             const previous =
@@ -471,6 +770,19 @@ export function finishSelectionDrag(
 }
 
 export function cancelInteraction() {
+    /*
+     * A DRAG-TO-CREATE GESTURE ENDS WITH THE OPERATION.
+     *
+     * The session exists so a release can commit the feature. Cancelling
+     * removes the construction, so the session must go with it - otherwise
+     * the next release anywhere on the canvas would try to complete a span
+     * that no longer exists, and would swallow a click that belonged to
+     * whatever the student started next.
+     */
+    editorState.creationDrag = null;
+
+    editorState.creationDragConsumedClick = false;
+
     if (
         editorState.selectionDrag
     ) {

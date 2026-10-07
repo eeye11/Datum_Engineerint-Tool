@@ -3,12 +3,16 @@
  */
 
 import enggDrawingState from "../core/model/drawing-state.js";
+import enggErrorLog from "../app/error-log.js";
 import enggDrawingExport from "../file/document-export.js";
 import enggDocumentFile from "../file/document-file.js";
 import enggRecovery from "../file/document-recovery.js";
 import enggFileSave from "../file/file-save.js";
+import enggRecentFiles from "../file/recent-files.js";
+import enggTemplates from "../file/templates.js";
 import enggDrawingReference from "../references/drawing-reference.js";
 import enggSheets from "../sheets/sheets.js";
+import enggOpenPopup from "../ui/open-popup.js";
 import enggUi from "../ui/ui.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingState, editorState } from "./editor-state.js";
@@ -78,6 +82,8 @@ export function newDrawing() {
      */
     documentFileName = null;
 
+    refreshDocumentTitle();
+
     /*
      * A new document belongs to no file. Forgetting the handle is
      * what guarantees the first Save asks where the file should go
@@ -85,7 +91,20 @@ export function newDrawing() {
      */
     enggFileSave.forgetFileHandle();
 
-    markDocumentDirty();
+    /*
+     * A BLANK NEW DOCUMENT HAS NO UNSAVED CHANGES.
+     *
+     * New replaces the document with an empty one. There is nothing on it for
+     * the user to have changed, so it is not dirty - and it must not be, or a
+     * student who presses New and then immediately presses Open is asked about
+     * unsaved work they never made. Marking it dirty also meant every fresh
+     * session began "unsaved", so the very first Open always interrupted.
+     *
+     * The document still has no file, which is a separate fact from being
+     * unsaved: the next Save asks for a name because there is no name yet, not
+     * because there is something to lose.
+     */
+    markDocumentClean();
 
     setToolMessage(
         "New drawing"
@@ -120,6 +139,25 @@ let documentFileName = null;
 let documentDirty = false;
 
 /*
+ * Whether the document is being LOADED right now.
+ *
+ * Loading a file reconstructs sheets, features and relationships through
+ * exactly the same code paths a person's edits use - a collection is
+ * replaced, a sheet is created, an object is pushed. Several of those paths
+ * report "the document changed", because when a PERSON causes them that is
+ * true. During a load it is not: the document is being MADE to match a file,
+ * not edited.
+ *
+ * Without this flag the last thing a load did was often to mark the
+ * document dirty, so a file that had just been opened was treated as having
+ * unsaved changes - and the next Open or New then interrupted the user with
+ * a prompt about work they had not done. The flag makes document restoration
+ * distinguishable from a user edit, which is the distinction the dirty
+ * state is supposed to represent.
+ */
+let documentLoading = false;
+
+/*
  * Mark the document as having unsaved changes.
  *
  * Called from the one place every committed edit passes through, so
@@ -133,6 +171,20 @@ let documentDirty = false;
  * rather than one per frame.
  */
 export function markDocumentDirty() {
+    /*
+     * A LOAD IS NOT AN EDIT.
+     *
+     * While a file is being reconstructed, the state-update code that
+     * normally means "the user changed something" runs as a side effect of
+     * building the document. Marking the document dirty here would mean an
+     * opened file arrived already unsaved, which is precisely the false
+     * prompt this state exists to prevent. A load clears the flag at the
+     * end, so nothing is lost by ignoring these notifications.
+     */
+    if (documentLoading) {
+        return;
+    }
+
     documentDirty = true;
 
     /*
@@ -182,8 +234,53 @@ function documentIsDirty() {
     return documentDirty;
 }
 
+/*
+ * Exposed for tests and the recovery prompt: the document's unsaved state and
+ * whether a load is currently in progress. These are read-only views of the
+ * one flag the editor owns; nothing outside this module may set it.
+ */
+export function documentHasUnsavedChanges() {
+    return documentIsDirty();
+}
+
+export function documentIsLoading() {
+    return documentLoading;
+}
+
+/*
+ * Begin and end a document load.
+ *
+ * Between these two calls every state update is treated as reconstruction
+ * rather than as a user edit, so nothing marks the document dirty. The pair
+ * is deliberately narrow: only the code that puts a file into the editor
+ * uses it, and it always closes with the document clean.
+ */
+function beginDocumentLoad() {
+    documentLoading = true;
+}
+
+function endDocumentLoad() {
+    documentLoading = false;
+
+    markDocumentClean();
+}
+
 function documentFile() {
     return documentFileName;
+}
+
+/*
+ * Show the current document's file name in the window title.
+ *
+ * The window's title is the one place a web application's current document is
+ * named, and keeping it in step is what lets a student tell at a glance which
+ * drawing is open. A document that has never been saved is named "Untitled",
+ * matching the file it does not yet have.
+ */
+function refreshDocumentTitle() {
+    document.title = documentFileName
+        ? `${documentFileName} - Datum`
+        : "Untitled - Datum";
 }
 
 /*
@@ -264,78 +361,110 @@ function downloadDocumentFile(name) {
 }
 
 /*
- * Save the drawing to a .enggdraw file.
- *
- * With no file name yet, this asks for one. Once the document has
- * been saved, Save reuses that name, so the common case - open,
- * change, save - does the expected thing without a dialog.
- */
-/*
  * Run an action, having first offered to save unsaved changes.
  *
- * Anything that replaces or abandons the current document - New,
- * Open, closing - has to ask before throwing work away. The three
- * answers are the conventional ones, and Cancel does nothing at
- * all, which is the only safe default: a user who is interrupted
- * must never find their drawing replaced because they pressed a key.
+ * Anything that replaces or abandons the current document - New, Open,
+ * closing - has to ask before throwing work away. The three answers are the
+ * conventional ones, and Cancel does nothing at all, which is the only safe
+ * default: a user who is interrupted must never find their drawing replaced
+ * because they pressed a key.
  *
- * The prompt is only shown when there is something to lose, so the
- * ordinary case of working in a new drawing is never interrupted.
+ * The prompt is only shown when there is something to lose, so the ordinary
+ * case of working in a new drawing - or of opening a file right after saving -
+ * is never interrupted.
+ *
+ *   Save First        save the current drawing, then run the action. If the
+ *                     save is cancelled or fails, the action does NOT run.
+ *   Discard Changes   throw away the unsaved edits, then run the action. No
+ *                     file is deleted: what is discarded is the in-memory
+ *                     document's unsaved state, not anything on disk.
+ *   Cancel            close the dialog and do nothing.
+ *
+ * Returns a promise resolving to whether the action ran. A caller that needs
+ * to know - a test, or a second step that depends on it - can await it; the
+ * menu can ignore it.
  */
 function confirmDiscardUnsavedChanges(action) {
     if (!documentIsDirty()) {
         action();
 
-        return true;
+        return Promise.resolve(true);
     }
 
     const file =
         documentFile() || "this drawing";
 
     /*
-     * Asked with the application's own dialog rather than the
-     * browser's, for the same reason the save panel is native: this
-     * is an interaction with the person using the application, and it
-     * should look like the application. It also means the three
-     * answers can be laid out properly rather than as a system
-     * dialog's fixed buttons.
+     * Asked with the application's own dialog rather than the browser's, for
+     * the same reason the save panel is native: this is an interaction with
+     * the person using the application, and it should look like the
+     * application. It also means the three distinct answers can be laid out
+     * as the three distinct choices they are.
      */
-    enggUi
-        .confirmDialog(
+    return enggUi
+        .choiceDialog(
             `${file} has unsaved changes.\n\n` +
             "Save before continuing?",
             {
                 title: "Unsaved changes",
-                confirm: "Save",
-                cancel: "Don't Save"
+
+                buttons: [
+                    {
+                        id: "save",
+                        label: "Save First",
+                        primary: true
+                    },
+                    {
+                        id: "discard",
+                        label: "Discard Changes"
+                    },
+                    {
+                        id: "cancel",
+                        label: "Cancel",
+                        dismiss: true
+                    }
+                ]
             }
         )
-        .then(async (saveFirst) => {
-            if (!saveFirst) {
-                return;
+        .then(async (choice) => {
+            if (choice === "cancel" || !choice) {
+                return false;
             }
 
-            /*
-             * Saved before leaving, and only then does the action run.
-             * Cancelling the save panel therefore cancels the whole
-             * operation rather than abandoning the drawing: nothing
-             * is lost either way, and the student keeps what they
-             * were working on.
-             */
-            const saved =
-                await saveDrawing();
+            if (choice === "save") {
+                /*
+                 * Saved before leaving, and only then does the action run.
+                 * Cancelling the save panel therefore cancels the whole
+                 * operation rather than abandoning the drawing: nothing is
+                 * lost either way, and the student keeps what they were
+                 * working on.
+                 */
+                const saved =
+                    await saveDrawing();
 
-            if (saved) {
-                action();
+                if (!saved) {
+                    return false;
+                }
+            } else {
+                /*
+                 * DISCARD MEANS THE UNSAVED EDITS ARE GONE.
+                 *
+                 * The user has said the changes made since the last save are
+                 * not wanted. The in-memory document is therefore marked clean
+                 * BEFORE the action runs, so the decision is recorded once and
+                 * is not asked about again - a destructive operation that is
+                 * guarded must not raise the same prompt a second time.
+                 *
+                 * Only the in-memory dirty state is discarded. No file is
+                 * deleted, and the saved .enggdraw on disk is untouched.
+                 */
+                markDocumentClean();
             }
+
+            action();
+
+            return true;
         });
-
-    /*
-     * False because the action has NOT run yet - it runs when the
-     * answer arrives. Open and New check this before doing anything
-     * that would otherwise replace the drawing immediately.
-     */
-    return false;
 }
 
 /*
@@ -368,9 +497,18 @@ function confirmDiscardUnsavedChanges(action) {
  * profiles, dimension text - rather than its stored geometry, so
  * nothing that is drawn can fall outside the image.
  */
-function drawnBoundsPoints() {
+/*
+ * Every point an export of the CURRENT sheet is fitted to.
+ *
+ * Callable with a set of features and a zoom, so anything measuring a STORED or
+ * non-active sheet - a thumbnail, a template card, a written-solution figure -
+ * asks the same question through the same code. With no arguments it measures
+ * the open sheet at the editor's own zoom, which is what Fit and Print want.
+ */
+function drawnBoundsPoints(objects, zoom) {
     return renderedPointsForObjects(
-        drawingState.objects
+        objects || drawingState.objects,
+        zoom
     );
 }
 
@@ -756,22 +894,51 @@ export async function saveDrawing() {
             serializeDocumentBody()
         );
 
+    /*
+     * A WRITE THAT FAILED IS NOT A SAVE.
+     *
+     * `file-save` reports a failed write as `{ error, detail }` rather than
+     * throwing, so the distinction between "nothing to write back to" (null),
+     * "written" (a name) and "the disk refused" (an error) is made here.
+     *
+     * The document is left DIRTY and its name unchanged, because neither is
+     * true yet - and the user is told, in the one place they are looking, that
+     * their work is still open. Claiming a save that did not happen is the
+     * single most damaging thing this function could do.
+     */
+    if (saved && saved.error) {
+        setToolMessage(saved.error);
+
+        window.alert(saved.error);
+
+        if (typeof console !== "undefined" && console.error) {
+            console.error("[Datum] Save failed", saved.detail);
+        }
+
+        return false;
+    }
+
     if (!saved) {
         /*
          * Nowhere to save back to. Save As is not a lesser thing
          * here - it is the only thing that can happen - so it is run
-         * rather than reported.
+         * rather than reported. Its own result is returned, so a caller
+         * that needs to know whether the document was actually written -
+         * the Save First choice in the unsaved-changes prompt - is not
+         * misled into continuing after a cancelled panel.
          */
-        await saveDrawingAs();
-
-        return;
+        return await saveDrawingAs();
     }
 
     documentFileName = saved;
 
     markDocumentClean();
 
+    refreshDocumentTitle();
+
     setToolMessage(`Saved ${saved}`);
+
+    return true;
 }
 
 /*
@@ -809,7 +976,7 @@ async function saveDrawingAs() {
 
     /* Cancelled. Nothing happened, so nothing is reported or changed. */
     if (!result) {
-        return;
+        return false;
     }
 
     if (result.error) {
@@ -820,7 +987,7 @@ async function saveDrawingAs() {
          */
         setToolMessage(result.error);
 
-        return;
+        return false;
     }
 
     /*
@@ -835,12 +1002,32 @@ async function saveDrawingAs() {
 
         markDocumentClean();
 
+        refreshDocumentTitle();
+
+        /*
+         * A SAVED FILE IS A RECENT FILE.
+         *
+         * Save As writes the document to a new name, so that name should be
+         * selectable from the Open launcher next time. The stored copy is the
+         * document body exactly as it was written, which is what makes the
+         * entry reopenable in every browser - the same reference Save, Save As,
+         * Import and Recent all share.
+         */
+        enggRecentFiles.remember({
+            name: result.name,
+            handle: enggFileSave.currentFileHandle(),
+            document: serializeDocumentBody(),
+            preview: renderDocumentPreview(serializeDocumentBody())
+        });
+
         setToolMessage(`Saved ${result.name}`);
 
-        return;
+        return true;
     }
 
     setToolMessage(`Saved ${result.name}`);
+
+    return true;
 }
 
 /*
@@ -923,6 +1110,49 @@ export function loadDrawing(
         );
 
     /*
+     * FROM HERE UNTIL THE END OF THIS FUNCTION THE DOCUMENT IS BEING
+     * RESTORED, NOT EDITED.
+     *
+     * Replacing the collection, loading a sheet, rebuilding features and
+     * resolving relationships all reach code that, when the user causes it,
+     * means "the document changed". During a load none of it is an edit, so
+     * every such notification is ignored and the document is left clean at
+     * the end. This is what stops an opened file from being treated as having
+     * unsaved changes the moment it arrives.
+     */
+    /*
+     * Apply the validated document. The reconstruction is wrapped so the
+     * "loading" state is always closed, however it ends.
+     */
+    try {
+        applyLoadedDocument(data, fileName, previous, result);
+    } finally {
+        /*
+         * THE LOAD ALWAYS ENDS, EVEN IF IT THREW.
+         *
+         * An exception during reconstruction must not leave the editor in the
+         * loading state, where every later edit would be silently ignored and
+         * the document could never be saved. The flag is closed and the
+         * document marked clean here, so a failed load is still a defined
+         * state.
+         */
+        endDocumentLoad();
+    }
+
+    return data;
+}
+
+/*
+ * Put a validated document into the editor: its settings, its sheets, its
+ * features and its relationships, then render it.
+ *
+ * Called with the document already validated, and always between
+ * beginDocumentLoad and endDocumentLoad - which is what makes the whole of
+ * this reconstruction, rather than a set of user edits, and is why none of it
+ * marks the document dirty at the end.
+ */
+function applyLoadedDocument(data, fileName, previous, result) {
+    /*
      * The document's own settings, not just its features. Units and
      * calibration travel with the drawing because a length in a file
      * means nothing without them.
@@ -931,6 +1161,8 @@ export function loadDrawing(
      * of the whole document - the unit every length on every sheet is
      * in - rather than of any one drawing.
      */
+    beginDocumentLoad();
+
     enggDrawingState.restoreDocument(
         drawingState,
         data
@@ -989,9 +1221,9 @@ export function loadDrawing(
     );
 
     /*
-     * An opened document is clean: it matches the file it came from.
-     * A migrated file is also clean, because what was written and
-     * what is now open describe the same drawing.
+     * An opened document is clean: it matches the file it came from. A
+     * migrated file is also clean, because what was written and what is now
+     * open describe the same drawing.
      */
     if (fileName) {
         documentFileName =
@@ -1000,7 +1232,7 @@ export function loadDrawing(
             );
     }
 
-    markDocumentClean();
+    refreshDocumentTitle();
 
     refreshSheetTabs();
 
@@ -1016,154 +1248,625 @@ export function loadDrawing(
 
     renderProperties();
     renderCurrentDrawing();
+}
+
+/*
+ * Choose a .enggdraw file from the laptop and open it.
+ *
+ * This is IMPORT: the one action in the Open launcher that uses the operating
+ * system's file panel. The file is read and validated before anything is
+ * applied, so a file that cannot be opened leaves the current drawing
+ * untouched - see loadDrawing, which is where that guarantee is made.
+ *
+ * Cancelling the panel is not an event the page is told about, so the returned
+ * promise resolves either when the file has been handled or when the panel was
+ * dismissed without one; either way the current document is unchanged until a
+ * file actually arrives and loads.
+ */
+export function importDrawingFile() {
+    return new Promise((resolve) => {
+        const input =
+            document.createElement("input");
+
+        input.type = "file";
+        input.accept = `.${enggDocumentFile.EXTENSION},${enggDocumentFile.MEDIA_TYPE},application/json`;
+
+        /*
+         * Cancelling raises `cancel` in every browser that fires it, and no
+         * event at all in the others. Both are handled: nothing is applied, and
+         * the launcher the user came from has already closed, so cancelling
+         * simply returns them to the drawing they had.
+         */
+        input.addEventListener("cancel", () => resolve(false));
+
+        input.addEventListener("change", () => {
+            const file =
+                input.files && input.files[0];
+
+            if (!file) {
+                resolve(false);
+
+                return;
+            }
+
+            openChosenFile(file).then(resolve);
+
+            input.value = "";
+        });
+
+        input.click();
+    });
+}
+
+/*
+ * Read one chosen File and open it.
+ *
+ * Resolves true only when a drawing was installed. The file is read as text
+ * and handed to applyOpenedText, which is the ONE place a file's contents
+ * become a document - importing, opening a recent and recovering all reach it
+ * rather than each growing a copy of the parse.
+ */
+function openChosenFile(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+
+        reader.addEventListener("load", () => {
+            resolve(applyOpenedText(String(reader.result), file.name, file));
+        });
+
+        reader.addEventListener("error", () => {
+            setToolMessage(
+                "That file could not be read. It may be damaged."
+            );
+
+            window.alert(
+                "That file could not be read. It may be damaged, or it may " +
+                "not be an EnggDraw drawing."
+            );
+
+            resolve(false);
+        });
+
+        reader.readAsText(file);
+    });
+}
+
+/*
+ * Parse one file's text and apply it.
+ *
+ * Returns true only when a drawing was actually installed. A file that cannot
+ * be parsed is reported and changes nothing, so a damaged file leaves the
+ * drawing the user already has exactly as it was.
+ *
+ * `file` is optional: it carries the size and last-modified time that identify
+ * the file in the recents list. Recovery passes text without one, and the
+ * entry is keyed on the name alone in that case.
+ */
+function applyOpenedText(text, name, file) {
+    let parsed;
+
+    try {
+        parsed = JSON.parse(text);
+    } catch (error) {
+        setToolMessage(
+            "That file could not be read. It may be damaged, " +
+            "or it may not be an EnggDraw drawing."
+        );
+
+        window.alert(
+            "That file could not be read. It may be damaged, or it may not " +
+            "be an EnggDraw drawing."
+        );
+
+        return false;
+    }
+
+    const opened = loadDrawing(parsed, name);
+
+    /*
+     * ONLY A FILE THAT ACTUALLY OPENED IS REMEMBERED.
+     *
+     * A recents entry is a promise that the drawing can be opened again, so a
+     * file that failed to load is not added: an entry that cannot be opened is
+     * worse than no entry at all. `loadDrawing` returns the reconstructed
+     * document on success and false on failure, so the document stored with
+     * the entry is exactly what is now open.
+     */
+    if (opened) {
+        enggRecentFiles.remember({
+            name,
+            file,
+            document: opened,
+
+            /*
+             * A PICTURE OF THE DRAWING, taken from the document that was just
+             * loaded. It is made by the same renderer the canvas uses and
+             * changes nothing about the document, so a recents list can show
+             * what a file looks like without opening it.
+             */
+            preview: renderDocumentPreview(opened)
+        });
+    }
+
+    return Boolean(opened);
+}
+
+/*
+ * Open the drawing behind a recent entry.
+ *
+ * Preferred order:
+ *
+ *   1. A stored file handle. Where the browser gave one - File System Access
+ *      on Chrome and Edge - the CURRENT file is read from disk, so the recent
+ *      reflects the user's latest saved version rather than a stale copy.
+ *   2. The stored document. Without a handle there is no way to reopen a file
+ *      by path, so the copy kept with the entry is opened through the same
+ *      loader. This is what makes Recents work in every browser.
+ *
+ * A handle whose permission has been revoked, or whose file has been moved or
+ * deleted, is reported and the entry is marked missing - the list stays usable
+ * and the other files still open.
+ */
+async function openRecentFile(entry) {
+    const handle = enggRecentFiles.handleFor(entry.key);
+
+    if (handle) {
+        try {
+            const file = await handle.getFile();
+
+            const opened = await openChosenFile(file);
+
+            if (opened) {
+                return true;
+            }
+        } catch (error) {
+            /*
+             * The file is gone, or access was refused. This is the normal case
+             * for a recently used file on a drive that is no longer attached,
+             * so it is reported rather than thrown.
+             */
+            enggRecentFiles.markMissing(entry.key);
+
+            setToolMessage(
+                `${entry.fileName} could not be opened. It may have been ` +
+                "moved, renamed or deleted."
+            );
+
+            window.alert(
+                `File not found:\n\n${entry.fileName}\n\n` +
+                "It may have been moved, renamed or deleted. " +
+                "Import it again to reopen it."
+            );
+
+            return false;
+        }
+    }
+
+    const document = enggRecentFiles.documentFor(entry.key);
+
+    if (document) {
+        /*
+         * The stored copy goes through the ordinary loader, wrapped in the
+         * ordinary envelope, so a recent is opened exactly as a file is -
+         * validated, migrated and reconstructed the same way.
+         */
+        const opened = loadDrawing(
+            enggDocumentFile.createDocument(document),
+            entry.fileName
+        );
+
+        if (opened) {
+            enggRecentFiles.remember({
+                name: entry.fileName,
+                document: opened
+            });
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /*
+     * Neither a handle nor a stored copy. The entry can still be listed, but
+     * it cannot be reopened, so the user is told to import it rather than left
+     * with a button that does nothing.
+     */
+    enggRecentFiles.markMissing(entry.key);
+
+    setToolMessage(
+        `${entry.fileName} has to be imported again to be reopened.`
+    );
+
+    return false;
+}
+
+/*
+ * Start a new document from a template.
+ *
+ * A template is a document body, so it is loaded through the same loader a file
+ * uses and is editable, saveable and reopenable from the moment it appears. It
+ * has no file, so it is untitled and NOT dirty - there is nothing on it for the
+ * user to have changed yet.
+ */
+function openTemplate(templateId) {
+    const body = enggTemplates.copyDocumentFor(templateId);
+
+    if (!body) {
+        setToolMessage("That template is not available.");
+
+        return false;
+    }
+
+    const template = enggTemplates
+        .list()
+        .find((entry) => entry.id === templateId);
+
+    const loaded = loadDrawing(
+        enggDocumentFile.createDocument(body),
+        null
+    );
+
+    if (!loaded) {
+        return false;
+    }
+
+    /*
+     * A template is a NEW document, not a file. It belongs to no file, so a
+     * later Save asks where to put it - and it is clean, because nothing on it
+     * has been changed.
+     */
+    documentFileName = null;
+
+    enggFileSave.forgetFileHandle();
+
+    markDocumentClean();
+
+    refreshDocumentTitle();
+
+    setToolMessage(
+        template ? `New drawing from ${template.name}` : "New drawing"
+    );
 
     return true;
 }
 
 /*
- * Choose a .enggdraw file and open it.
+ * Choose a .enggdraw and add it to the template library.
  *
- * The file is read and validated before anything is applied, so a
- * file that cannot be opened leaves the current drawing untouched -
- * see loadDrawing, which is where that guarantee is made.
+ * The file is READ AND VALIDATED by the same loader an Open uses, so a template
+ * can only ever be created from a document Datum could actually open - there is
+ * no second parser, and a corrupt file is refused with the same reason an Open
+ * would give.
+ *
+ * THE CURRENT DRAWING IS NOT TOUCHED, and is not guarded: adding a template is
+ * not a document operation, so there is no unsaved-changes question and the
+ * drawing stays exactly as it is.
  */
-export function openDrawing() {
-    const input =
-        document.createElement("input");
+async function addTemplateFromFile() {
+    const chosen = await readFileAsText();
 
-    input.type = "file";
-    input.accept = `.${enggDocumentFile.EXTENSION},${enggDocumentFile.MEDIA_TYPE},application/json`;
+    if (!chosen) {
+        /* The panel was cancelled, or cancelled because there was no file. */
+        return false;
+    }
 
-    input.addEventListener("change", () => {
-        const file =
-            input.files && input.files[0];
+    let parsed;
 
-        if (!file) {
-            return;
-        }
+    try {
+        parsed = JSON.parse(chosen.text);
+    } catch (error) {
+        reportFileProblem(
+            "That file could not be read. It may be damaged, or it may not " +
+            "be an EnggDraw drawing."
+        );
+
+        return false;
+    }
+
+    /*
+     * Validated the same way an Open validates, and against a THROWAWAY copy of
+     * the reader so the current document is never involved. `readDocument`
+     * neither throws nor mutates anything, which is what makes it safe to call
+     * merely to ask "is this usable?".
+     */
+    const result = enggDocumentFile.readDocument(parsed);
+
+    if (!result.ok) {
+        reportFileProblem(result.detail);
+
+        return false;
+    }
+
+    /*
+     * The source file's name, offered as the default template name. The file
+     * name travels with the text as an object, because a FileReader result is a
+     * primitive string and cannot carry it.
+     */
+    const suggested =
+        String(chosen.fileName || "")
+            .replace(/\.enggdraw$/i, "")
+            .trim() || "New Template";
+
+    const name = await askForTemplateName(suggested);
+
+    if (!name) {
+        /* Cancelled at the name step. No template is created. */
+        return false;
+    }
+
+    const preview = renderDocumentPreview(result.document);
+
+    const id = enggTemplates.addTemplate({
+        name,
+        document: result.document,
+        preview
+    });
+
+    if (!id) {
+        setToolMessage("That template could not be saved.");
+
+        return false;
+    }
+
+    setToolMessage(`Added ${name} to templates`);
+
+    return true;
+}
+
+/*
+ * Ask the user for a template's name.
+ *
+ * The source file's name is offered as the starting point, because it is very
+ * often what the user would type anyway - but it is only a default, and the
+ * name they give is what is stored. Returns null when cancelled, which the
+ * caller treats as "no template was made" rather than as an error.
+ */
+function askForTemplateName(suggested) {
+    return enggUi
+        .promptDialog(
+            "Give this template a name. It is only a label; the drawing it " +
+            "was made from is not changed.",
+            {
+                title: "Add Template",
+                fields: [
+                    {
+                        name: "name",
+                        label: "Template Name",
+                        value: suggested,
+                        placeholder: "Statics Setup",
+                        maxLength: 80
+                    }
+                ],
+                confirm: "Add Template",
+                cancel: "Cancel",
+                onConfirm: (entered) =>
+                    (entered.name || "").trim() ? entered : false
+            }
+        )
+        .then((entered) =>
+            entered ? String(entered.name).trim() : null
+        );
+}
+
+/*
+ * Rename a stored template.
+ *
+ * The display name only. The template's document and id are untouched, and the
+ * `.enggdraw` it was made from is not referenced at all.
+ */
+async function renameTemplate(id) {
+    const existing = enggTemplates
+        .list()
+        .find((entry) => entry.id === id);
+
+    if (!existing) {
+        return false;
+    }
+
+    const name = await askForTemplateName(existing.name);
+
+    if (!name) {
+        return false;
+    }
+
+    enggTemplates.renameTemplate(id, name);
+
+    setToolMessage(`Renamed to ${name}`);
+
+    return true;
+}
+
+/*
+ * Read a chosen .enggdraw as text.
+ *
+ * Returns null when the panel was dismissed, which is the ordinary way to
+ * change your mind and is not an error. The reader is the one place a file's
+ * TEXT comes from, so every route into the application - import, open, recent,
+ * template - shares it.
+ */
+function readFileAsText() {
+    return new Promise((resolve) => {
+        const input = document.createElement("input");
+
+        input.type = "file";
 
         /*
-         * Opening replaces the current drawing, so it asks
-         * about unsaved changes first - before the file is even
-         * read, so a file that then turns out to be unreadable
-         * has cost the user nothing.
+         * THE NATIVE TYPE, NAMED AS THE FORMAT. The software is Datum; the
+         * drawing format is EnggDraw, and `.enggdraw` is its extension.
          */
-        if (
-            !confirmDiscardUnsavedChanges(
-                () => {}
-            )
-        ) {
-            input.value = "";
+        input.accept = `.${enggDocumentFile.EXTENSION},${enggDocumentFile.MEDIA_TYPE},application/json`;
 
-            return;
-        }
+        input.addEventListener("cancel", () => resolve(null));
 
-        /*
-         * Opened through showOpenFilePicker where the browser has it.
-         *
-         * The picker returns a handle as well as the file, and the
-         * handle is kept: it is how a later Save writes back to the
-         * file that was opened rather than producing a copy. The
-         * input-element route below is the fallback for browsers
-         * without it, and there a handle genuinely does not exist, so
-         * Save falls back to asking - which is the honest behaviour
-         * rather than a hidden failure.
-         */
-        if (
-            typeof window.showOpenFilePicker ===
-            "function"
-        ) {
-            window
-                .showOpenFilePicker({
-                    /*
-                     * The same file types Save As offers, so what can be
-                     * opened and what can be saved are one list. It is
-                     * the array the module returns - not wrapped again,
-                     * which would hand the picker a nested list it
-                     * cannot read.
-                     */
-                    types: enggFileSave.fileTypes(),
-                    multiple: false
-                })
-                .then(async (handles) => {
-                    const handle = handles[0];
+        input.addEventListener("change", () => {
+            const file = input.files && input.files[0];
 
-                    if (!handle) {
-                        return;
-                    }
-
-                    const opened =
-                        await handle.getFile();
-
-                    const text =
-                        await opened.text();
-
-                    let parsed = null;
-
-                    try {
-                        parsed =
-                            JSON.parse(text);
-                    } catch (error) {
-                        setToolMessage(
-                            "That file could not be " +
-                            "read. It may be damaged, " +
-                            "or it may not be an " +
-                            "EnggDraw drawing."
-                        );
-
-                        return;
-                    }
-
-                    if (
-                        loadDrawing(
-                            parsed,
-                            opened.name
-                        )
-                    ) {
-                        enggFileSave.setFileHandle(
-                            handle
-                        );
-                    }
-                })
-                .catch(() => {
-                    /*
-                     * Cancelled. The current drawing is untouched,
-                     * which is what closing a panel should mean.
-                     */
-                });
-
-            return;
-        }
-
-        const reader =
-            new FileReader();
-
-        reader.addEventListener("load", () => {
-            let parsed = null;
-
-            try {
-                parsed = JSON.parse(
-                    String(reader.result)
-                );
-            } catch (error) {
-                const detail =
-                    "That file could not be read. " +
-                    "It may be damaged, or it may not " +
-                    "be an EnggDraw drawing.";
-
-                setToolMessage(detail);
-                window.alert(detail);
+            if (!file) {
+                resolve(null);
 
                 return;
             }
 
-            loadDrawing(parsed, file.name);
+            const reader = new FileReader();
+
+            reader.addEventListener("load", () => {
+                /*
+                 * THE NAME TRAVELS WITH THE TEXT.
+                 *
+                 * A FileReader result is a primitive string, and a property
+                 * cannot be attached to one - in module (strict) code the
+                 * assignment THROWS, which would leave this promise unresolved
+                 * forever and the caller waiting for a file that never arrives.
+                 * So the two are returned together, as an object.
+                 */
+                resolve({
+                    text: String(reader.result),
+                    fileName: file.name
+                });
+            });
+
+            reader.addEventListener("error", () => resolve(null));
+
+            reader.readAsText(file);
+
+            input.value = "";
         });
 
-        reader.readAsText(file);
+        input.click();
     });
+}
 
-    input.click();
+/*
+ * Tell the user a chosen file could not be used.
+ *
+ * Reported in both places the user is already looking: the status line for the
+ * detail, and a dialog so a failure cannot pass unnoticed. A silent refusal is
+ * the failure mode this exists to prevent - the user would otherwise believe a
+ * template had been added when none had.
+ */
+function reportFileProblem(detail) {
+    const message =
+        detail ||
+        "That file could not be used. It may not be an EnggDraw drawing.";
+
+    setToolMessage(message);
+
+    window.alert(message);
+}
+
+/*
+ * A small SVG picture of a stored document.
+ *
+ * READ-ONLY with respect to the document: the drawing is rendered into its own
+ * SVG by the same export pipeline the canvas and the PNG export use, and nothing
+ * about the document - positions, World Scale, annotations, dirty state, feature
+ * order - is touched. A preview that failed is simply not shown, so a rendering
+ * problem can never stop a template from being created, or a file from being
+ * opened.
+ *
+ * Used for BOTH a template's card and a recent file's thumbnail, because both
+ * are the same question: what does this stored drawing look like?
+ */
+/*
+ * A small SVG picture of a stored document.
+ *
+ * A THIN WRAPPER over the shared fitted render, which is where the drawing
+ * bounds, the sheet's World Scale and the neutral camera are decided. Keeping
+ * the decision there - and not here - is what makes a Recent thumbnail, a
+ * template card and a written-solution figure the same picture of the same
+ * drawing.
+ *
+ * READ-ONLY throughout: the render works from a state built out of the stored
+ * document, so nothing about the open document - its zoom, its selection, its
+ * dirty state, its undo history - is read or touched. A preview that could not
+ * be produced is simply not shown.
+ */
+function renderDocumentPreview(document) {
+    try {
+        const image = enggDrawingExport.renderFittedDocument(document, {
+            width: 160
+        });
+
+        if (!image || !image.svg) {
+            return null;
+        }
+
+        return new XMLSerializer().serializeToString(image.svg);
+    } catch (error) {
+        enggErrorLog.reportError("render document preview", error, {});
+
+        return null;
+    }
+}
+
+/*
+ * The Open launcher: Templates, Recent files, and Import.
+ *
+ * File -> Open shows this rather than the operating system's file panel. The
+ * unsaved-changes question is asked FIRST, so that by the time the launcher
+ * appears the user has already decided what happens to the drawing they are
+ * leaving - and a choice inside the launcher cannot silently replace work.
+ *
+ * The launcher reports a choice; every choice is then carried out here, so the
+ * popup itself contains no file handling and cannot become a second way into
+ * the application.
+ */
+export async function openDrawing() {
+    /*
+     * THE LAUNCHER IS SHOWN FIRST, AND THE GUARD IS ASKED AFTERWARDS.
+     *
+     * The launcher is a list of ways to START, and two of its three sections -
+     * browsing templates and adding one - do not replace the drawing at all.
+     * Asking about unsaved changes before the user has even chosen would be a
+     * prompt about nothing, and it would make "+ Add Template" (which only
+     * copies a file into the library) look like it was about to discard work.
+     *
+     * So the question is put to each choice that would actually REPLACE the
+     * document - opening a template, a recent, or an import - and to none of the
+     * choices that would not.
+     */
+    const choice = await enggOpenPopup.openOpenPopup();
+
+    if (!choice || choice.action === "cancel") {
+        return false;
+    }
+
+    if (choice.action === "template") {
+        return confirmDiscardUnsavedChanges(
+            () => openTemplate(choice.id)
+        );
+    }
+
+    if (choice.action === "recent") {
+        return confirmDiscardUnsavedChanges(
+            () => openRecentFile(choice.entry)
+        );
+    }
+
+    if (choice.action === "import") {
+        return confirmDiscardUnsavedChanges(
+            () => importDrawingFile()
+        );
+    }
+
+    if (choice.action === "add-template") {
+        /*
+         * ADDING A TEMPLATE DOES NOT REPLACE THE DRAWING.
+         *
+         * The user is copying a file into the template library, not opening
+         * it - the current document stays exactly as it is. So there is
+         * deliberately NO unsaved-changes guard here: asking about unsaved work
+         * would suggest the drawing is about to be replaced, which it is not.
+         */
+        return addTemplateFromFile();
+    }
+
+    if (choice.action === "rename-template") {
+        return renameTemplate(choice.id);
+    }
+
+    return false;
 }
 
 /*
@@ -1204,8 +1907,24 @@ export const FILE_ACTIONS = {
  * user who does not want it is not asked again next time - and, just
  * as importantly, a stale copy of a drawing they have since finished
  * does not reappear as a warning weeks later.
+ *
+ * THE TWO CHOICES ARE NAMED FOR WHAT THEY DO.
+ *
+ * "Recover" and "Discard Recovery" are unambiguous, where a yes/no prompt
+ * leaves the user guessing which button keeps the work. The application's own
+ * dialog is used for the same reason the unsaved-changes prompt uses it: this
+ * is a question about the user's own drawing, and it should look and behave
+ * like the rest of Datum.
+ *
+ * RECOVERED WORK IS UNSAVED WORK.
+ *
+ * The recovery copy exists precisely because a save did not happen, so the
+ * restored document is marked DIRTY. It is deliberately not treated as clean:
+ * a document that claimed to be saved would make the next Open or New discard
+ * the very work the recovery was for. The user can then Save or Save As
+ * normally, which is the only correct way for it to become saved.
  */
-export function offerRecoveryIfAvailable() {
+export async function offerRecoveryIfAvailable() {
     const record =
         enggRecovery.describe();
 
@@ -1220,16 +1939,32 @@ export function offerRecoveryIfAvailable() {
 
     const when =
         record.when
-            ? `\n\nLast edited ${record.when}`
+            ? `Last edited ${record.when}.`
             : "";
 
-    const answer = window.confirm(
-        "EnggDraw found unsaved work from a previous " +
-        `session (${features})${when}.\n\n` +
-        "Recover it?"
+    const choice = await enggUi.choiceDialog(
+        "Datum found unsaved work from a previous session " +
+            `(${features}).\n\n${when}`.trim() +
+            "\n\nRecover it?",
+        {
+            title: "Recovered drawing available",
+            buttons: [
+                { id: "recover", label: "Recover", primary: true },
+                {
+                    id: "discard",
+                    label: "Discard Recovery",
+                    dismiss: true
+                }
+            ]
+        }
     );
 
-    if (!answer) {
+    if (choice !== "recover") {
+        /*
+         * Declining removes the copy, so the same question is not asked on
+         * every visit. Nothing is lost by this beyond the recovery copy itself,
+         * which the user has just said they do not want.
+         */
         enggRecovery.discard();
 
         return false;
@@ -1246,7 +1981,7 @@ export function offerRecoveryIfAvailable() {
         return false;
     }
 
-    return loadDrawing(
+    const loaded = loadDrawing(
         {
             /*
              * The stored copy is already a document body. It is
@@ -1262,6 +1997,26 @@ export function offerRecoveryIfAvailable() {
         },
         stored.fileName || undefined
     );
+
+    if (!loaded) {
+        return false;
+    }
+
+    /*
+     * The recovered document contains work that was never saved, so it is
+     * dirty - and the recovery copy is discarded, because it has now been
+     * delivered into the editor rather than left behind as a second copy that
+     * would be offered again next time.
+     */
+    markDocumentDirty();
+
+    enggRecovery.discard();
+
+    setToolMessage(
+        `Recovered ${documentFile() || "unsaved work"} from the previous session`
+    );
+
+    return true;
 }
 
 /*
@@ -1315,4 +2070,88 @@ export function installDocumentCommands() {
         getRenderedPoints: (objects) =>
             renderedPointsForObjects(objects, 1)
     });
+
+    installWorkProtection();
 }
+
+/*
+ * ========================================================
+ * PROTECTING WORK THAT HAS NOT BEEN SAVED
+ * ========================================================
+ *
+ * The recovery copy already exists: a committed edit schedules a write.
+ * Scheduling on every edit is not by itself enough, though, because it depends
+ * on an edit happening to be the last thing before a failure. Two additions
+ * close that gap:
+ *
+ *   1. A WARNING BEFORE LEAVING. A page reload or a closed tab with unsaved
+ *      work should ask first. The browser's own prompt is the only mechanism a
+ *      page has for this, so it is used - and it is a SECOND line of defence,
+ *      not the first: the recovery copy below is what actually preserves the
+ *      drawing, since a user can always dismiss a prompt.
+ *
+ *   2. A PERIODIC SNAPSHOT. A safety net for the failures a change listener
+ *      cannot see: a tab that is about to be discarded, a long idle stretch, a
+ *      crash that happens with no edit in flight. It is a timer rather than a
+ *      write on every frame, so drawing stays smooth, and it writes only while
+ *      there is something unsaved to protect.
+ */
+function installWorkProtection() {
+    const UNSAVED_MESSAGE =
+        "This drawing has unsaved changes. Save it before leaving?";
+
+    /*
+     * Ask before leaving with unsaved work.
+     *
+     * A page cannot show its own dialog here - the browser shows a generic
+     * one and ignores any message text - so the wording is set for the
+     * browsers that still show it, and no return value is relied on.
+     */
+    window.addEventListener("beforeunload", (event) => {
+        if (!documentIsDirty()) {
+            return undefined;
+        }
+
+        event.preventDefault();
+        event.returnValue = UNSAVED_MESSAGE;
+
+        return UNSAVED_MESSAGE;
+    });
+
+    /*
+     * A snapshot on a timer, in addition to the one each edit schedules.
+     *
+     * Thirty seconds is short enough that very little work is ever at risk and
+     * long enough that serialising a large drawing costs nothing noticeable.
+     */
+    window.setInterval(() => {
+        if (!documentIsDirty() || documentLoading) {
+            return;
+        }
+
+        try {
+            enggRecovery.schedule(
+                serializeDocumentBody(),
+                documentFileName
+            );
+        } catch (error) {
+            /*
+             * A snapshot that fails must not interrupt the session. Reported,
+             * because a recovery copy that is silently never written is exactly
+             * the failure this is here to prevent, and the user would otherwise
+             * only discover it after a crash.
+             */
+            if (typeof console !== "undefined" && console.warn) {
+                console.warn(
+                    "[Datum] A recovery snapshot could not be taken.",
+                    error
+                );
+            }
+        }
+    }, RECOVERY_SNAPSHOT_MS);
+}
+
+/*
+ * How often a recovery snapshot is taken while there is unsaved work.
+ */
+const RECOVERY_SNAPSHOT_MS = 30000;

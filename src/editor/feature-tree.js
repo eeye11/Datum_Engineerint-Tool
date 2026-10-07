@@ -4,6 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggDrawingRenderer from "../rendering/renderer.js";
 import enggPlotEditor from "../ui/editors/plot-editor.js";
 import enggSketchEditor from "../ui/editors/sketch-editor.js";
 import { featureIcons, toolIcons } from "./tools.js";
@@ -465,24 +466,25 @@ export function renderLoadBuildPanel(
     });
 
     /*
-     * THE ONE ACTION STILL OUTSTANDING, once the region exists. The vector
-     * step is the only step with anything left to say, and it says it in
-     * words rather than in a field - because the magnitude and the direction
-     * are one gesture on the canvas, not two numbers in a panel.
+     * ========================================================
+     * THE PANEL SHOWS PROPERTIES, NOT INSTRUCTIONS
+     * ========================================================
+     *
+     * What is shown here is what the tool HAS so far - the body it acts on
+     * and the region traced - and nothing else. The one action still
+     * outstanding is NOT written into this panel.
+     *
+     * The Features tab is a properties interface: it lists what a feature
+     * is, and offers controls to change it. A sentence telling the student
+     * what to do next is a different kind of thing, and it has exactly one
+     * home - the bottom bar, which every tool already drives through
+     * `setToolMessage` as the construction advances. Putting it here as well
+     * meant two instruction areas that could disagree about the step, and one
+     * of them sitting in a place that is meant to describe a feature.
+     *
+     * So the hint that used to sit under a "LOAD" heading is gone, and the
+     * current step is reported only in the bottom bar.
      */
-    if (
-        interaction.phase ===
-            "distributed-load-vector"
-    ) {
-        rows.push(section("LOAD"));
-
-        rows.push(`
-            <div class="drawing-property-hint">
-                Move the pointer to set the magnitude and direction together,
-                then click.
-            </div>
-        `);
-    }
 
     drawingProperties.innerHTML =
         finaliseRows(rows);
@@ -845,6 +847,28 @@ function openSketchEditorFor(object, geometry) {
         } - Sketch`,
         range: geometry.localRange,
         elements: geometry.sketchElements || [],
+
+        /*
+         * THE ORDINATE'S UNIT, from the diagram's own axis definition - kN
+         * for a shear or axial diagram, kN·m for a bending moment. The Y-value
+         * popup states the number in it, so the student sees "250 kN" rather
+         * than a bare 250.
+         */
+        yUnit:
+            enggDrawingRenderer?.ANALYSIS_DIAGRAM_AXES?.[
+                geometry.diagramType
+            ]?.unit || "",
+
+        /*
+         * THE BODY'S ELEMENT STATIONS, for the graph's ticks.
+         *
+         * These are the same live references the diagram already derives from
+         * its source body on every pass, so the sketch's ticks are the real
+         * x-locations of the forces, supports, loads and connections on the
+         * member - and they follow the body, rather than being a second list
+         * the sketch would have to keep in step.
+         */
+        stations: geometry.referencePositions || [],
         onPreview: (elements) => {
             geometry.sketchElements = elements;
 

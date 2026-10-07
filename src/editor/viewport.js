@@ -482,6 +482,25 @@ function geometryRenderedBounds(
             );
 
     if (object.type === "force") {
+        /**
+         * THE DRAWN ENDPOINT, NOT THE STORED ONE.
+         *
+         * A force's stored `end` is its engineering vector; the arrow is
+         * drawn at the shared Visual Force Scale, which is a different
+         * endpoint once the scale leaves 1. The fit bounds, the selection
+         * frame and the hit test all have to measure what is DRAWN, or a
+         * scaled arrow spills outside the region the student sees it in.
+         */
+        const drawn =
+            enggLoadProfile &&
+            typeof enggLoadProfile.forceGeometry === "function"
+                ? enggLoadProfile.forceGeometry(drawingState, geometry)
+                : null;
+
+        if (drawn) {
+            return [drawn.start, drawn.end];
+        }
+
         const start =
             geometry.start ||
             geometry.position;

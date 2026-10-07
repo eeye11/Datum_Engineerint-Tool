@@ -233,6 +233,19 @@
                         <button type="button" data-global-tool="trim" title="Trim geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M5 15L15 5M4 4l3 1-1 3"/></svg>Trim</button>
                         <button type="button" data-global-tool="extend" title="Extend geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h9M9 7l3 3-3 3M15 4v12"/></svg>Extend</button>
                     </div>
+                    <div class="drawing-app-toolbar-group" aria-label="Draw order">
+                        <span class="drawing-app-toolbar-group-label">Order</span>
+                        <!--
+                          Draw order changes what is drawn ON TOP of what. It is
+                          purely visual: nothing about selection, hit testing or
+                          the drawing's own geometry is affected, so a feature
+                          sent to the back can still be picked by clicking it.
+                        -->
+                        <button type="button" data-draw-order="front" title="Bring the selected features to the front"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l6 3-6 3-6-3 6-3zM4 11l6 3 6-3"/></svg>Front</button>
+                        <button type="button" data-draw-order="forward" title="Bring the selected features forward one step"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 6l5 3-5 3-5-3 5-3zM10 13l3 2-3 2-3-2 3-2z"/></svg>Forward</button>
+                        <button type="button" data-draw-order="backward" title="Send the selected features backward one step"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l3 2-3 2-3-2 3-2zM10 10l5 3-5 3-5-3 5-3z"/></svg>Backward</button>
+                        <button type="button" data-draw-order="back" title="Send the selected features to the back"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 14l6-3-6-3-6 3 6 3zM4 6l6-3 6 3"/></svg>Back</button>
+                    </div>
                     <div class="drawing-app-toolbar-group" aria-label="View">
                         <span class="drawing-app-toolbar-group-label">View</span>
                         <button type="button" data-global-tool="pan" title="Pan the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Pan</button>

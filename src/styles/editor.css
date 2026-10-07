@@ -3,10 +3,24 @@
     margin-top: 0;
 }
 
-.tab[data-tab="drawing"] {
+/*
+ * THE TOP-LEVEL TABS ARE THE SAME SIZE, AND THAT SIZE IS THE SMALLER ONE.
+ *
+ * "Written Solution" and "Engineering Drawing" are the two halves of the same
+ * application, side by side in the same bar, so neither may be set larger than
+ * the other. The Engineering Drawing tab was already the smaller of the two,
+ * and it is the one the workspace was designed around - so the WRITTEN
+ * SOLUTION tab is brought down to match it, not the other way round.
+ *
+ * The drawing tab's own size is stated here explicitly rather than inherited
+ * from `.tab`, because the shared bar's default is larger and this tab is the
+ * reference the other one is matched to.
+ */
+.tab[data-tab="drawing"],
+.tab[data-tab="writing"] {
     font-size: 13px;
     line-height: 1.1;
-    padding: 7px 18px;
+    padding: 10px 20px;
 }
 
 .drawing-workspace {
@@ -1656,6 +1670,7 @@
 }
 
 .drawing-property-grid input[type="number"],
+.drawing-property-grid input[type="text"],
 .drawing-property-grid select {
     background: #fff;
     border: 1px solid #cbd5d9;
@@ -1674,6 +1689,25 @@
     font: inherit;
     font-size: 9px;
     padding: 2px 3px;
+}
+
+/*
+ * A TEXT FIELD IS A PROPERTY VALUE, LIKE A NUMBER.
+ *
+ * This rule exists because it did not, and the consequence was visible: the
+ * numeric inputs and the dropdowns were given the panel's 9px value type, while
+ * a `type="text"` input fell through to the BROWSER's default and came out at
+ * roughly 13-16px. Feature Name and Label - the two text fields at the top of
+ * every panel - therefore read like headings sitting above their own values,
+ * which is exactly what they are not.
+ *
+ * Text is aligned to the LEFT where a number is aligned to the right: a
+ * magnitude reads best under its unit, but a name is read from its first
+ * letter, and right-aligning "Beam 1" would leave a ragged left edge down the
+ * column of properties.
+ */
+.drawing-property-grid input[type="text"] {
+    text-align: left;
 }
 
 /*
@@ -2985,6 +3019,491 @@
 
 /*
  * =========================================================
+ * A CONTEXT MENU
+ * =========================================================
+ *
+ * A small menu anchored to a control, with NO backdrop - deliberately. A menu
+ * belongs to the thing it is anchored to, so whatever surface that thing lives
+ * on stays visible and usable behind it. That is the difference between this
+ * and a dialog, and it is why clicking a three-dot button no longer closes the
+ * Open launcher.
+ */
+.engg-context-menu {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    min-width: 168px;
+    padding: 4px;
+    z-index: 200;
+}
+
+.engg-context-menu-item {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    padding: 7px 10px;
+    text-align: left;
+}
+
+.engg-context-menu-item:hover {
+    background: var(--datum-panel);
+}
+
+.engg-context-menu-item-danger {
+    color: var(--datum-error);
+}
+
+.engg-context-menu-item-danger:hover {
+    background: #fdf2f4;
+}
+
+/*
+ * =========================================================
+ * THE OPEN POPUP - A DOCUMENT LAUNCHER
+ * =========================================================
+ *
+ * File -> Open shows this instead of the operating system's file panel. Three
+ * sections, in the order a person usually wants them: a starting template, a
+ * drawing they were working on, or a file from the disk.
+ *
+ * It is wider than a question dialog because it holds cards and a list, and
+ * taller so the sections are comfortable without scrolling on a normal screen.
+ */
+.engg-dialog-lg {
+    width: min(620px, calc(100vw - 32px));
+}
+
+.datum-open-body,
+.engg-dialog-body {
+    max-height: min(60vh, 560px);
+    overflow-y: auto;
+}
+
+.datum-open-section {
+    margin-bottom: 18px;
+}
+
+.datum-open-section:last-child {
+    margin-bottom: 4px;
+}
+
+.datum-open-section-title {
+    color: var(--datum-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+}
+
+/* Templates: compact cards, three to a row on a normal window. */
+.datum-open-templates {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.datum-open-template {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 62px;
+    padding: 10px 12px;
+    text-align: left;
+}
+
+.datum-open-template:hover {
+    background: var(--datum-green-wash);
+    border-color: var(--datum-green-line);
+}
+
+.datum-open-template:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+.datum-open-template-label {
+    color: var(--datum-ink);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.datum-open-template-note {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    line-height: 1.35;
+}
+
+/* Recents: a compact vertical list, each row a whole-file button. */
+.datum-open-recents {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/*
+ * A RECENT ITEM AND ITS MENU BUTTON.
+ *
+ * The row is the Open action and takes the width; the menu button is a small
+ * fixed-size control BESIDE it, not inside it. That is what stops the three
+ * dots reading as the right-hand end of one long button.
+ */
+.datum-open-recent-wrap {
+    align-items: center;
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+}
+
+.datum-open-recent-wrap .datum-open-recent {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.datum-open-recent-menu,
+.datum-open-template-menu {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--datum-muted);
+    cursor: pointer;
+    display: flex;
+    flex: 0 0 auto;
+    font-size: 15px;
+    height: 24px;
+    justify-content: center;
+    line-height: 1;
+    width: 24px;
+}
+
+.datum-open-recent-menu:hover,
+.datum-open-template-menu:hover {
+    background: var(--datum-panel);
+    border-color: var(--datum-border);
+    color: var(--datum-ink);
+}
+
+.datum-open-recent-menu:focus-visible,
+.datum-open-template-menu:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+/*
+ * In the GRID the card is a column, so the menu button sits at the card's top
+ * right - clear of the filename and of the thumbnail - rather than beside the
+ * row as it does in the list.
+ */
+.datum-open-recents-grid .datum-open-recent-wrap {
+    align-items: stretch;
+    position: relative;
+}
+
+.datum-open-recents-grid .datum-open-recent-menu {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+}
+
+.datum-open-recents-grid .datum-open-recent {
+    padding-right: 30px;
+}
+
+.datum-open-recent {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    padding: 7px 8px;
+    text-align: left;
+    width: 100%;
+}
+
+.datum-open-recent:hover {
+    background: var(--datum-panel);
+    border-color: var(--datum-border);
+}
+
+.datum-open-recent:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+.datum-open-recent-missing {
+    opacity: 0.75;
+}
+
+.datum-open-thumb {
+    align-items: center;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    border-radius: 4px;
+    display: flex;
+    flex: 0 0 auto;
+    height: 34px;
+    justify-content: center;
+    width: 46px;
+}
+
+.datum-open-thumb-mark {
+    color: var(--datum-green-line);
+    font-size: 16px;
+}
+
+.datum-open-recent-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.datum-open-recent-name {
+    color: var(--datum-ink);
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.datum-open-recent-file {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.datum-open-recent-when {
+    color: var(--datum-subtle);
+    font-size: 11px;
+}
+
+.datum-open-recent-remove {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-size: 11.5px;
+    margin-left: auto;
+    padding: 4px 8px;
+    text-decoration: underline;
+}
+
+.datum-open-recent-remove:hover {
+    color: var(--datum-error);
+}
+
+.datum-open-empty {
+    color: var(--datum-muted);
+    font-size: 12.5px;
+    margin: 0;
+}
+
+/*
+ * Template cards.
+ *
+ * A card holds a preview when one could be made, the name the user gave it, and
+ * a small menu. The empty state above is replaced by cards the moment the user
+ * adds the first template.
+ */
+.datum-open-template-card {
+    position: relative;
+}
+
+.datum-open-template-card .datum-open-template {
+    min-height: 0;
+    width: 100%;
+}
+
+.datum-open-template-preview {
+    align-items: center;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    border-radius: 4px;
+    display: flex;
+    height: 54px;
+    justify-content: center;
+    margin-bottom: 7px;
+    overflow: hidden;
+    width: 100%;
+}
+
+/*
+ * The preview is an SVG of the drawing, scaled to fit the box. Pointers are
+ * disabled so the card underneath owns every click - the picture is a label,
+ * not a control.
+ */
+.datum-open-template-preview svg {
+    height: 100%;
+    pointer-events: none;
+    width: 100%;
+}
+
+.datum-open-template-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.datum-open-template-menu {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--datum-muted);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 6px;
+    position: absolute;
+    right: 4px;
+    top: 4px;
+}
+
+.datum-open-template-menu:hover {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--datum-ink);
+}
+
+.datum-open-add-template {
+    background: transparent;
+    border: 1px dashed var(--datum-border);
+    border-radius: 6px;
+    color: var(--datum-green);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-top: 8px;
+    padding: 7px 12px;
+}
+
+.datum-open-add-template:hover {
+    background: var(--datum-green-wash);
+    border-color: var(--datum-green-line);
+}
+
+.datum-open-add-template:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: 1px;
+}
+
+/*
+ * The Recent heading and its view control.
+ *
+ * The switch sits beside the heading rather than in the footer, so it reads as
+ * part of the Recent section and not as an action on the whole popup.
+ */
+.datum-open-section-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.datum-open-section-head .datum-open-section-title {
+    margin: 0;
+}
+
+.datum-open-view-switch {
+    display: flex;
+    gap: 3px;
+}
+
+.datum-open-view-button {
+    background: transparent;
+    border: 1px solid var(--datum-border);
+    border-radius: 4px;
+    color: var(--datum-muted);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 3px 7px;
+}
+
+.datum-open-view-button:hover {
+    background: var(--datum-panel);
+    color: var(--datum-ink);
+}
+
+.datum-open-view-button.active {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green-line);
+    color: var(--datum-green-ink);
+}
+
+/*
+ * The Recent thumbnail grid.
+ *
+ * A drawing is recognised by what it looks like, so the grid is the default
+ * presentation: a picture first, the name underneath. The list view remains for
+ * anyone who works by file name.
+ */
+.datum-open-recents-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+}
+
+.datum-open-recents-grid .datum-open-recent {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.datum-open-recents-grid .datum-open-thumb {
+    height: 72px;
+    width: 100%;
+}
+
+/*
+ * A thumbnail shows the drawing itself, scaled to fit its box. Pointers are
+ * disabled so the row underneath owns every click - the picture is a label,
+ * not a control.
+ */
+.datum-open-thumb svg {
+    height: 100%;
+    pointer-events: none;
+    width: 100%;
+}
+
+.datum-open-recents-grid .datum-open-recent-when {
+    margin-top: 2px;
+}
+
+/*
+ * THE FEATURE LOCK, AS A COMPACT BOOLEAN PROPERTY.
+ *
+ * `Locked` sits with the POSITION rows, and its checkbox is placed directly
+ * beside the label rather than inside the wide value column - a small checkbox
+ * centred in a full-width field reads as a value that is missing, which is
+ * exactly how it looked when it sat under the feature name.
+ */
+.drawing-property-grid-lock .drawing-property-lock {
+    align-items: center;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.drawing-property-grid-lock .drawing-property-fix {
+    margin: 0;
+}
+
+/*
+ * =========================================================
    LIVE LINE MEASUREMENT
 ========================================================= */
 
@@ -3884,6 +4403,67 @@
     border-radius: 2px;
 }
 
+.sketch-editor .plot-editor-body {
+    flex-direction: column;
+}
+
+/*
+ * THE SKETCH WORKSPACE IS WIDER THAN THE PLOT EDITOR.
+ *
+ * A plot is read as a list of equations, so its dialog can be narrower. A
+ * sketch is read as a SHAPE, and the graph needs the room: the sketch gets a
+ * wider dialog and a taller one, so the graph area above the controls is
+ * genuinely larger rather than the same box with the parts rearranged.
+ */
+.sketch-editor .plot-editor {
+    width: 1200px;
+    height: 780px;
+}
+
+/*
+ * THE GRAPH TAKES THE WHOLE WIDTH, AND MOST OF THE HEIGHT.
+ *
+ * It is the part of the workspace the student actually reads, so it is given
+ * a large, wide area rather than a column beside the controls. The lower row
+ * holds the tools and the selected element's properties.
+ */
+.sketch-editor-graph-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10px 14px 6px;
+    display: flex;
+}
+
+.sketch-editor-graph-area .sketch-editor-graph {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+}
+
+/*
+ * THE LOWER ROW: tools on one side, the selected element on the other.
+ */
+.sketch-editor-lower {
+    display: flex;
+    flex: 0 0 auto;
+    max-height: 42%;
+    min-height: 0;
+    border-top: 1px solid #dfe5e8;
+    overflow: hidden;
+}
+
+.sketch-editor-lower .plot-editor-left {
+    width: 260px;
+    flex: 0 0 260px;
+    border-right: 1px solid #dfe5e8;
+    overflow-y: auto;
+}
+
+.sketch-editor-lower .plot-editor-right {
+    flex: 1;
+    overflow-y: auto;
+}
+
 .sketch-editor-graph {
     width: 100%;
     border: 1px solid #dcdcdc;
@@ -3894,6 +4474,19 @@
 .sketch-editor-axis {
     stroke: #9aa7ad;
     stroke-width: 1;
+}
+
+/*
+ * A BODY-ELEMENT TICK.
+ *
+ * A faint full-height vertical line at a station where something happens on
+ * the parent body - a force, a support, a load boundary. Quiet enough to sit
+ * behind the diagram, present enough to aim a new element at.
+ */
+.sketch-editor-tick {
+    stroke: #c2ccd1;
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
 }
 
 .sketch-editor-stroke {
@@ -3923,6 +4516,17 @@
 
 .sketch-editor-cursor-point {
     fill: var(--datum-green);
+}
+
+/*
+ * THE BEND HANDLE of a three-point curve. Shown only while the curve is
+ * selected, because the Bend is a control point rather than part of the
+ * finished diagram.
+ */
+.sketch-editor-bend-handle {
+    fill: #ffffff;
+    stroke: var(--datum-green);
+    stroke-width: 1.5;
 }
 
 .sketch-editor-label {

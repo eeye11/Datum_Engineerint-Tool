@@ -79,12 +79,21 @@ check(
   "the direction does not read the inference",
 );
 
+/*
+ * A VARYING LOAD HAS A DIRECTION WHENEVER THE SPAN HAS A LENGTH.
+ *
+ * The perpendicular is derived from the span's own axis, so a span with no
+ * length is the one case with no direction to read - and that is what the
+ * guard on the axis length protects. A cursor sitting on a profile point no
+ * longer removes the direction, because the direction comes from the span
+ * rather than from a cursor vector.
+ */
 check(
-  "a zero-length vector still reports no direction",
-  /Math\.hypot\(dx, dy\) < 1e-6[\s\S]{0,120}return null/.test(
+  "a span with no length reports no direction",
+  /length < 1e-9[\s\S]{0,120}return null/.test(
     loadToolSource,
   ),
-  "a cursor on the reference could produce a direction",
+  "a zero-length span could produce a direction",
 );
 
 /*
