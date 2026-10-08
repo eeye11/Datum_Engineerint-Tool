@@ -126,6 +126,12 @@ const QUANTITIES = {
 };
 
 function finite(value) {
+  /* `Number(null)` is 0, which is a finite number — but null is an absent
+   * value, not a zero, and must not be silently converted. */
+  if (value === null) {
+    return null;
+  }
+
   const number = Number(value);
 
   return Number.isFinite(number) ? number : null;
@@ -263,6 +269,186 @@ function isMeasurable(value) {
   return finite(value) !== null;
 }
 
+/*
+ * ============================================================
+ * THE ONE UNIT TABLE, AND CONVERSION
+ * ============================================================
+
+/*
+ * ============================================================
+ * THE ONE UNIT TABLE, AND CONVERSION
+ * ============================================================
+ *
+ * Every quantity's units, each defined against ONE base unit so converting
+ * between any two of them is a single division and cannot accumulate the way
+ * repeated multiplication would.
+ *
+ * WHY THIS EXISTS RATHER THAN A LIST PER FEATURE.
+ *
+ * There were already TWO moment unit lists in the application - `["N·m",
+ * "kN·m"]` on the load profile and `["N·m", "kN·m", "N·mm", "lb·ft"]` beside
+ * the moment's value popup - so the units a moment could be stated in depended
+ * on which part of the code was asking. A force's list and a load's were a
+ * third and a fourth. Here there is ONE list per quantity, and a feature asks
+ * for the quantity it is stating.
+ *
+ * `base` names the unit every factor is relative to, so a conversion between
+ * two units is `value * from.factor / to.factor` and never a chain.
+ *
+ * `customary` marks the units that are not decimal multiples of the base -
+ * pounds-force, inches, feet, psi. They are in the same table and convert the
+ * same way; the flag only records that their factors are exact irrational
+ * relationships rather than powers of ten, which is worth knowing when reading
+ * a conversion back.
+ */
+const QUANTITY_UNITS = {
+  length: {
+    base: "mm",
+    units: {
+      mm: { label: "mm", factor: 1 },
+      cm: { label: "cm", factor: 10 },
+      m: { label: "m", factor: 1000 },
+      in: { label: "in", factor: 25.4, customary: true },
+      ft: { label: "ft", factor: 304.8, customary: true }
+    }
+  },
+
+  force: {
+    base: "N",
+    units: {
+      N: { label: "N", factor: 1 },
+      kN: { label: "kN", factor: 1000 },
+      "lbf": { label: "lbf", factor: 4.4482216152605, customary: true }
+    }
+  },
+
+  moment: {
+    base: "N·m",
+    units: {
+      "N·m": { label: "N·m", factor: 1 },
+      "kN·m": { label: "kN·m", factor: 1000 },
+      "N·mm": { label: "N·mm", factor: 0.001 },
+      "lbf·ft": {
+        label: "lbf·ft",
+        factor: 4.4482216152605 * 0.3048,
+        customary: true
+      }
+    }
+  },
+
+  distributedLoad: {
+    base: "N/m",
+    units: {
+      "N/m": { label: "N/m", factor: 1 },
+      "kN/m": { label: "kN/m", factor: 1000 },
+      "N/mm": { label: "N/mm", factor: 1000 },
+      "lbf/ft": {
+        label: "lbf/ft",
+        factor: 4.4482216152605 / 0.3048,
+        customary: true
+      }
+    }
+  },
+
+  area: {
+    base: "mm²",
+    units: {
+      "mm²": { label: "mm²", factor: 1 },
+      "cm²": { label: "cm²", factor: 100 },
+      "m²": { label: "m²", factor: 1e6 },
+      "in²": { label: "in²", factor: 645.16, customary: true }
+    }
+  },
+
+  pressure: {
+    base: "Pa",
+    units: {
+      Pa: { label: "Pa", factor: 1 },
+      kPa: { label: "kPa", factor: 1000 },
+      MPa: { label: "MPa", factor: 1e6 },
+      psi: { label: "psi", factor: 6894.757293168, customary: true }
+    }
+  },
+
+  /*
+   * AN ANGLE IS NOT A LENGTH AND HAS NO CONVERSION.
+   *
+   * Degrees and radians name the same angle at different scale, but a drawing
+   * states an angle in degrees and nothing in the model is stored in radians,
+   * so offering a choice would add a conversion nobody asked for. It is listed
+   * with its one unit so a caller asking "what units does an angle have" gets
+   * an answer rather than null.
+   */
+  angle: {
+    base: "°",
+    units: {
+      "°": { label: "°", factor: 1 }
+    }
+  }
+};
+
+/*
+ * The units a quantity may be stated in, in the order they should be offered.
+ *
+ * Insertion order, so the base unit comes first and a panel's default is the
+ * one the drawing is already using. Returns an empty list for a quantity this
+ * module has no entry for, so a caller cannot be handed another quantity's
+ * units by accident.
+ */
+function unitsFor(quantityType) {
+  const quantity = QUANTITY_UNITS[quantityType];
+
+  return quantity ? Object.keys(quantity.units) : [];
+}
+
+function isUnitFor(quantityType, unit) {
+  return Boolean(QUANTITY_UNITS[quantityType]?.units?.[unit]);
+}
+
+/*
+ * HOW MANY BASE UNITS ONE OF `unit` IS WORTH.
+ *
+ * Null for a unit the quantity does not have, so a conversion is refused
+ * rather than defaulted to 1 - a silent factor of one is how "250 N" becomes
+ * "250 kN".
+ */
+function conversionFactor(quantityType, unit) {
+  return QUANTITY_UNITS[quantityType]?.units?.[unit]?.factor ?? null;
+}
+
+/*
+ * A VALUE CONVERTED FROM ONE UNIT TO ANOTHER.
+ *
+ *     convertValue(250, "force", "N", "kN")  ->  0.25
+ *     convertValue(1000, "length", "mm", "m") ->  1
+ *
+ * A CONVERSION, NOT A RELABEL. The physical quantity is what does not move:
+ * 250 N and 0.25 kN are the same push, and this is the one function that says
+ * so. It returns the value UNCHANGED when either unit is unknown, because the
+ * caller has asked a question this module cannot answer and inventing a factor
+ * would corrupt the number rather than report the problem.
+ */
+function convertValue(value, quantityType, fromUnit, toUnit) {
+  const numeric = finite(value);
+
+  if (numeric === null) {
+    return value;
+  }
+
+  if (fromUnit === toUnit) {
+    return numeric;
+  }
+
+  const from = conversionFactor(quantityType, fromUnit);
+  const to = conversionFactor(quantityType, toUnit);
+
+  if (from === null || to === null) {
+    return numeric;
+  }
+
+  return (numeric * from) / to;
+}
+
 const enggQuantities = {
   LENGTH_UNITS,
   DEFAULT_LENGTH_UNIT,
@@ -276,6 +462,12 @@ const enggQuantities = {
   formatMagnitude,
   formatLabeled,
   isMeasurable,
+
+  QUANTITY_UNITS,
+  unitsFor,
+  conversionFactor,
+  convertValue,
+  isUnitFor,
 };
 
 export default enggQuantities;
