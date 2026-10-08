@@ -3,6 +3,7 @@
  */
 
 import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
+import enggQuantities from "../core/units/quantities.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
@@ -426,18 +427,34 @@ export function featurePropertyMarkup(object) {
      *
      * An EMPTY string is passed through unchanged: for an axis label that is a
      * deliberate state ("no label here"), not a missing value.
+     *
+     * BUILT FROM THE SHARED ROW, not by hand. It used to write its own
+     * `drawing-property-grid` markup - four divs and spans assembled here -
+     * which is exactly the fifteenth near-copy the shared vocabulary exists to
+     * replace: it escaped with its own hand-rolled `&`/`"`/`<` replacement
+     * instead of the shared `escape`, and its row would not follow a change to
+     * the shared grid's shape.
+     *
+     * The FIELD is unchanged - same `data-property` hook, same value, same
+     * empty-when-absent rule - so nothing that reads this row can tell the
+     * difference except that it is now consistent with every other one.
      */
-    const textField = (label, key, value) => `
-        <div class="drawing-property-grid drawing-property-grid-value">
-            <span class="drawing-property-grid-label">${label}</span>
-            <input type="text"
-                data-property="${key}"
-                aria-label="${label}"
-                value="${String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">
-            <span class="drawing-property-unit"></span>
-            <span></span>
-        </div>
-    `;
+    const textField = (label, key, value) => {
+        if (!panels || !panels.row) {
+            return "";
+        }
+
+        return (
+            panels.row({
+                label,
+                control: `<input type="text"
+                    data-property="${panels.text(key) ?? ""}"
+                    class="drawing-property-input"
+                    aria-label="${panels.text(label) ?? ""}"
+                    value="${panels.text(value) ?? ""}">`,
+            }) || ""
+        );
+    };
 
     /*
      * THE FEATURE LOCK, AS A COMPACT BOOLEAN PROPERTY.
@@ -595,17 +612,29 @@ export function featurePropertyMarkup(object) {
     /*
      * A MAGNITUDE WITH A CHANGEABLE UNIT.
      *
-     *   [ 5.0 ] [ kN/m \u25be ]
+     *   [ 0.25 ] [ kN \u25be ]
      *
      * The same field as `scalar`, except that the unit cell is a SELECT rather
      * than text - which is what makes the unit editable directly from the
-     * feature's own panel. It is used by every feature whose magnitude carries
-     * a unit (a load, a Point Force, a Moment), so the control is the same one
-     * in each and cannot drift between them.
+     * feature's own panel. Every feature whose magnitude carries a unit uses
+     * this ONE control, so it cannot drift between them.
      *
-     * CHANGING THE UNIT DOES NOT CHANGE THE QUANTITY. The stored number is
-     * relabelled, not rescaled, exactly as the load already behaves - so the
-     * magnitude on the sheet and the magnitude here stay one value.
+     * THE STORED NUMBER IS CONVERTED FOR DISPLAY, NOT JUST RELABELLED.
+     *
+     * A feature stores its magnitude in the quantity's BASE unit - N for a
+     * force, N\u00b7m for a moment - and this converts that into whichever unit
+     * the student has chosen to read it in. So a 250 N force read in kN shows
+     * 0.25, and the push has not changed.
+     *
+     * IT USED TO RELABEL. The stored number was printed unchanged beside
+     * whatever unit was picked, so switching a 250 N force to kN showed
+     * "250 kN" - a thousand times the load. That is the defect this converts.
+     *
+     * `quantityType` is what makes the conversion correct rather than guessed:
+     * it names the family - force, moment, distributedLoad - and the shared unit
+     * table refuses a conversion between families. A caller that does not name a
+     * family gets the number unchanged, because there is nothing honest to
+     * convert it with.
      */
     const quantityWithUnit = (
         label,
@@ -614,9 +643,29 @@ export function featurePropertyMarkup(object) {
         unitProperty,
         units,
         currentUnit,
-        editable = true
+        editable = true,
+        quantityType = null
     ) => {
         const isUnknown = showKnown && !known(key);
+
+        /*
+         * BASE -> DISPLAY. The stored value is in the base unit; the student
+         * reads it in `currentUnit`. `convertValue` returns the value unchanged
+         * when either unit is unknown, so a feature with no quantity type shows
+         * its number as before rather than through a guessed factor.
+         */
+        const baseUnit =
+            enggQuantities?.QUANTITY_UNITS?.[quantityType]?.base;
+
+        const shown =
+            baseUnit && currentUnit
+                ? enggQuantities.convertValue(
+                      value,
+                      quantityType,
+                      baseUnit,
+                      currentUnit
+                  )
+                : value;
 
         const options = units
             .map(
@@ -643,7 +692,7 @@ export function featurePropertyMarkup(object) {
                                     ? "disabled"
                                     : ""
                             }
-                            value="${number(value)}">`
+                            value="${number(shown)}">`
                 }
                 <span class="drawing-property-unit">
                     <select data-property="${unitProperty}" aria-label="${label} unit">${options}</select>${
@@ -701,7 +750,7 @@ export function featurePropertyMarkup(object) {
 
         const shown = converts ? mmOf(value).value : value;
 
-        let field = panels.scalar({
+        const field = panels.scalar({
             label,
             key,
             value: shown,
@@ -1008,6 +1057,23 @@ export function featurePropertyMarkup(object) {
              */
             "variable-dimension": "Variable Dimension",
             dimension: "Dimension",
+
+            /*
+             * THE ANNOTATE FEATURES, NAMED BY THEIR KIND.
+             *
+             * They are one TYPE - `annotate` - with an `annotateKind` saying
+             * which of the eight they are, so the type alone titled every one
+             * of them "annotate" in the panel. A Note, a Leader and a Table
+             * are different things to a student, and the panel's first line is
+             * where that is said.
+             *
+             * The kind's own label comes from the annotation model, which is
+             * the one place that names these, so this cannot drift from the
+             * tool the student picked.
+             */
+            annotate:
+                enggAnnotate?.ANNOTATE_KINDS?.[object.annotateKind]?.label ||
+                "Annotation",
         }[object.type];
 
     const typeLabel = displayLabel || object.type;
@@ -1470,7 +1536,9 @@ export function featurePropertyMarkup(object) {
                     vector.magnitude,
                     "forceUnit",
                     enggLoadProfile.FORCE_UNITS,
-                    forceUnitValue
+                    forceUnitValue,
+                    true,
+                    "force"
                 )
             );
 
@@ -1568,7 +1636,9 @@ export function featurePropertyMarkup(object) {
                 Number(geometry.magnitude) || 0,
                 "momentUnit",
                 enggLoadProfile.MOMENT_UNITS,
-                enggLoadProfile.momentUnit(geometry)
+                enggLoadProfile.momentUnit(geometry),
+                true,
+                "moment"
             )
         );
 
