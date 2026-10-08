@@ -86,7 +86,6 @@
     }
 
     /*
-     * ========================================================
      * A FORCE'S MAGNITUDE IS STATED IN kN OR N
      * ========================================================
      *
@@ -94,17 +93,23 @@
      * decides the unit, and the unit is recorded ON THE FEATURE so the drawing
      * and the Features panel state the value the same way.
      *
-     * kN and N are the same family of quantity - a force - and the student
-     * chooses which to read it in. As with a load, switching the unit RELABELS
-     * the number rather than reinterpreting it, so a force entered as "250 N"
-     * is not silently turned into 0.25 kN by the act of changing the label.
+     * kN AND N ARE THE SAME PHYSICAL FAMILY, and switching between them is a
+     * CONVERSION. The stored magnitude is held in N - the base unit - and the
+     * unit beside it says how it is written, so `250 N` read in kN is `0.25 kN`
+     * and the push has not changed.
+     *
+     * IT USED TO RELABEL INSTEAD, and the difference is a wrong drawing: a
+     * force entered as 250 N and switched to kN showed "250 kN" - a thousand
+     * times the load the student typed. The stored number stays authoritative
+     * in N, which is what makes the conversion exact and one-way rather than a
+     * number that drifts every time the unit is toggled.
      */
     const DEFAULT_FORCE_UNIT = "N";
 
-    const FORCE_UNITS = ["N", "kN"];
+    const FORCE_UNITS = ["N", "kN", "lbf"];
 
     function isForceUnit(value) {
-        return value === "N" || value === "kN";
+        return FORCE_UNITS.includes(value);
     }
 
     function forceUnit(geometry) {
@@ -115,6 +120,17 @@
             : DEFAULT_FORCE_UNIT;
     }
 
+    /*
+     * `geometry.magnitude` IS ALWAYS IN N.
+     *
+     * That is the invariant the conversion rests on: the number stored is in
+     * the base unit, and the unit field only says how to WRITE it. So there is
+     * no conversion to do here at all - changing the unit changes the label,
+     * and the magnitude stays the force it always was.
+     *
+     * The panel reads the magnitude through `forceUnit` and converts for
+     * DISPLAY, which is where the arithmetic belongs.
+     */
     function setForceUnit(geometry, unit) {
         if (!geometry) {
             return DEFAULT_FORCE_UNIT;

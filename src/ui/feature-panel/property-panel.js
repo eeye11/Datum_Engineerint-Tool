@@ -452,6 +452,67 @@ const toggle = ({
 };
 
 /*
+ * ====================================================
+ * THE UNIT SELECTOR, DECIDED ONCE
+ * ====================================================
+ *
+ * A unit-bearing quantity - a force, a moment, a distributed load, a length -
+ * shows its unit as a SELECT beside the number, so the student can read the
+ * unit AND change it without leaving the Features panel.
+ *
+ * It is built here, once, and every panel uses this one control. That is what
+ * makes the unit selector the same width, the same type size, the same
+ * dropdown and the same keyboard behaviour on a Point Force, a Moment, a
+ * Distributed Load and a Dimension: a rule followed by hand is a rule that
+ * drifts, and the drift is invisible in any single panel.
+ *
+ * THE WIDTH IS A FLOOR, NOT A FIT. The shared `drawing-property-unit-select`
+ * class reserves enough room for the longest engineering unit the tables
+ * contain - `kg\u00b7m/s\u00b2`, `kN\u00b7m`, `lbf\u00b7ft` - so a selected unit is
+ * never clipped, never shows an ellipsis and never has its own dropdown arrow
+ * sitting over the text. The font is the panel's normal size; the field is
+ * widened rather than the type shrunk, because a unit a student cannot read is
+ * a unit they cannot trust.
+ *
+ * The value beside it is a separate control: the CALLER decides whether that
+ * is an editable input with a unit, or a derived reading. This component owns
+ * only the unit half of the pair.
+ */
+const unitSelect = ({
+  property,
+  units,
+  current,
+  label = "Unit",
+  disabled = false,
+  classes = "",
+}) => {
+  const choices = (units || [])
+    .map(unit => {
+      const optionText = text(unit);
+
+      if (optionText === null) {
+        return "";
+      }
+
+      const selected = String(unit) === String(current);
+
+      return `<option value="${escape(unit)}"${selected ? " selected" : ""}>${escape(optionText)}</option>`;
+    })
+    .join("");
+
+  if (!choices) {
+    return "";
+  }
+
+  return `<select
+        class="drawing-property-unit-select${classes ? ` ${classes}` : ""}"
+        data-property="${escape(property)}"
+        aria-label="${escape(label)}"
+        title="${escape(label)}"
+        ${disabled ? "disabled" : ""}>${choices}</select>`;
+};
+
+/*
  * A control that acts rather than describes: a button, a link to an editor.
  *
  * It is a row rather than a bare button so it keeps the panel's label
@@ -700,6 +761,7 @@ const enggPropertyPanel = {
   scalar,
   coordinate,
   select,
+  unitSelect,
   toggle,
   action,
 };

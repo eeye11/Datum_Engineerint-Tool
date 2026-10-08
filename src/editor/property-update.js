@@ -4,6 +4,7 @@
 
 import enggDimensions from "../core/scale/dimensions.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggQuantities from "../core/units/quantities.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
 import { moveRigidBodyTo, resizeRigidBody, setRigidBodyRadius } from "./property-inputs.js";
@@ -586,9 +587,29 @@ export function updateFeatureProperty(object, key, value) {
 
         if (key === 'magnitude') {
             if (fixed('magnitude')) return false;
+
+            /*
+             * A TYPED NUMBER IS IN THE UNIT THE STUDENT IS READING, so it is
+             * taken back to the base unit - N - before it is stored. The panel
+             * converts base -> display for reading, so this is the other half
+             * of the same pair: without it, typing 0.25 against a kN force
+             * would store 0.25 N and the force would become a thousandth of
+             * what the student entered.
+             *
+             * `convertValue` returns the value unchanged when the unit is
+             * unknown, so a feature with no unit at all is unaffected.
+             */
+            const entered =
+                enggQuantities?.convertValue?.(
+                    value,
+                    'force',
+                    enggLoadProfile.forceUnit(g),
+                    'N'
+                ) ?? value;
+
             enggLoadProfile.setForceVector(
                 g,
-                value,
+                entered,
                 vector.angle
             );
             return true;
@@ -596,13 +617,13 @@ export function updateFeatureProperty(object, key, value) {
 
         if (key === 'forceUnit') {
             /*
-             * THE UNIT IS A LABEL, NOT A CONVERSION.
+             * THE UNIT IS THE LABEL; THE MAGNITUDE IS ALWAYS IN N.
              *
-             * 1 kN and 1000 N are the same force, so switching between the
-             * units leaves the stored magnitude exactly as it is and only
-             * changes how it is written. Rescaling the number (turning "1 kN"
-             * into "0.001 N") would silently change the force, which is the
-             * opposite of what choosing a unit means.
+             * The stored magnitude is the base-unit value, so switching the
+             * unit writes the label and nothing else - the panel converts the
+             * number for READING. Writing N·m here would be a second conversion
+             * of a number that is not in N·m, which is how a value drifts every
+             * time the unit is toggled.
              */
             enggLoadProfile.setForceUnit(g, value);
 
@@ -1035,8 +1056,29 @@ export function updateFeatureProperty(object, key, value) {
             return true;
         }
 
+        if (key === 'magnitude') {
+            if (fixed(key)) return false;
+            if (!Number.isFinite(value)) return false;
+
+            /*
+             * A MOMENT'S MAGNITUDE IS STORED IN N·m, so a number typed while
+             * the panel is reading in kN·m is converted back to base before it
+             * is written - the mirror of the conversion the panel does for
+             * display. Without it, typing 0.25 against a kN·m moment would
+             * store 0.25 N·m.
+             */
+            g[key] =
+                enggQuantities?.convertValue?.(
+                    value,
+                    'moment',
+                    enggLoadProfile.momentUnit(g),
+                    'N·m'
+                ) ?? value;
+
+            return true;
+        }
+
         if (
-            key === 'magnitude' ||
             key === 'angle' ||
             key === 'separation' ||
             key === 'intensity' ||

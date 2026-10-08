@@ -7,9 +7,11 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggAnnotate from "../features/annotations/annotate-model.js";
+import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import { analysisFrameExtents } from "../features/analysis/analysis-frame.js";
-import enggDrawingExport from "../file/document-export.js";import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
+import enggDrawingExport from "../file/document-export.js";
+import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { renderedPointsForObjects } from "./document-commands.js";
@@ -414,6 +416,115 @@ export function renderedBounds(
     annotateBoundsPoints(object).forEach((point) =>
         points.push(point)
     );
+
+    /*
+     * A DIMENSION CONTRIBUTES ITS OWN EXTENT.
+     *
+     * A measured dimension and a Variable Dimension are drawing content: the
+     * student places them wherever there is room, and a dimension sitting above
+     * a beam is often the outermost thing on the sheet. Fit and Print therefore
+     * have to reserve room for them.
+     *
+     * THEY WERE MISSING, and a Variable Dimension could be cropped by a Fit
+     * that measured everything around it. Both go through the SAME graphics the
+     * renderer draws with, so the room reserved is the room the ink takes - not
+     * a bounding box invented here.
+     */
+    dimensionBoundsPoints(object).forEach((point) =>
+        points.push(point)
+    );
+
+    return points;
+}
+
+/*
+ * The points a dimension's drawn graphics occupy.
+ *
+ * `graphicsFor` - the one place that says where a dimension draws - is asked
+ * for its lines, arcs and text frame, and every point of them is contributed.
+ * A variable's SYMBOL is not measured: an empty symbol draws no text, and the
+ * extension lines are what the eye follows anyway.
+ */
+function dimensionBoundsPoints(object) {
+    if (
+        !object ||
+        (object.type !== "dimension" &&
+            object.type !== "variable-dimension")
+    ) {
+        return [];
+    }
+
+    const model = enggDimensionModel;
+
+    if (!model?.graphicsFor) {
+        return [];
+    }
+
+    let graphics = null;
+
+    try {
+        graphics = model.graphicsFor(object, drawingState);
+    } catch (error) {
+        return [];
+    }
+
+    if (!graphics) {
+        return [];
+    }
+
+    const points = [];
+
+    const collect = (path) => {
+        if (!Array.isArray(path)) {
+            return;
+        }
+
+        path.forEach((point) => {
+            if (
+                point &&
+                Number.isFinite(point.x) &&
+                Number.isFinite(point.y)
+            ) {
+                points.push({ x: point.x, y: point.y });
+            }
+        });
+    };
+
+    collect(graphics.line);
+    collect(graphics.arc);
+
+    [graphics.extensions, graphics.extensionLines, graphics.witnessLines]
+        .filter(Array.isArray)
+        .forEach((group) => group.forEach(collect));
+
+    /*
+     * AND THE VALUE'S OWN FRAME, when there is one.
+     *
+     * A dimension's `textFrame` is an ANCHOR WITH AN ANGLE - `{x, y, angle,
+     * flip, vertical}` - not a min/max box, so the room it takes is estimated
+     * from the text's own length and the size the renderer draws it at. Reading
+     * it as `minX`/`maxX` found nothing at all, which is how a Variable
+     * Dimension came to contribute NO extent and could be cropped by a Fit.
+     */
+    const frame = graphics.textFrame;
+
+    if (frame && Number.isFinite(frame.x) && Number.isFinite(frame.y)) {
+        const size = Number(object.style?.fontSize) || 12;
+
+        const width = Math.max(
+            size * String(graphics.text || "").length * 0.58,
+            size * 2,
+        );
+
+        const height = size * 1.4;
+
+        const half = Math.max(width, height) / 2;
+
+        points.push(
+            { x: frame.x - half, y: frame.y - half },
+            { x: frame.x + half, y: frame.y + half },
+        );
+    }
 
     return points;
 }

@@ -12,7 +12,7 @@ import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { distance } from "./construction-geometry.js";
 import { drawingState } from "./editor-state.js";
 import { isRectangleLike, objectPoints } from "./hit-testing.js";
-import { isSpanShapedType } from "../core/model/feature-types.js";
+import { isPointLikeType, isSpanShapedType } from "../core/model/feature-types.js";
 
 function pointInsideSelection(
     point,
@@ -831,18 +831,27 @@ export function objectIntersectsSelection(
      * Checked BEFORE the fallback so the answer does not depend on what
      * `objectPoints` happens to return for a given type.
      */
+    /*
+     * A FEATURE PLACED AT A POINT, BY TRAIT.
+     *
+     * `pointLike` is asked of the REGISTRY rather than inferred from "it has a
+     * position". That distinction is the whole of this fix: an annotate
+     * feature's geometry carries a `position` defaulting to (0, 0) whether or
+     * not it is drawn there, so "has a position" was true of a LEADER - and
+     * this branch then tested the leader at the origin and returned, before the
+     * branch below could test its actual pen. A leader could be clicked but not
+     * swept up, and the same was true of an arrow and a callout.
+     *
+     * A support, a moment, a particle and a reference point really ARE points on
+     * the sheet, so they say so in the table and are tested at their placement.
+     */
     if (
+        isPointLikeType(object.type) &&
         geometry.position &&
         Number.isFinite(geometry.position.x) &&
         Number.isFinite(geometry.position.y)
     ) {
-        /*
-         * A span-shaped body is tested on its LINE, above; anything else with
-         * a position is a mark at that position.
-         */
-        if (!isSpanShapedType(object.type)) {
-            return pointInsideSelection(geometry.position, selectionBox);
-        }
+        return pointInsideSelection(geometry.position, selectionBox);
     }
 
     /*
@@ -1280,7 +1289,7 @@ function diagramMarks(geometry) {
             ? renderer.analysisPlotMarks?.(geometry) || []
             : renderer.analysisSketchMarks?.(geometry) || [];
 
-    return marks
+    const normalised = marks
         .map((mark) => ({
             points: mark.points
                 ? mark.points
@@ -1291,6 +1300,84 @@ function diagramMarks(geometry) {
                 Array.isArray(mark.points) &&
                 mark.points.length >= 2
         );
+
+    /*
+     * A DIAGRAM WITH NOTHING DRAWN IS STILL A FRAME.
+     *
+     * An empty SFD draws its axis and its frame - the box the student is about
+     * to sketch in - so a rectangle over that box has clearly touched the
+     * feature. Returning nothing for it meant an empty diagram was the one thing
+     * on the sheet that no selection rectangle could reach, which reads as the
+     * tool being broken rather than as there being nothing selected.
+     *
+     * The frame is asked of the SAME function the renderer lays it out with, so
+     * the region tested is the region drawn.
+     */
+    if (!normalised.length) {
+        const frame = diagnosticFrame(geometry, renderer);
+
+        return frame ? [{ points: frame }] : [];
+    }
+
+    return normalised;
+}
+
+/*
+ * The four corners of a diagram's frame, or null when it has none.
+ *
+ * `analysisFrameExtents()` is the renderer's own statement of the frame's
+ * shape - read with NO arguments, because it describes the frame rather than a
+ * particular diagram. Its numbers are SCREEN PIXELS either side of the axis,
+ * so they are divided by the world-to-screen scale here to become drawing units
+ * - which is what keeps the tested region the same physical box at any zoom.
+ */
+function diagnosticFrame(geometry, renderer) {
+    if (
+        typeof renderer.analysisFrameExtents !== "function" ||
+        !geometry?.start ||
+        !geometry?.end
+    ) {
+        return null;
+    }
+
+    let extents = null;
+
+    try {
+        extents = renderer.analysisFrameExtents();
+    } catch (error) {
+        return null;
+    }
+
+    if (!extents) {
+        return null;
+    }
+
+    /*
+     * The frame's half-height, in world units. `bottom` is the positive one -
+     * see the note on the function itself - and falls back to `top` so a shape
+     * that reports only one of them still contributes.
+     */
+    const halfPx = Math.abs(
+        Number(extents.bottom ?? extents.top),
+    );
+
+    const scale =
+        enggDrawingState.BASE_PIXELS_PER_UNIT *
+        (drawingState?.camera?.zoom || 1);
+
+    const half = halfPx / Math.max(scale, 1e-6);
+
+    if (!Number.isFinite(half) || half <= 0) {
+        return null;
+    }
+
+    return [
+        { x: geometry.start.x, y: geometry.start.y + half },
+        { x: geometry.end.x, y: geometry.end.y + half },
+        { x: geometry.end.x, y: geometry.end.y - half },
+        { x: geometry.start.x, y: geometry.start.y - half },
+        { x: geometry.start.x, y: geometry.start.y + half },
+    ];
 }
 
 /*

@@ -1458,10 +1458,28 @@ body.datum-topbar-hidden .drawing-workspace {
     overflow-y: auto;
 }
 
+/*
+ * ========================================================
+ * THE FEATURES PANEL'S HEADER
+ * ========================================================
+ *
+ * THE FEATURE'S TYPE, as the panel's title. It is the thing a student looks for
+ * first - "what am I editing" - so it is the one line at full strength, in the
+ * application's own green and in caps, with a rule beneath it that separates
+ * the identity of the feature from everything editable about it.
+ *
+ * The rule is what makes the header read as a HEADER rather than as one more
+ * label: without it the title sat in the same rhythm as the property rows and
+ * a long feature name could be mistaken for a field caption.
+ */
 .drawing-properties-title {
+    border-bottom: 1px solid #d8e2e6;
     color: var(--datum-green);
     font-size: 11px;
     font-weight: 700;
+    letter-spacing: .06em;
+    margin-bottom: 4px;
+    padding-bottom: 5px;
     text-transform: uppercase;
 }
 
@@ -1891,19 +1909,68 @@ body.datum-topbar-hidden .drawing-workspace {
     font-weight: 700;
 }
 
+/*
+ * ========================================================
+ * A SECTION HEADING
+ * ========================================================
+ *
+ * The shared skeleton every feature panel is read in -
+ * GENERAL, then what it measures, what it acts on, where it is, how it is drawn
+ * - so a student who has just edited a Beam can read a Distributed Load panel
+ * without re-learning it.
+ *
+ * THE RULE IS A SEPARATOR, NOT A BORDER ON A LABEL.
+ *
+ * It spans the panel's full width and sits ABOVE the heading with air on both
+ * sides, which is what makes the groups read as groups rather than as a column
+ * of captions. The heading is quiet - small, muted, spaced - because it names a
+ * group and must never compete with the property values underneath it, which
+ * are the thing being read.
+ */
 .drawing-properties-section {
-    border-top: 1px solid #dfe5e8;
+    border-top: 1px solid #e2e8ea;
     color: #87949b;
     font-size: 8px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    margin-top: 2px;
-    padding-top: 5px;
+    letter-spacing: .09em;
+    margin-top: 9px;
+    padding-top: 6px;
+    text-transform: uppercase;
 }
 
 /*
- * Label + inputs + constraint checkbox, with the
- * checkboxes forming one vertical column.
+ * THE FIRST SECTION HAS NO RULE ABOVE IT.
+ *
+ * The header already draws one, and a second within a few pixels of it reads as
+ * a double line under the title rather than as the start of a group.
+ */
+.drawing-properties-title + .drawing-properties-section {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+}
+
+/*
+ * ========================================================
+ * ONE PROPERTY ROW
+ * ========================================================
+ *
+ * Four tracks - LABEL, VALUE, UNIT, STATE - and every row in every panel uses
+ * them in that order, so a student reads one shape wherever they are:
+ *
+ *     Magnitude   [   50   ]  N    [x]
+ *     Length      [  25.4  ]  mm   [x]
+ *     Value       [   L    ]       [ ]
+ *
+ * THE ROW HEIGHT IS SET HERE, once, rather than by whatever each control
+ * happens to be. Before this a numeric input, a select and a derived reading
+ * could each be a different height, so a panel of ten properties came out
+ * visibly ragged - the rows did not line up, and the raggedness read as
+ * sloppiness rather than as anything about the drawing.
+ *
+ * THE ROW GAP IS SMALL AND THE SECTION GAP IS LARGE. That ratio is what makes
+ * the grouping legible: properties inside one group sit close together, and the
+ * air between groups does the separating, so the headings have less work to do.
  */
 .drawing-property-grid {
     align-items: center;
@@ -1963,6 +2030,53 @@ body.datum-topbar-hidden .drawing-workspace {
         minmax(0, 1.25fr)
         min-content
         minmax(0, 14px);
+
+    /*
+     * ONE HEIGHT FOR EVERY ROW, whatever control is in it.
+     *
+     * A numeric input, a select, a derived reading and a checkbox each want a
+     * different height of their own, and left to themselves they produce a
+     * panel whose rows do not line up - which reads as sloppiness rather than as
+     * anything about the drawing. Setting the floor here gives every row the
+     * same rhythm, and every CONTROL inside it the same box.
+     */
+    min-height: 22px;
+}
+
+/*
+ * EVERY CONTROL IN A ROW IS THE SAME HEIGHT AND SITS ON THE SAME BASELINE.
+ *
+ * The three that actually appear - a text/number input, a select, and a
+ * read-only derived span - are given one height and one line-height, so they
+ * align with each other and with the label beside them. A control that was a
+ * pixel taller than its neighbour used to nudge the whole row.
+ */
+.drawing-property-grid input[type="text"],
+.drawing-property-grid input[type="number"],
+.drawing-property-grid .drawing-property-input,
+.drawing-property-grid select,
+.drawing-property-grid .drawing-property-select {
+    height: 20px;
+    line-height: 18px;
+}
+
+.drawing-property-grid .drawing-property-derived,
+.drawing-property-grid .drawing-property-readonly {
+    line-height: 20px;
+    min-height: 20px;
+}
+
+/*
+ * THE LABEL COLUMN, ALIGNED AND NEVER CLIPPED.
+ *
+ * Labels are the left edge every row is read from, so they share a size, a
+ * colour and a line-height. They wrap rather than truncate - a half-printed
+ * "Position Al..." tells a student less than a wrapped one does - which is what
+ * keeps a long property name from being silently cut.
+ */
+.drawing-property-grid-label {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
 }
 
 /*

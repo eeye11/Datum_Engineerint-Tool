@@ -56,7 +56,23 @@ same(
 same(
   "span-shaped features",
   members(types.isSpanShapedType),
-  ["beam", "cable", "connection", "fixed-connection", "line", "pin-connection", "shaft", "slider-connection", "truss"],
+  [
+    "beam",
+    "cable",
+    "connection",
+    "fixed-connection",
+    "line",
+    "pin-connection",
+    /*
+     * A POLYLINE IS A CHAIN OF SPANS. It was missing from the table, and that
+     * omission is exactly why a polyline crossed by a selection rectangle was
+     * not selected - the shared systems had not been told it was made of lines.
+     */
+    "polyline",
+    "shaft",
+    "slider-connection",
+    "truss",
+  ],
 );
 
 same(

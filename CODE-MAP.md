@@ -367,6 +367,7 @@ examples:
 | `statics-value-prompt-and-support.test.cjs` | a typed answer (number / Unknown / symbol), unit-control widths, the fixed support's wall and hatch (§17) |
 | `dimension-driving.test.cjs` | a dimension stays DRIVING: its value is read from geometry, never stored; Variable states the symbol instead (§18) |
 | `variable-dimension.test.cjs` | Variable Dimension's three states, the shared inference, expressions stored verbatim (§12, §18) |
+| `feature-recognition.test.cjs` | **every feature type** in the shared systems: box selection and Fit bounds, one row per type (§19) |
 | `dual-creation.test.cjs`, `statics-dual-creation.test.cjs` | click-move-click AND click-drag for every creation tool |
 | `responsive-layout.test.cjs` | the toolbar/section-bar one-row rule, panels never hidden, breakpoints descending (§13) |
 
@@ -817,3 +818,101 @@ and no value does.
 
 `tests/dimension-driving.test.cjs` and `tests/variable-dimension.test.cjs` cover
 all of this.
+
+---
+
+## 19. Feature recognition: one registry, every general system
+
+**`core/model/feature-types.js → FEATURE_TYPES` is the trait registry.** A type
+is described ONCE, and the shared systems ask what a feature IS rather than
+testing for its name:
+
+| Trait | Means | Asked by |
+|---|---|---|
+| `spanShaped` | a straight member between two ends | box selection, measurement |
+| `area` | a closed outline, selected as a shape | box selection |
+| `pointLike` | an engineering node drawn AT a position | box selection |
+| `body` | something a load, support or connection attaches to | Statics attachment |
+| `vector` | drawn as an arrow at the shared Vector Scale | renderer, Fit |
+
+Helpers: `isSpanShapedType`, `isAreaType`, `isPointLikeType`, `isAnnotationType`,
+`isKnownFeatureType`, `hasTrait`.
+
+### The defects this fixed
+
+An audit test (`tests/feature-recognition.test.cjs`) builds **one of every
+feature type** — 30 of them — and asks box selection and Fit about each. It found
+three real gaps, all with the same shape: *a type the registry had not heard of
+falls to the last-resort test, which asks only whether a defining POINT is inside
+the rectangle.*
+
+- **`polyline` was not `spanShaped`.** A polyline crossed by a selection
+  rectangle was not selected — it could only be caught by one of its own
+  vertices. It is a chain of spans, and now says so.
+- **The "placed at a point" rule tested `geometry.position`, not the trait.** An
+  annotate feature carries a `position` defaulting to `(0, 0)`, so a **leader, a
+  callout and an arrow** were all tested at the origin and returned before their
+  own pen was examined. They were clickable and impossible to sweep up. The rule
+  now asks `isPointLikeType`, so a support and a moment are points and a leader
+  is not.
+- **`variable-dimension` had no Fit bounds.** A dimension contributes through
+  `dimensionBoundsPoints`, which reads `graphicsFor` — the same call the renderer
+  draws with. It expected a `minX/maxX` text frame, but the model returns an
+  **anchor with an angle** (`{x, y, angle, flip, vertical}`), so it found nothing
+  and a Variable Dimension could be cropped by a Fit.
+
+An empty analysis diagram also now contributes its **frame**, so a rectangle over
+a diagram with nothing sketched in it takes the diagram rather than nothing.
+
+**The lesson, stated once:** a new feature type must be added to `FEATURE_TYPES`.
+A type that is not there is not an error — it gets the weak fallback — and that
+is exactly the state in which a feature is clickable but not sweepable.
+
+---
+
+## 20. The Features panel: one vocabulary, one look
+
+**`ui/feature-panel/property-panel.js` is the shared vocabulary.** A feature
+panel declares WHICH fields it has; this module decides how every one of them
+looks, behaves, handles a missing value and is spaced.
+
+| Component | Owns |
+|---|---|
+| `text` | the gate every string passes: an absent value never renders, so no field becomes `Direction: ,` |
+| `number` / `quantity` | one decimal convention; the number/unit join happens once |
+| `row` | the four-track row — LABEL, VALUE, UNIT, STATE |
+| `scalar`, `select`, `toggle`, `action`, `coordinate` | the field kinds |
+| `section`, `panel`, `header`, `nameField` | the structure, in ONE fixed order |
+
+Two invariants are enforced in the DATA layer, not with CSS: **no punctuation
+without a value**, and **no empty sections** (`section` buffers, so a heading is
+emitted only when fields justify it).
+
+### The structure every panel shares
+
+```
+FEATURE HEADER        the type, in caps, with a rule beneath it
+  Feature Name        the student's own name for it
+  Label
+GENERAL               the core properties
+…
+APPEARANCE            how it is drawn
+```
+
+`SECTION_ORDER` fixes the reading order — engineering, reference, display,
+annotation, position, appearance — so a panel cannot differ from its neighbour
+for no reason a student could name. Sections with nothing in them are omitted,
+and the FIRST heading draws no rule of its own, because the header already did.
+
+### The defect the browser audit found
+
+`feature-panel-markup.js` builds its panels from local closures that **delegate
+to the shared module** (`scalar`, `coordinate`), and the audit confirmed every
+type shares the same skeleton. But the `annotate` type had **no entry in the
+display-label map** — so a Note, a Leader and a Table were all titled with the
+raw storage type `annotate`. The header now names them by their KIND, read from
+`enggAnnotate.ANNOTATE_KINDS`, which is the one place that names them.
+
+Verified in the browser: selecting a Line, a Beam, a Note and a Dimension in
+turn gives **Line / Beam / Note / Dimension** — never an internal string — with
+identical section headings and row structure.
