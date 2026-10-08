@@ -78,7 +78,10 @@ check(
     const body = tool.slice(at, at + 2200);
 
     /* The factory call lives inside onConfirm, after the popup is opened. */
-    return body.indexOf("openLoadValuePopup({") < body.indexOf('"variable-dimension"');
+    return (
+      body.indexOf("openLoadValuePopup({") <
+      body.indexOf('"variable-dimension"')
+    );
   })(),
 );
 

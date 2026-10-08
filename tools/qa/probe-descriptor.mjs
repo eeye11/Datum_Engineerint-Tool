@@ -7,7 +7,9 @@ export default async function run(page) {
     { timeout: 15000 },
   );
 
-  const tab = page.locator("button", { hasText: "Engineering Drawing" }).first();
+  const tab = page
+    .locator("button", { hasText: "Engineering Drawing" })
+    .first();
   if (await tab.count()) await tab.click();
   await page.waitForTimeout(900);
 
@@ -34,33 +36,22 @@ export default async function run(page) {
       false,
     );
 
+    const out = {
+      reference: reference ? reference.kind + " " + reference.anchor : null,
+    };
+
+    /* What the inference makes of that ONE reference on its own. */
+    out.singleDescriptor = inference.inferDimensionDescriptor(reference, null);
+
+    /* And whether the two-sided descriptor works with the second edge. */
     const second = inference.dimensionReferenceAtClick(
       {},
       { x: 2, y: 15 },
       false,
     );
+    out.secondReference = second ? second.kind + " " + second.anchor : null;
+    out.pairDescriptor = inference.inferDimensionDescriptor(reference, second);
 
-    const describe = (d) =>
-      d
-        ? {
-            dimensionType: d.dimensionType,
-            refs: (d.refs || []).length,
-          }
-        : null;
-
-    return {
-      reference: reference
-        ? { kind: reference.kind, anchor: reference.anchor, endAnchor: reference.endAnchor }
-        : null,
-      second: second
-        ? { kind: second.kind, anchor: second.anchor, endAnchor: second.endAnchor }
-        : null,
-      singleDescriptor: describe(
-        inference.inferDimensionDescriptor(reference, null),
-      ),
-      pairDescriptor: describe(
-        inference.inferDimensionDescriptor(reference, second),
-      ),
-    };
+    return out;
   });
 }

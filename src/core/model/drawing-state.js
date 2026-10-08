@@ -1429,6 +1429,7 @@ const geometryFactories = {
                 content: {
                     sourceRefs: created.sourceRefs,
                     symbol: created.symbol,
+                    unknown: created.unknown,
                     label: created.label,
                     placement: created.placement,
                     orientation: created.orientation

@@ -504,11 +504,29 @@ function openVariablePrompt({ previousObjects, refs, placement }) {
                 previousObjects ||
                 enggDrawingState.snapshotDrawing(drawingState);
 
+            /*
+             * THE THREE STATES, FROM ONE ANSWER.
+             *
+             *   "L/2"   what the student wrote
+             *   (empty) asked and answered UNKNOWN - not an error, and not zero
+             *
+             * There is deliberately NO "measured value" case: the geometry the
+             * student selected decided the dimension TYPE, and it never becomes
+             * the value. A 100-long line named `L` states `L`, not `100 mm`.
+             */
+            const answered = String(text ?? "").trim();
+
             const object =
                 enggDrawingState.geometryFactories["variable-dimension"]({
                     refs,
                     placement,
-                    symbol: text
+
+                    /*
+                     * EMPTY MEANS THE SYMBOL IS CLEARED AND THE UNKNOWN MARK
+                     * GOES ON, which `variableText` reports as "Unknown".
+                     */
+                    symbol: answered,
+                    unknown: !answered
                 });
 
             /*
@@ -642,12 +660,18 @@ export function openDimensionValuePrompt(object) {
                 /*
                  * THE STUDENT'S OWN VALUE, KEPT VERBATIM.
                  *
-                 * An empty field means the symbol is cleared, which is the
-                 * state "not yet written" - the same state a new variable
-                 * starts in. Nothing is measured and nothing is substituted:
-                 * this dimension states what the student wrote.
+                 * An empty field means UNKNOWN - the student was asked and
+                 * said "not known" - which is stored as that statement rather
+                 * than as an empty symbol, so the sheet and the panel can tell
+                 * it apart from a variable nobody has written yet.
+                 *
+                 * Nothing is measured and nothing is substituted: this
+                 * dimension states what the student wrote.
                  */
-                object.symbol = String(confirmed.text ?? "");
+                const answered = String(confirmed.text ?? "").trim();
+
+                object.symbol = answered;
+                object.unknown = !answered;
             } else {
                 /*
                  * ====================================================

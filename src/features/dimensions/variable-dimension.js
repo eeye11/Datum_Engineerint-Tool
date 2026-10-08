@@ -101,6 +101,7 @@ function newVariableId() {
 function createVariableDimension({
   refs,
   symbol,
+  unknown,
   placement,
   style = {},
   name,
@@ -138,6 +139,16 @@ function createVariableDimension({
         : String(symbol),
 
     /*
+     * WHETHER THE STUDENT SAID "NOT KNOWN".
+     *
+     * The third of the three states a variable can be in. It is stored rather
+     * than inferred from an empty symbol, because "the student was asked and
+     * answered unknown" and "nothing has been written yet" are different
+     * statements and the sheet prints them differently - see `variableText`.
+     */
+    unknown: unknown === true,
+
+    /*
      * A free label, like a dimension's: an override written alongside the
      * symbol rather than instead of it. Kept because a dimension has one and a
      * variable is drawn by the same panel vocabulary.
@@ -161,12 +172,34 @@ function createVariableDimension({
 /*
  * What a variable DISPLAYS.
  *
- * The symbol alone. A unit would be a claim the student has not made - an
- * unknown length is not "x mm" until they say so - and a number would be a lie.
- * An empty symbol displays as nothing rather than as a placeholder.
+ * A SYMBOL, an "Unknown" marker, or nothing - and the three are DIFFERENT
+ * STATES rather than one empty box:
+ *
+ *   symbol = "L/2"     what the student wrote
+ *   unknown = true     the student was asked and said "not known"
+ *   symbol = ""        named but not yet written - the state a new one starts in
+ *
+ * A unit would be a claim the student has not made - an unknown length is not
+ * "x mm" until they say so - and a number would be a lie, so neither appears.
  */
 function variableText(variable) {
-  return String(variable?.symbol ?? "");
+  if (!variable) {
+    return "";
+  }
+
+  const symbol = String(variable.symbol ?? "");
+
+  /*
+   * AN EXPLICIT UNKNOWN OUTRANKS AN EMPTY SYMBOL. A student who was asked and
+   * answered "unknown" has made a statement; one who has not written anything
+   * yet has not. Showing the same blank for both would lose that distinction,
+   * and it is the distinction the Features panel and the sheet report.
+   */
+  if (!symbol && variable.unknown === true) {
+    return "Unknown";
+  }
+
+  return symbol;
 }
 
 const enggVariableDimension = {

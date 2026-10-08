@@ -365,6 +365,8 @@ examples:
 | `box-selection.test.cjs` | box selection: crossing vs containment, the graph's INK over its raw values, point-placed Statics (§16) |
 | `enggdraw-round-trip.test.cjs` | the whole `.enggdraw` format: every feature kind and relationship through save → text → load (§15) |
 | `statics-value-prompt-and-support.test.cjs` | a typed answer (number / Unknown / symbol), unit-control widths, the fixed support's wall and hatch (§17) |
+| `dimension-driving.test.cjs` | a dimension stays DRIVING: its value is read from geometry, never stored; Variable states the symbol instead (§18) |
+| `variable-dimension.test.cjs` | Variable Dimension's three states, the shared inference, expressions stored verbatim (§12, §18) |
 | `dual-creation.test.cjs`, `statics-dual-creation.test.cjs` | click-move-click AND click-drag for every creation tool |
 | `responsive-layout.test.cjs` | the toolbar/section-bar one-row rule, panels never hidden, breakpoints descending (§13) |
 
@@ -760,3 +762,58 @@ with the member's own frame, so a vertical body gets a horizontal wall.
 
 `tests/statics-value-prompt-and-support.test.cjs` covers the three value states,
 the unit-control widths, and the fixed support's placement and hatching.
+
+---
+
+## 18. Text, dimensions and the reading that stays live
+
+### Zoom scales TEXT, and nothing else
+
+`renderer.js → zoomedFont(base, state)` is the ONE place a font's painted size
+is decided, and **every** `font-size` the renderer emits goes through it. It
+follows `camera.zoom` by a **square root** - so text responds across the whole
+range instead of hitting a ceiling in two steps - clamped to **0.55–1.6**
+scale and **6–64px** absolute.
+
+The zoom is recorded once per frame in the module-level `activeZoom`, because a
+dozen sites emit fonts and threading `state` through all of them would be a
+dozen chances to forget one.
+
+**Nothing else is scaled.** Lines, arrows, symbols, dimension extension lines,
+supports and every position already scale with the camera because they ARE the
+drawing; a second factor would draw an arrow twice the size the student drew.
+Verified by measurement: at 0.25/1/4/16× zoom the note's font reads
+6.6/12/19.2/**19.2** px (the cap holding) while the line's endpoints scale
+normally and its `stroke-width` never changes.
+
+### A dimension is DRIVING because it stores no number
+
+The panel row (`feature-panel-markup.js → dimensionValueRow`) and the canvas
+both call `dimension-model.js → measurementFor`, which recomputes from the
+referenced geometry every time. **There is no stored number to go stale** -
+which is why moving the geometry changes the reading everywhere at once, and
+why no code path can turn a dimension into a static annotation.
+
+Double-clicking a dimension opens the **shared value popup** (not a
+dimension-specific dialog, and never the World Scale question), through
+`dimension-tool.js → openDimensionValuePrompt`. Both routes - the canvas
+double-click and the picked-row click - reach it, because
+`canvas-click.js → openDimensionEditorFor` is a one-line delegate to it.
+
+### A Variable Dimension's THREE states
+
+| State | Stored | Displays |
+|---|---|---|
+| not yet written | `symbol: ""`, `unknown: false` | nothing |
+| asked, answered unknown | `symbol: ""`, `unknown: true` | `Unknown` |
+| written | `symbol: "L/2"` | `L/2` |
+
+`variable-dimension.js → variableText` is the one reader, and the three are
+different statements rather than three blanks. The **measured geometry is never
+one of them**: the selection decides the dimension TYPE, and a 100-long line
+named `L` states `L`, not `100 mm`. The preview follows the same rule - the
+renderer draws an armed variable with an **empty symbol**, so the shape appears
+and no value does.
+
+`tests/dimension-driving.test.cjs` and `tests/variable-dimension.test.cjs` cover
+all of this.

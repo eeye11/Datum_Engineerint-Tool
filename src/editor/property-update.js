@@ -1444,7 +1444,37 @@ export function updateFeatureProperty(object, key, value) {
          * symbol cannot detach the variable from the geometry it names.
          */
         if (key === 'symbol') {
-            object.symbol = String(value ?? '');
+            const text = String(value ?? '');
+
+            object.symbol = text;
+
+            /*
+             * WRITING A SYMBOL CLEARS THE UNKNOWN MARK, and clearing the symbol
+             * does not set it. They are two different statements - "here is my
+             * value" and "this is not known" - so one must not silently imply
+             * the other. The checkbox below is how the student makes the second
+             * one.
+             */
+            if (text) {
+                object.unknown = false;
+            }
+
+            return true;
+        }
+
+        if (key === 'unknown') {
+            const isUnknown = value === true || value === 'true';
+
+            object.unknown = isUnknown;
+
+            /*
+             * MARKING IT UNKNOWN CLEARS ANY SYMBOL, because a feature cannot
+             * both state a value and state that it has none. The same rule the
+             * Statics quantities follow: setting one state clears the others.
+             */
+            if (isUnknown) {
+                object.symbol = '';
+            }
 
             return true;
         }

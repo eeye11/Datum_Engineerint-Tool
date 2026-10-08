@@ -195,8 +195,19 @@ console.log("\n  the panel reads and writes WHERE THE MODEL KEEPS IT\n");
 
   check(
     "and the setter writes it to the FEATURE",
-    /object\.symbol = String\(value \?\? ''\)/.test(update),
+    /object\.symbol = text;/.test(update),
     "writing geometry.symbol changed something nothing reads",
+  );
+
+  check(
+    "writing a symbol clears the Unknown mark, because the two are different statements",
+    /if \(text\) \{\s*\n\s*object\.unknown = false;/.test(update),
+  );
+
+  check(
+    "and marking it Unknown clears the symbol",
+    /if \(isUnknown\) \{\s*\n\s*object\.symbol = '';/.test(update),
+    "a feature cannot both state a value and state that it has none",
   );
 }
 
@@ -292,4 +303,85 @@ console.log(`\n  ${pass} passed, ${fail} failed\n`);
 
 if (fail) {
   process.exitCode = 1;
+}
+
+console.log("\n  a variable has THREE states, and they are distinct\n");
+
+/*
+ * ========================================================
+ * EMPTY, UNKNOWN, AND WRITTEN
+ * ========================================================
+ *
+ * A variable with no symbol is either "not written yet" or "asked and answered
+ * unknown", and those are different statements - the sheet and the panel must
+ * say which one the feature is making. The measured geometry is NEVER one of
+ * the states: the geometry decides the dimension TYPE, and nothing else.
+ */
+{
+  const F = state.geometryFactories;
+
+  const refs = [
+    { kind: "between", featureId: "line-1", anchor: "start" },
+    { kind: "between", featureId: "line-1", anchor: "end" },
+  ];
+
+  /* 1. Not yet written. */
+  const fresh = F["variable-dimension"]({
+    refs,
+    placement: { x: 10, y: 10 },
+    symbol: "",
+  });
+
+  check(
+    "a variable with no symbol and no mark displays NOTHING",
+    variable.variableText(fresh) === "",
+    `displays ${JSON.stringify(variable.variableText(fresh))}`,
+  );
+
+  /* 2. Asked and answered unknown. */
+  const unknownVar = F["variable-dimension"]({
+    refs,
+    placement: { x: 10, y: 10 },
+    symbol: "",
+    unknown: true,
+  });
+
+  check(
+    "a variable marked Unknown displays \"Unknown\"",
+    variable.variableText(unknownVar) === "Unknown",
+    `displays ${JSON.stringify(variable.variableText(unknownVar))}`,
+  );
+
+  check(
+    "and it is a DIFFERENT state from an empty one",
+    variable.variableText(unknownVar) !== variable.variableText(fresh),
+    "the two must not both render as a blank",
+  );
+
+  /* 3. Written. */
+  const written = F["variable-dimension"]({
+    refs,
+    placement: { x: 10, y: 10 },
+    symbol: "L/2",
+  });
+
+  check(
+    "a written variable displays what was written",
+    variable.variableText(written) === "L/2",
+  );
+
+  check(
+    "and writing a symbol is NOT marked Unknown",
+    written.unknown === false,
+  );
+
+  /*
+   * THE MEASURED VALUE IS NEVER A STATE. Even on a line that is physically
+   * 100 long, the variable says what the student wrote.
+   */
+  check(
+    "the measured geometry never becomes the value",
+    !["100", "100 mm", "100.00"].includes(variable.variableText(written)),
+    `displays ${JSON.stringify(variable.variableText(written))}`,
+  );
 }

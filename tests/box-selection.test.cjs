@@ -61,10 +61,7 @@ const rect = (minX, minY, maxX, maxY) => ({ minX, minY, maxX, maxY });
 console.log("\n  a rectangle selects what it CROSSES, not what it contains\n");
 
 {
-  const line = state.geometryFactories.line(
-    { x: 0, y: 0 },
-    { x: 100, y: 0 },
-  );
+  const line = state.geometryFactories.line({ x: 0, y: 0 }, { x: 100, y: 0 });
 
   check(
     "a long line whose middle the rectangle crosses is selected",
@@ -93,7 +90,9 @@ console.log("\n  a rectangle selects what it CROSSES, not what it contains\n");
  * A SKETCHED DIAGRAM: the world-space defect
  * ============================================================ */
 
-console.log("\n  a SKETCHED diagram is selected from its INK, not its raw values\n");
+console.log(
+  "\n  a SKETCHED diagram is selected from its INK, not its raw values\n",
+);
 
 {
   /*
@@ -209,10 +208,7 @@ console.log("\n  a partially-intersecting curve is selected\n");
 console.log("\n  Statics features go through the SAME test\n");
 
 {
-  const beam = state.geometryFactories.beam(
-    { x: 0, y: 0 },
-    { x: 160, y: 0 },
-  );
+  const beam = state.geometryFactories.beam({ x: 0, y: 0 }, { x: 160, y: 0 });
 
   const support = state.geometryFactories["pin-support"]({ x: 40, y: 0 });
   const force = state.geometryFactories.force(

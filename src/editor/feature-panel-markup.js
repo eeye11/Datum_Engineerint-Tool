@@ -7,6 +7,7 @@ import enggAnalysisDependencies from "../features/analysis/analysis-dependencies
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
 import enggAnnotate from "../features/annotations/annotate-model.js";
+import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import { appearanceMarkup } from "./appearance-panel.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
@@ -2012,6 +2013,32 @@ export function featurePropertyMarkup(object) {
         if (kind === "leader" || kind === "callout" || kind === "arrow") {
             rows.push(leaderStyleRows(object));
         }
+    } else if (object.type === "dimension") {
+        /*
+         * ========================================================
+         * A MEASURED DIMENSION
+         * ========================================================
+         *
+         *     GENERAL
+         *     Value      25.43 mm      (read live from the geometry)
+         *
+         * THE VALUE IS READ FROM THE GEOMETRY EVERY TIME THIS PANEL IS DRAWN -
+         * `measurementFor` recomputes it from the referenced features, the same
+         * call the canvas makes - so the panel and the sheet can never state
+         * different numbers. That is the whole of "a dimension stays driving":
+         * there is no stored number to fall out of step, because the number is
+         * not stored at all.
+         *
+         * IT IS SHOWN AS A DERIVED READING, not an input. A measured dimension
+         * states what the GEOMETRY is; typing into it here would be a request
+         * to move the geometry, which is a different act and one the drawing
+         * edit already owns. Changing what it says is done by changing the
+         * thing it measures - or by naming it, which a Variable Dimension is
+         * for.
+         */
+        rows.push(section("GENERAL"));
+        rows.push(dimensionValueRow(object));
+        rows.push(dimensionTypeRow(object));
     } else if (object.type === "variable-dimension") {
         /*
          * A VARIABLE DIMENSION.
@@ -2039,6 +2066,16 @@ export function featurePropertyMarkup(object) {
          */
         rows.push(section("VARIABLE"));
         rows.push(textField("Variable", "symbol", object.symbol ?? ""));
+
+        /*
+         * THE UNKNOWN STATE, SHOWN AS ITS OWN ROW.
+         *
+         * A variable with no symbol is either "not written yet" or "asked and
+         * answered unknown", and the two are different statements. Saying which
+         * one this feature is making - and letting the student change it - is
+         * what keeps the third state from being an invisible one.
+         */
+        rows.push(unknownValueRow(object));
 
         /*
          * WHAT THE SELECTION INFERRED, when it was inferred. Shown so a student
@@ -2274,6 +2311,86 @@ function leaderStyleRows(object) {
                 ${option("open", "Open", arrowhead === "open")}
                 ${option("closed", "Closed", arrowhead === "closed")}
             </select>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * A MEASURED DIMENSION'S VALUE, read live from the geometry.
+ *
+ * `measurementFor` recomputes it from the referenced features on every call -
+ * the same call the renderer makes - so the panel and the sheet are showing the
+ * same reading rather than two numbers that happen to agree. There is no stored
+ * value to drift, which is what keeps a dimension DRIVING after its first
+ * measurement: moving the geometry changes this row on the next redraw.
+ *
+ * Rendered as a DERIVED value (the inset, non-editable style) because it is a
+ * reading, not a setting. The student changes it by changing what it measures,
+ * or names it with a Variable Dimension.
+ */
+function dimensionValueRow(object) {
+    let text = "";
+
+    try {
+        text =
+            enggDimensionModel.formatMeasurement(object, drawingState) || "";
+    } catch (error) {
+        text = "";
+    }
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Value</span>
+            <span class="drawing-property-derived">${escapeHtmlText(
+                text || "unresolved",
+            )}</span>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * WHAT a dimension measures - Length, Angle, Diameter - so the panel says which
+ * quantity the value above is.
+ */
+function dimensionTypeRow(object) {
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Measures</span>
+            <span class="drawing-property-derived">${escapeHtmlText(
+                variableMeasureLabel(object.dimensionType),
+            )}</span>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * A variable's UNKNOWN state, as a checkbox row.
+ *
+ * The third state a variable can be in, made visible and editable. It shares
+ * the shape of the feature Lock row - a label with a checkbox beside it - so
+ * one boolean control looks the same wherever it appears.
+ */
+function unknownValueRow(object) {
+    const isUnknown = object.unknown === true;
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Value</span>
+            <span class="drawing-property-lock">
+                <label class="drawing-property-fix"
+                    title="Mark this variable as not yet known">
+                    <input type="checkbox" data-property="unknown"
+                        aria-label="Unknown"
+                        ${isUnknown ? "checked" : ""}>
+                    Unknown
+                </label>
+            </span>
             <span class="drawing-property-unit"></span>
             <span></span>
         </div>

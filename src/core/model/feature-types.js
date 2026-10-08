@@ -27,10 +27,53 @@
  * them.
  */
 export const FEATURE_TYPES = Object.freeze({
+    /*
+     * ====================================================
+     * THE TRAIT REGISTRY
+     * ====================================================
+     *
+     * Every feature type the application can create answers here, so the
+     * SHARED systems - hit testing, box selection, fit bounds, attachment,
+     * vector scale - can ask what a thing IS rather than testing for it by
+     * name.
+     *
+     * `spanShaped`  a straight member between two ends: measured along its
+     *               span rather than as an area.
+     * `body`        something a load, support or connection attaches to.
+     * `vector`      drawn as an arrow whose length is the shared Vector Scale.
+     * `pointLike`   an engineering node drawn AT a position.
+     * `area`        a closed outline, selected as a shape rather than a span.
+     *
+     * A TYPE MISSING FROM HERE FALLS TO THE LAST-RESORT TEST, which asks only
+     * whether one of its defining POINTS is inside a selection rectangle. That
+     * fallback is honest but weak: a long polyline crossing a box is not
+     * "inside" it, so a feature the registry has not heard of can be clickable
+     * and yet impossible to sweep up. That is what `polyline` did.
+     */
     line: { spanShaped: true },
 
-    particle: { body: true },
-    "rigid-body": { body: true },
+    /*
+     * A POLYLINE IS A CHAIN OF SPANS. It is span-shaped for the same reason a
+     * line is - a box that crosses one of its segments has crossed the
+     * feature - and leaving it out meant a polyline could only be box-selected
+     * by catching one of its own vertices.
+     */
+    polyline: { spanShaped: true },
+
+    /*
+     * THE CLOSED GEOMETRY IS `area`: a rectangle, a triangle and a polygon are
+     * outlines rather than spans, so they are tested as shapes. A circle and an
+     * arc are area-like too - a box anywhere near the ring has crossed it.
+     */
+    rectangle: { area: true },
+    triangle: { area: true },
+    polygon: { area: true },
+    circle: { area: true },
+    arc: { area: true },
+
+    point: { pointLike: true },
+    particle: { body: true, pointLike: true },
+    "rigid-body": { body: true, area: true },
     beam: { body: true, spanShaped: true },
     truss: { body: true, spanShaped: true },
     cable: { body: true, spanShaped: true },
@@ -40,18 +83,43 @@ export const FEATURE_TYPES = Object.freeze({
     resultant: { vector: true },
     load: { attachable: true, vector: true },
     "varying-load": { attachable: true, vector: true },
-    moment: { attachable: true },
+    moment: { attachable: true, pointLike: true },
 
-    "pin-support": { attachable: true, support: true },
-    "roller-support": { attachable: true, support: true },
-    "fixed-support": { attachable: true, support: true },
-    "smooth-support": { attachable: true, support: true },
+    "pin-support": { attachable: true, support: true, pointLike: true },
+    "roller-support": { attachable: true, support: true, pointLike: true },
+    "fixed-support": { attachable: true, support: true, pointLike: true },
+    "smooth-support": { attachable: true, support: true, pointLike: true },
 
     "pin-connection": { connection: true, spanShaped: true },
     "fixed-connection": { connection: true, spanShaped: true },
     "slider-connection": { connection: true, spanShaped: true },
     /* The generic connection, kept so older documents still read correctly. */
-    connection: { spanShaped: true }
+    connection: { spanShaped: true },
+
+    /*
+     * ====================================================
+     * ANNOTATE
+     * ====================================================
+     *
+     * Dimensions and annotations are drawing content: they are selectable,
+     * movable, deletable and they contribute to Fit. They are NOT bodies,
+     * vectors or spans - a dimension's ink is its own - so they carry no trait
+     * beyond being recognised at all, which is what the entry itself records.
+     *
+     * A `variable-dimension` is listed separately because it is a separate
+     * TYPE, and a type the registry has not heard of is a type the shared
+     * systems can only half-see.
+     */
+    dimension: { annotation: true },
+    "variable-dimension": { annotation: true },
+    annotation: { annotation: true },
+    annotate: { annotation: true },
+
+    "analysis-diagram": { annotation: true },
+    "force-components": { annotation: true },
+    "coordinate-system-2d": { annotation: true },
+
+    construction: { annotation: true }
 });
 
 const traitOf = (type, trait) => Boolean(FEATURE_TYPES[type]?.[trait]);
@@ -70,3 +138,29 @@ export const isSupportType = type => traitOf(type, "support");
 export const isConnectionType = type => traitOf(type, "connection");
 export const isSpanShapedType = type => traitOf(type, "spanShaped");
 export const usesStaticsVectors = object => traitOf(object?.type, "vector");
+
+/*
+ * THE TWO TRAITS THE GENERAL SYSTEMS ASK ABOUT.
+ *
+ * `isAreaType` and `isPointLikeType` exist for the same reason `isSpanShapedType`
+ * does: a shared system asks what a feature IS, from one registry, rather than
+ * testing for a list of names. A box-selection rule that spelled out
+ * `rectangle || triangle || polygon || circle || arc` would need editing every
+ * time another closed shape was added - and the one that was forgotten would be
+ * the one that silently stopped being selectable.
+ */
+export const isAreaType = type => traitOf(type, "area");
+export const isPointLikeType = type => traitOf(type, "pointLike");
+export const isAnnotationType = type => traitOf(type, "annotation");
+
+/*
+ * IS THIS TYPE KNOWN AT ALL?
+ *
+ * The shared systems use it to notice a feature the registry has not heard of.
+ * An unknown type is not an error - a document from a newer build may carry
+ * one - but it is worth being able to ask, because the answer is "this feature
+ * gets the fallback treatment", and that is exactly the state that made a
+ * polyline impossible to box-select.
+ */
+export const isKnownFeatureType = type => Boolean(FEATURE_TYPES[type]);
+export const hasTrait = (type, trait) => traitOf(type, trait);

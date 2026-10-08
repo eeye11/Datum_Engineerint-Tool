@@ -764,7 +764,26 @@ export function objectIntersectsSelection(
     }
 
     /*
-     * A span-shaped Statics body: a Beam, Cable or Shaft, a
+     * A CHAIN OF SPANS, by trait rather than by name.
+     *
+     * A polyline and a legacy construction chain are both a sequence of
+     * straight segments, and the test is the same for every one of them. The
+     * trait is asked rather than listing the types here, because a list is a
+     * thing to forget - and forgetting it is what left a polyline box-selectable
+     * only by catching one of its own vertices.
+     */
+    if (
+        Array.isArray(geometry.points) &&
+        geometry.points.length >= 2
+    ) {
+        return polylineIntersectsSelection(
+            geometry.points,
+            selectionBox
+        );
+    }
+
+    /*
+     * A SPAN-SHAPED STATICS BODY: a Beam, Cable or Shaft, a
      * Connection, and a Varying Distributed Load. Each is a real
      * line to the selection test.
      */
