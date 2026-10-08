@@ -3,11 +3,6 @@
  */
 
 import enggDrawingState from "../core/model/drawing-state.js";
-import enggDimensions from "../core/scale/dimensions.js";
-import enggQuantities from "../core/units/quantities.js";
-import enggDimensionEdit from "../features/dimensions/dimension-edit.js";
-import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
-import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggNoteEditor from "../ui/editors/note-editor.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import { handleAnnotateClick, isAnnotateTool, isEditableAnnotate } from "./annotate-creation.js";
@@ -17,7 +12,7 @@ import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
 import { isConstructionTool, shouldClickSelectExistingObject } from "./construction-tools.js";
 import { handleDimensionClick } from "./dimension-placement.js";
-import { isDimensionTool } from "./dimension-tool.js";
+import { isDimensionTool, openDimensionValuePrompt } from "./dimension-tool.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { add2DCoordinateSystem, beginOrCompleteGeometry } from "./geometry-creation.js";
@@ -479,12 +474,23 @@ function selectFromCanvasClick(
          */
         if (
             !pickedAlready &&
-            object.type === "dimension" &&
+            (object.type === "dimension" ||
+                object.type === "variable-dimension") &&
             editorState.featureTreePickedId === object.id
         ) {
             editorState.featureTreePickedId = null;
 
-            openDimensionEditorFor(object);
+            /*
+             * THE SAME VALUE POPUP THE CANVAS DOUBLE-CLICK OPENS.
+             *
+             * There are TWO ways to ask to edit a dimension - double-clicking
+             * it on the sheet, and clicking its already-picked row here - and
+             * both are the same request, so both must reach the same box. This
+             * one used to open the dimension editor, whose first question was
+             * the sheet's World Scale; a value edit must never be routed
+             * through a question about the drawing's scale.
+             */
+            openDimensionValuePrompt(object);
 
             return true;
         }
@@ -535,173 +541,32 @@ function selectFromCanvasClick(
  * when the line moves.
  */
 export function openDimensionEditorFor(object) {
-    const measurement =
-        enggDimensionModel.measurementFor(
-            object,
-            drawingState
-        );
-
-    const measuredText =
-        enggDimensionModel.formatMeasurement(
-            object,
-            drawingState
-        );
-
-    const sourceId = dimensionSourceFeatureId(
-        object
-    );
-
-    const source =
-        sourceId
-            ? drawingState.objects.find(
-                (candidate) =>
-                    candidate.id === sourceId
-            )
-            : null;
-
     /*
-     * The drawing length, for the calibration field.
+     * ========================================================
+     * A DIMENSION'S EDITOR IS THE STANDARD VALUE POPUP
+     * ========================================================
      *
-     * Stated in DRAWING UNITS, because that is what the student is
-     * being asked to confirm. "this line is 41 units long and the real
-     * length is 125 mm" is a true sentence; "this line is 41 mm" is
-     * not, and would invite the student to edit the wrong number.
-     */
-    const drawingLength =
-        measurement
-            ? `${Number(measurement.value).toFixed(2)} drawing units`
-            : "";
-
-    /*
-     * WHETHER A TYPED VALUE MAY MOVE THE GEOMETRY.
+     * This used to open a dimension-specific dialog whose first question was
+     * the sheet's WORLD SCALE, alongside precision and text settings. Two
+     * things were wrong with that, and both are fixed by routing here.
      *
-     * On a sheet with a scale, a dimension is an instruction: make the
-     * geometry this size, through that scale. On an UNCALIBRATED sheet there
-     * is nothing to convert through - the first length DEFINES the scale - so
-     * the value calibrates instead and the geometry is left alone. That is
-     * the one case where the two acts differ, and it is decided here, once,
-     * rather than being guessed at in the dialog.
+     * FIRST, THE SCALE QUESTION. A scale is a property of the DRAWING, not of
+     * the dimension the student just double-clicked, and it was being asked
+     * every time somebody wanted to change a number. It is now asked where a
+     * drawing setting belongs - nowhere in this path.
+     *
+     * SECOND, THERE WERE TWO WAYS TO EDIT A DIMENSION. The canvas double-click
+     * and the picked-row click both came to this function, and it is the one
+     * place both reach - so putting the shared popup HERE means neither can
+     * present a different box from the other, and a third caller added later
+     * inherits the same behaviour.
+     *
+     * `openDimensionValuePrompt` is kept as its own function so this stays a
+     * one-line delegate: a reader looking for "what opens when a dimension is
+     * edited" finds the answer in the name, and does not have to know which
+     * dialog implementation happens to back it.
      */
-    const calibrated =
-        enggDimensions.isCalibrated(drawingState);
-
-    const resizable =
-        calibrated &&
-        enggDimensionEdit.dimensionEditable(
-            object,
-            drawingState
-        );
-
-    enggDimensionEditor.open({
-        dimensionType: object.dimensionType,
-        measuredText,
-        drawingLength,
-        editable: resizable,
-        unit:
-            enggDimensions.readScale(
-                drawingState
-            )?.unit || "mm",
-        precision: object.style?.precision ?? 2,
-        sourceName: source
-            ? source.name || source.type
-            : "unknown source",
-
-        onApply: (changes) => {
-            const previousObjects =
-                enggDrawingState.snapshotDrawing(
-                    drawingState
-                );
-
-            if (changes.precision !== undefined) {
-                object.style = {
-                    ...(object.style || {}),
-                    precision: changes.precision
-                };
-            }
-
-            /*
-             * A NEW PHYSICAL SIZE: THE GEOMETRY MOVES.
-             *
-             * The typed value is normalised to millimetres with the unit the
-             * student chose, then handed to the one property setter - which
-             * performs the single conversion into world units through the
-             * sheet's World Scale. Nothing is converted here, so the value
-             * cannot cross the scale twice.
-             *
-             * This is deliberately NOT reachable on an uncalibrated sheet:
-             * the dialog does not offer the field until a scale exists.
-             */
-            let resized = null;
-
-            if (changes.resize) {
-                const millimetres =
-                    changes.resize.value *
-                    (enggQuantities?.LENGTH_UNITS?.[
-                        changes.resize.unit
-                    ]?.mm ?? 1);
-
-                resized = enggDimensionEdit.applyDimensionValue(
-                    object,
-                    drawingState,
-                    millimetres
-                );
-            }
-
-            /*
-             * A CALIBRATION, not an edit to this dimension.
-             *
-             * Applied to the document, so every dimension on the sheet
-             * is restated against the new scale - which is the point of
-             * a calibration. The geometry is not touched: a student who
-             * discovers the drawing was the wrong size wants the
-             * NUMBERS right, not the shape changed under them.
-             */
-            if (changes.calibration && measurement) {
-                enggDimensions.calibrate(
-                    drawingState,
-                    measurement.value,
-                    changes.calibration.realValue,
-                    changes.calibration.unit
-                );
-            }
-
-            enggDrawingState.commitDrawingChange(
-                drawingState,
-                previousObjects
-            );
-
-            /*
-             * Left SELECTED.
-             *
-             * The dimension did not move and its source did not move,
-             * so after an edit it is still the thing the student was
-             * working on, and they may well want to nudge it along.
-             */
-            enggDrawingState.selectObject(
-                drawingState,
-                object.id
-            );
-
-            setToolMessage(
-                resized?.ok
-                    ? "Size updated - the geometry now matches"
-                    : changes.calibration
-                        ? "Scale updated - every dimension on this sheet now uses it"
-                        : "Dimension display updated"
-            );
-
-            renderProperties();
-            renderCurrentDrawing();
-        },
-
-        onCancel: () => {
-            setToolMessage(
-                "Dimension edit cancelled"
-            );
-
-            renderCurrentDrawing();
-        }
-    });
+    return openDimensionValuePrompt(object);
 }
 
 /*
@@ -797,33 +662,6 @@ export function openNoteEditorFor(object) {
     });
 
     return true;
-}
-
-/*
- * The feature a dimension measures, whichever of its references names
- * one.
- *
- * A dimension's references may name two features (a pair measurement)
- * or one (a single feature, referenced twice). Both are resolved the
- * same way: the first reference that names a feature on this drawing.
- */
-function dimensionSourceFeatureId(object) {
-    const refs =
-        object.sourceRefs || [];
-
-    for (const ref of refs) {
-        if (
-            ref?.featureId &&
-            drawingState.objects.some(
-                (candidate) =>
-                    candidate.id === ref.featureId
-            )
-        ) {
-            return ref.featureId;
-        }
-    }
-
-    return null;
 }
 
 export function syncSelectionInteraction() {

@@ -17,6 +17,100 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
 
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
+    /*
+     * ========================================================
+     * TEXT SCALES WITH THE ZOOM; NOTHING ELSE DOES
+     * ========================================================
+     *
+     * Zooming in makes TEXT bigger so it stays readable as the drawing grows,
+     * and zooming out makes it smaller so it stops crowding the geometry. It
+     * changes NOTHING else: lines, arrows, symbols, dimension extension lines,
+     * supports, moments and every geometric position are drawn in world units
+     * through the camera, exactly as they were - they already scale with zoom
+     * because they ARE the drawing, and a second scaling on top of that would
+     * make an arrow twice the size the student drew.
+     *
+     * WHY A MODULE-LEVEL VALUE RATHER THAN A PARAMETER.
+     *
+     * Twelve places emit a `font-size`: the annotation model, the annotate
+     * features, dimension and variable-dimension text, the diagram axis labels
+     * and tick numbers, and a handful inside the drawing helpers. Threading
+     * `state` through every one of them - and through the helpers that do not
+     * currently receive it - would be a dozen signature changes to carry one
+     * number, and each would be a chance to forget one. It is set ONCE at the
+     * top of every render, from the state that render was given, so it cannot
+     * describe a zoom other than the one being drawn.
+     *
+     * IT IS READ-ONLY TO EVERYTHING BELOW. Nothing writes `state.camera.zoom`
+     * from here, and nothing writes a feature's stored `style.fontSize` - the
+     * student's own setting is theirs, and this only changes how large it is
+     * PAINTED.
+     */
+    let activeZoom = 1;
+
+    /*
+     * HOW MUCH BIGGER THAN ITS STORED SIZE A FONT IS PAINTED.
+     *
+     * The restriction is deliberately WEAKER than the camera's: at 400% zoom a
+     * word at four times its size would cover the drawing it labels, and at 25%
+     * it would be unreadable. So the text follows the zoom only within a band -
+     * past either end it stops, and the drawing keeps scaling around it.
+     *
+     * A square root rather than the zoom itself is the curve: it keeps the text
+     * responding visibly across the whole range instead of hitting the ceiling
+     * within the first two zoom steps, which is what a student actually notices.
+     */
+    const TEXT_SCALE_MIN = 0.55;
+    const TEXT_SCALE_MAX = 1.6;
+
+    function textScale(state) {
+        const zoom = Number(state?.camera?.zoom);
+
+        if (!Number.isFinite(zoom) || zoom <= 0) {
+            return 1;
+        }
+
+        const scaled = Math.sqrt(zoom);
+
+        return Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, scaled));
+    }
+
+    /*
+     * A stored font size, in the size it is actually painted at.
+     *
+     * EVERY `font-size` the renderer emits goes through this, so there is one
+     * place that decides how text responds to zoom and no site can disagree
+     * with another. There is the HARD CEILING and FLOOR here too, in absolute
+     * pixels: a note stored at 30 stays readable at extreme zoom-out, and one
+     * stored at 4 does not become a hairline at extreme zoom-in.
+     */
+    const FONT_PX_MIN = 6;
+    const FONT_PX_MAX = 64;
+
+    function zoomedFont(base, state) {
+        const size = Number(base);
+
+        if (!Number.isFinite(size) || size <= 0) {
+            return base;
+        }
+
+        const scaled = size * textScale(state ?? { camera: { zoom: activeZoom } });
+
+        return Math.min(FONT_PX_MAX, Math.max(FONT_PX_MIN, scaled));
+    }
+
+    /*
+     * The paint size for a font when the STATE is not in scope.
+     *
+     * A few helpers - the created-plate text, the annotate kinds - are deep
+     * enough that threading `state` would reach several call sites for one
+     * number. They read the zoom this render was started with instead, which is
+     * the same value, set once per frame.
+     */
+    function zoomedFontHere(base) {
+        return zoomedFont(base, null);
+    }
+
     function createSvgElement(type, attributes = {}) {
         const element =
             document.createElementNS(
@@ -582,7 +676,7 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
                 x: 0,
                 y: (index - (lines.length - 1) / 2) * lineHeight + fontSize * 0.35,
                 fill: stroke,
-                "font-size": fontSize,
+                "font-size": zoomedFontHere(fontSize),
                 "font-family": "Arial, sans-serif",
                 "text-anchor": "middle",
                 "dominant-baseline": "middle"
@@ -908,7 +1002,7 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
             x: screen.x,
             y: screen.y + fontSize * 0.36,
             fill: stroke,
-            "font-size": fontSize,
+            "font-size": zoomedFontHere(fontSize),
             "font-family": "Arial, sans-serif",
             "font-weight": "600",
             "text-anchor": "middle"
@@ -1114,7 +1208,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             x: origin.x,
             y: origin.y - ((lines.length - 1) * lineHeight) / 2 + fontSize * 0.35,
             fill: unresolved ? "#999999" : stroke,
-            "font-size": fontSize,
+            "font-size": zoomedFontHere(fontSize),
             "font-family": "Arial, sans-serif",
             "text-anchor": "middle",
             ...(unresolved ? { "text-decoration": "underline dotted" } : {})
@@ -1319,7 +1413,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             x: at.x,
             y: firstY,
             fill: stroke,
-            "font-size": fontSize,
+            "font-size": zoomedFontHere(fontSize),
             "font-family": "Arial, sans-serif",
             "text-anchor": anchorName
         });
@@ -1516,7 +1610,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     x: cellCentre.x,
                     y: cellCentre.y,
                     fill: stroke,
-                    "font-size": fontSize * 0.85,
+                    "font-size": zoomedFontHere(fontSize * 0.85),
                     "font-family": "Arial, sans-serif",
                     "text-anchor": "middle"
                 });
@@ -1808,6 +1902,108 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
     }
 
     /*
+     * ========================================================
+     * A SKETCH DIAGRAM'S STROKES, IN WORLD COORDINATES
+     * ========================================================
+     *
+     * THE ONE PLACE a hand-drawn diagram is turned into world-space marks,
+     * used by the renderer that DRAWS it and by anything that has to test
+     * against it - box selection, fit bounds, hit testing. That is the whole
+     * point of extracting it: a selection rectangle and the ink it is drawn
+     * over must be the same geometry, and two implementations of "where is
+     * this stroke" are two chances for them to disagree.
+     *
+     * WHAT IS WRONG WITHOUT IT. A sketch element stores GRAPH-LOCAL points:
+     * x is a station on the member, y is the value in kN or kN·m. The sheet
+     * draws them at `along(x, value)`, which maps the x onto the member's own
+     * length and the value onto the frame's scale. Testing selection against
+     * the RAW stored points tests numbers that are not on the sheet at all, so
+     * a box drawn over the ink finds nothing.
+     *
+     * The return shape mirrors `analysisPlotMarks`, so a caller can treat a
+     * sketched and a plotted diagram the same way:
+     *
+     *   { kind: "curve", id, points: [worldPoint, …] }
+     */
+    function analysisSketchMarks(geometry) {
+        const elements = Array.isArray(geometry?.sketchElements)
+            ? geometry.sketchElements
+            : [];
+
+        if (!elements.length) {
+            return [];
+        }
+
+        const localRange = geometry.localRange;
+        const start = geometry.start;
+        const end = geometry.end;
+
+        if (!localRange || !start || !end) {
+            return [];
+        }
+
+        const rangeWidth = localRange.to - localRange.from;
+
+        if (!(rangeWidth > 0)) {
+            return [];
+        }
+
+        /*
+         * The peak is taken from the sketch's own points, because a sketch
+         * has no equations to read one from. This is the same value the
+         * drawing path uses, so the marks and the ink cannot be on different
+         * scales.
+         */
+        let peak = 0;
+
+        elements.forEach(element => {
+            sketchPointsOf(element).forEach(point => {
+                if (Number.isFinite(point.y)) {
+                    peak = Math.max(peak, Math.abs(point.y));
+                }
+            });
+        });
+
+        const { unitHeight: scale } = analysisValueScale(
+            geometry,
+            rangeWidth,
+            peak
+        );
+
+        /*
+         * `scale`, not `unitHeight`: the two differ exactly when the student
+         * has set a y-range, and using the wrong one would put the strokes on
+         * one scale and the axis on another.
+         */
+        const along = (x, value) => ({
+            x:
+                start.x +
+                (end.x - start.x) *
+                    ((x - localRange.from) / rangeWidth),
+
+            y: start.y + value * scale,
+        });
+
+        return elements
+            .map(element => {
+                const points = sketchPointsOf(element);
+
+                if (points.length < 2) {
+                    return null;
+                }
+
+                return {
+                    kind: element.kind === "line" ? "line" : "curve",
+                    id: element.id,
+                    points: points.map(point =>
+                        along(point.x, point.y)
+                    ),
+                };
+            })
+            .filter(Boolean);
+    }
+
+    /*
      * DRAW THE STUDENT'S SKETCH
      * ========================================================
      *
@@ -1821,11 +2017,9 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
      * A sketch and a plot that sat on different scales would make the two
      * modes look like two different quantities.
      *
-     * WITH NO EXPRESSION THERE IS NO SCALE TO USE, so the frame's own height
-     * is the reference - the same `rangeWidth * 0.16` the plot path uses
-     * before it looks at a peak. A sketch has no equations to read a peak
-     * from, and inferring one from the drawing would make the drawing
-     * change size as it was drawn, which is the opposite of predictable.
+     * THE MARKS COME FROM `analysisSketchMarks`, so what is drawn here is
+     * exactly what a selection rectangle is tested against - one projection,
+     * used twice rather than written twice.
      */
     function appendAnalysisSketch(
         svg,
@@ -1849,57 +2043,11 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             return;
         }
 
-        const rangeWidth =
-            localRange.to - localRange.from;
+        const rangeWidth = localRange.to - localRange.from;
 
         if (!(rangeWidth > 0)) {
             return;
         }
-
-        const unitHeight = rangeWidth * 0.16;
-
-        /*
-         * A SKETCH HAS NO EQUATIONS, so there is no peak to derive a scale
-         * from. The frame's own reference is used instead - which is the same
-         * value the plot path falls back to - unless the student has set a
-         * y-range, in which case that governs here exactly as it does there.
-         */
-        let peak = 0;
-
-        elements.forEach(element => {
-            sketchPointsOf(element).forEach(point => {
-                if (Number.isFinite(point.y)) {
-                    peak = Math.max(peak, Math.abs(point.y));
-                }
-            });
-        });
-
-        const { unitHeight: scale } =
-            analysisValueScale(
-                geometry,
-                rangeWidth,
-                peak
-            );
-
-        /*
-         * IDENTICAL TO THE PLOT PATH. x is a fraction of the member's own
-         * length, so the sketch stays locked to the body however the frame
-         * is moved, the member is rotated or the view is zoomed. A positive
-         * value is ADDED to the world y, because this world frame is y-up.
-         *
-         * `scale`, not `unitHeight`: the two differ exactly when the student
-         * has set a y-range, and using the wrong one here would draw the
-         * sketch on one scale and the axes on another - a curve that no
-         * longer meets the axis it was drawn against.
-         */
-        const along = (x, value) => ({
-            x:
-                start.x +
-                (end.x - start.x) *
-                    ((x - localRange.from) / rangeWidth),
-
-            y: start.y + value * scale,
-        });
 
         const strokeOptions = {
             fill: "none",
@@ -1909,18 +2057,20 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             "stroke-linecap": "round",
         };
 
-        elements.forEach(element => {
-            const points = sketchPointsOf(element);
+        /*
+         * DRAWN FROM THE SHARED MARKS. The projection that places this ink is
+         * `analysisSketchMarks`, which box selection also tests against - so a
+         * rectangle drawn over a stroke provably covers the stroke, rather
+         * than covering a second, separate calculation of where it is.
+         */
+        analysisSketchMarks(geometry).forEach(mark => {
+            const screen = mark.points.map(toScreen);
 
-            if (points.length < 2) {
+            if (screen.length < 2) {
                 return;
             }
 
-            const screen = points.map(
-                point => toScreen(along(point.x, point.y))
-            );
-
-            if (element.kind === "line") {
+            if (mark.kind === "line") {
                 svg.appendChild(
                     createSvgElement("line", {
                         x1: screen[0].x,
@@ -1940,9 +2090,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
              * and get a different curve - so the rule is stated once here and
              * once there rather than approximated twice.
              */
-            const d = [
-                `M ${screen[0].x} ${screen[0].y}`,
-            ];
+            const d = [`M ${screen[0].x} ${screen[0].y}`];
 
             for (let i = 1; i < screen.length - 1; i++) {
                 const mid = {
@@ -1969,20 +2117,32 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
     }
 
     /*
-     * The points an element is drawn through. A LINE has two and a CURVE has
-     * as many as were clicked, and asking through one function means neither
-     * the editor nor this file has to know which kind it is holding.
+     * The points an element is drawn through. A LINE has two, a THREE-POINT
+     * CURVE has its Start, Bend and End, and a legacy curve has as many as were
+     * clicked.
+     *
+     * `curve3` WAS MISSING, and its absence was not cosmetic: this function is
+     * what both the RENDERER and the box-selection test read, so a three-point
+     * curve returned no points at all - it was never drawn on the sheet, and it
+     * could never be selected. The one curve tool the editor actually creates
+     * was the one curve the sheet could not draw.
      */
     function sketchPointsOf(element) {
         if (!element) {
             return [];
         }
 
-        return element.kind === "line"
-            ? [element.start, element.end]
-            : Array.isArray(element.points)
-                ? element.points
-                : [];
+        if (element.kind === "line") {
+            return [element.start, element.end];
+        }
+
+        if (element.kind === "curve3") {
+            return [element.start, element.bend, element.end].filter(
+                point => point && Number.isFinite(point.x)
+            );
+        }
+
+        return Array.isArray(element.points) ? element.points : [];
     }
 
     /*
@@ -2101,7 +2261,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                             class: "drawing-analysis-equation",
                             "text-anchor": "middle",
                             "font-family": "Arial, sans-serif",
-                            "font-size": 10,
+                            "font-size": zoomedFontHere(10),
                             fill: tint,
                             "stroke": "none"
                         });
@@ -2513,7 +2673,18 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                         ? enggBodyFrames.supportPlacement(
                             body,
                             attachmentPoint,
-                            flipped
+                            flipped,
+
+                            /*
+                             * A FIXED SUPPORT'S WALL SITS AT THE ATTACHMENT
+                             * POINT, because that is where the member ENDS.
+                             * Every other support stands a clearance off the
+                             * face so its symbol does not look half-inside the
+                             * body; a fixed end has no such problem, and the
+                             * clearance would leave a gap the member appeared
+                             * to pass through.
+                             */
+                            { fixed: entity.type === "fixed-support" }
                         )
                         : null;
 
@@ -3264,7 +3435,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                             y:
                                 axisTop +
                                 frame.top / 2,
-                            "font-size": 8,
+                            "font-size": zoomedFontHere(8),
                             fill: stroke,
                             "fill-opacity": 0.75,
 
@@ -3313,7 +3484,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                                 frame.arrowHead +
                                 frame.labelGap,
                             y: to.y + 3,
-                            "font-size": 8,
+                            "font-size": zoomedFontHere(8),
                             fill: stroke,
                             "fill-opacity": 0.75,
                             "text-anchor": "start"
@@ -3440,7 +3611,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                                     createSvgElement("text", {
                                         x: at.x,
                                         y: at.y + 11,
-                                        "font-size": 7,
+                                        "font-size": zoomedFontHere(7),
                                         fill: stroke,
                                         "fill-opacity": 0.7,
                                         "text-anchor": "middle"
@@ -3543,7 +3714,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                                                         axisLeft -
                                                         5,
                                                     y: at.y + 2.5,
-                                                    "font-size": 7,
+                                                    "font-size": zoomedFontHere(7),
                                                     fill: stroke,
                                                     "fill-opacity":
                                                         0.7,
@@ -5938,15 +6109,36 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
         if (type === "fixed-support") {
             /*
-             * A hatched wall running ACROSS the body, with the
-             * hatching on the far side of it.
+             * ========================================================
+             * A WALL AT THE BODY'S END, WITH THE HATCHING BEHIND IT
+             * ========================================================
+             *
+             * WHAT A FIXED SUPPORT IS: the member ends AT a wall. So the wall's
+             * LINE belongs at the attachment point - the end of the body -
+             * running perpendicular to the member, and the hatch strokes stand
+             * BEHIND that line, on the side the body is NOT on.
+             *
+             * WHAT IT USED TO BE: the wall was drawn where the OTHER supports'
+             * symbols are drawn - at the standoff, a short way off the body's
+             * face - which put the line floating beside the member instead of
+             * at its end. The member then appeared to pass THROUGH the wall
+             * rather than to stop at it, and the hatch strokes started ON the
+             * line rather than behind it, so the two overlapped.
+             *
+             * THE HATCHING IS ON `out`, WHICH IS AWAY FROM THE BODY. `at`
+             * measures along the body's own normal, and `out` for this symbol
+             * is the direction its ground faces - away from the member. So
+             * offsets with a POSITIVE first component are on the far side of
+             * the wall from the body, which is exactly where the strokes
+             * belong.
              */
             const wall = 16;
 
+            /* The wall line, ACROSS the member, at the attachment point. */
             line(
                 at(0, -wall),
                 at(0, wall),
-                2
+                2.5
             );
 
             for (
@@ -5954,9 +6146,14 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 offset <= wall;
                 offset += 5
             ) {
+                /*
+                 * FROM THE WALL BACKWARD, never across it: every stroke
+                 * starts ON the wall (0) and runs away from the body, so the
+                 * hatch reads as the solid the member is fixed into.
+                 */
                 line(
                     at(0, offset),
-                    at(7, offset + 5),
+                    at(9, offset + 5),
                     1
                 );
             }
@@ -6349,7 +6546,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     fill:
                         axisColor,
                     "font-size":
-                        11,
+                        zoomedFontHere(11),
                     "font-family":
                         "Arial, sans-serif",
                     "font-weight":
@@ -6376,7 +6573,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     fill:
                         axisColor,
                     "font-size":
-                        11,
+                        zoomedFontHere(11),
                     "font-family":
                         "Arial, sans-serif",
                     "font-weight":
@@ -7539,9 +7736,36 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                             state
                         );
 
+            /*
+             * A VARIABLE DIMENSION'S PREVIEW SHOWS THE DIMENSION GEOMETRY AND
+             * NOT AN ANSWER.
+             *
+             * The preview was always built as a `dimension` probe, so an
+             * armed VARIABLE dimension drew the MEASURED value - "100 mm" on a
+             * line the student was about to name `L`. That number is not the
+             * feature's value and never becomes it, so showing it was telling
+             * the student something the drawing would then contradict.
+             *
+             * The extension lines, the arrows and the placement are the same
+             * either way - they come from the shared dimension model - so the
+             * variable case is drawn as a variable with an EMPTY symbol, and
+             * `appendVariableDimensionEntity` returns before drawing any text.
+             * The shape appears, the value does not.
+             */
+            const previewingVariable =
+                state.activeTool === "variable-dimension";
+
             const previewDimension = {
                 id: "dimension-preview",
-                type: "dimension",
+                type: previewingVariable ? "variable-dimension" : "dimension",
+
+                /*
+                 * AN EMPTY SYMBOL IS THE "not written yet" STATE, and the
+                 * variable renderer draws nothing for it - which is exactly
+                 * the empty value the requirement asks the preview to show.
+                 */
+                symbol: previewingVariable ? "" : undefined,
+
                 dimensionType:
                     state.interaction
                         .dimensionChoice,
@@ -7571,13 +7795,29 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 "0.72"
             );
 
-            appendDimensionEntity(
-                previewGroup,
-                previewDimension,
-                state,
-                toScreen,
-                previewDimension.style
-            );
+            /*
+             * DRAWN BY THE RENDERER FOR ITS OWN KIND, so the preview and the
+             * committed feature cannot disagree: a variable previews through
+             * the variable renderer (which draws the shape and no text for an
+             * empty symbol), and a dimension through the dimension one.
+             */
+            if (previewingVariable) {
+                appendVariableDimensionEntity(
+                    previewGroup,
+                    previewDimension,
+                    state,
+                    toScreen,
+                    previewDimension.style
+                );
+            } else {
+                appendDimensionEntity(
+                    previewGroup,
+                    previewDimension,
+                    state,
+                    toScreen,
+                    previewDimension.style
+                );
+            }
 
             svg.appendChild(previewGroup);
         }
@@ -8620,6 +8860,12 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             return;
         }
 
+        /*
+         * THE ZOOM THIS FRAME IS DRAWN AT, recorded once so every font scale
+         * in the whole pass agrees - see the note on `activeZoom`.
+         */
+        activeZoom = Number(state?.camera?.zoom) || 1;
+
         const svg =
             ensureSvg(canvas);
 
@@ -8912,6 +9158,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         analysisFrameExtents,
         analysisPlotMarks,
         analysisValueAt,
+        analysisSketchMarks,
         equationLabels
     };
 

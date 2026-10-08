@@ -2017,22 +2017,43 @@ export function featurePropertyMarkup(object) {
          * A VARIABLE DIMENSION.
          *
          *     VARIABLE
-         *     [ x ]
+         *     [ L/2 ]
          *
-         * One editable field: the SYMBOL. There is no measurement field and no
-         * unit, because an unknown quantity has neither - offering a number box
-         * here would invite the student to type a value into a feature whose
-         * whole purpose is to say the value is not known.
+         * One editable field: the VARIABLE OR EXPRESSION. There is no measurement
+         * field and no unit, because an unknown quantity has neither - offering a
+         * number box here would invite the student to type a value into a feature
+         * whose whole purpose is to say the value is not known.
          *
-         * The field is left EMPTY when the symbol is empty, which is a real
-         * state - named but not yet written - and never filled with a default.
+         * READ FROM THE FEATURE, NOT FROM ITS GEOMETRY.
          *
-         * The reference rows above are the shared ones: a variable attaches to
-         * the same geometry a dimension does, so it is measured and reported the
-         * same way.
+         * The model stores the symbol ON the variable (`variable.symbol`), because
+         * that is where the renderer, the hit test and `variableText` all read it
+         * - and this field used to read `geometry.symbol`, which is a different
+         * object and always empty. So the student's own symbol was invisible in
+         * the panel the moment they placed it, and the edit box looked as though
+         * the dimension had lost what they typed.
+         *
+         * The field is left EMPTY only when the symbol really is empty, which is
+         * a real state - named but not yet written - and never filled with a
+         * default.
          */
         rows.push(section("VARIABLE"));
-        rows.push(textField("Variable", "symbol", geometry.symbol ?? ""));
+        rows.push(textField("Variable", "symbol", object.symbol ?? ""));
+
+        /*
+         * WHAT THE SELECTION INFERRED, when it was inferred. Shown so a student
+         * can see that their pair of lines was read as an ANGLE rather than a
+         * length - the same thing the prompt asked them about.
+         */
+        if (object.dimensionType) {
+            rows.push(
+                textField(
+                    "Measures",
+                    "dimensionType",
+                    variableMeasureLabel(object.dimensionType)
+                )
+            );
+        }
     }
 
     rows.push(appearanceMarkup(object));
@@ -2257,6 +2278,27 @@ function leaderStyleRows(object) {
             <span></span>
         </div>
     `;
+}
+
+/*
+ * What a variable's dimension type is called, for the panel row.
+ *
+ * The same vocabulary the prompt uses, so the question the student answered and
+ * the row they check afterwards read the same way.
+ */
+function variableMeasureLabel(dimensionType) {
+    return (
+        {
+            angular: "Angle",
+            "point-line": "Distance",
+            horizontal: "Length",
+            vertical: "Length",
+            aligned: "Length",
+            linear: "Length",
+            diameter: "Diameter",
+            radius: "Radius"
+        }[dimensionType] || String(dimensionType)
+    );
 }
 
 /*

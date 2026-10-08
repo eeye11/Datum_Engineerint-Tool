@@ -205,51 +205,163 @@ function makeScale(range, elements, options) {
 }
 
 /*
- * HOW TALL THE GRAPH IS, IN THE DIAGRAM'S OWN UNITS.
+ * ========================================================
+ * HOW TALL THE GRAPH IS, IN THE DIAGRAM'S OWN UNITS
+ * ========================================================
  *
- * The vertical extent is the largest of:
+ * THE AXIS REACHES THE ACTUAL GEOMETRY, with a small readable margin.
  *
- *   - the tallest thing already drawn, with headroom, so an existing sketch
- *     opens showing all of itself;
- *   - the range the ANALYSIS LAYER reports, which is what the diagram's axis
- *     is scaled to and therefore what the plotted mode would show;
- *   - a sane default, so an EMPTY sketch still has a real y-axis to draw
- *     against rather than a degenerate one.
+ * It used to be the largest ABSOLUTE value - `peak * 1.35` - which is a
+ * different question and gave a different answer. `Math.abs` throws the SIGN
+ * away, so a diagram drawn entirely BELOW the axis was measured by how far
+ * above it something might have been, and the extent below was whatever that
+ * number happened to be. A trough at -40 under a peak at -5 gave an axis 54
+ * units long with 49 of them wasted.
  *
- * Headroom is generous - `peak * 1.35` rather than the old `1.2` - because
- * the point of fixing the scale is that a student can drag a point ABOVE the
- * current peak without the graph rescaling, and 20% is not enough room to
- * place the next step of a diagram.
+ * So the HIGHEST and LOWEST points are found separately, and the extent is the
+ * larger of the two distances from the axis - which is what makes the graph
+ * reach the extremum on BOTH sides without leaving a band of empty space on
+ * the side nothing is drawn on.
+ *
+ * THE MARGIN IS SMALL AND PROPORTIONAL. `1.12` rather than `1.35`: the axis
+ * reaches just past the geometry, so a label at the top is not sitting on the
+ * curve, without the large fixed band of unused graph the old factor left. A
+ * diagram that grows to touch its own axis is a diagram whose axis is the right
+ * size.
+ *
+ * AND THE CURVE'S REAL EXTREMA ARE USED. A quadratic bulges BEYOND its control
+ * points - the drawn curve is pulled toward the Bend, not through it - so
+ * testing only the stored points can clip the top of a bow. `curveExtents`
+ * solves for the curve's actual maximum and minimum.
  */
 function chooseUnitHeight(range, elements, options) {
   const span = (Number(range?.to) || 1) - (Number(range?.from) || 0) || 1;
 
   const declared = Number(options?.yRange);
 
-  let peak = 0;
+  let high = 0;
+  let low = 0;
 
   elements.forEach((element) => {
-    pointsOf(element).forEach((point) => {
-      if (Number.isFinite(point.y)) {
-        peak = Math.max(peak, Math.abs(point.y));
-      }
-    });
+    const extent = elementYExtent(element);
+
+    high = Math.max(high, extent.high);
+    low = Math.min(low, extent.low);
   });
 
-  if (Number.isFinite(declared) && declared > 0) {
-    peak = Math.max(peak, declared);
-  }
+  /*
+   * ========================================================
+   * THE AXIS REACHES WHAT IS DRAWN, NOT WHAT COULD BE DRAWN
+   * ========================================================
+   *
+   * The extent is the ACTUAL geometry - the highest and lowest points of the
+   * elements that are really on the graph - with a small margin. That is what
+   * makes the axis fit the diagram the student drew: draw one small bump and
+   * the axis reaches it; draw a tall spike and the axis grows to hold it; erase
+   * the spike and the axis comes back down.
+   *
+   * THE ANALYSIS LAYER'S RANGE IS A FALLBACK, NOT A FLOOR.
+   *
+   * It used to be ORed into the extent, so a sketch with one small element - or
+   * none at all - was still drawn against the full height of the body's
+   * diagram. The axis then reached far beyond anything on the graph, which is
+   * the "arbitrary fixed range" this fixes. It is used only when there is
+   * NOTHING drawn, so an empty sketch still has a real y-axis to start against
+   * rather than a degenerate one.
+   */
+  const drawnHigh = high;
+  const drawnLow = low;
 
-  if (peak > 0) {
-    return peak * 1.35;
+  const reach = Math.max(drawnHigh, Math.abs(drawnLow));
+
+  if (reach > 0) {
+    /*
+     * A SMALL READABLE MARGIN, not a generous one. 12% of the drawn height is
+     * enough that a peak does not touch the frame and its label has somewhere
+     * to sit, and little enough that the graph is not padded with space the
+     * student did not ask for.
+     */
+    return reach * 1.12;
   }
 
   /*
-   * NOTHING YET. A real extent either side of the axis, so the y-axis, its
-   * ticks and its labels exist before the first element is drawn - an empty
-   * sketch is still a graph.
+   * NOTHING DRAWN YET. The body's own diagram height, when the analysis layer
+   * knows one, so an empty sketch is drawn to the scale its PLOTTED mode would
+   * use - switching between drawing and plotting a diagram then shows it at one
+   * size. Failing that, a real extent either side of the axis, so the y-axis,
+   * its ticks and its labels exist before the first element is drawn.
    */
+  if (Number.isFinite(declared) && declared > 0) {
+    return declared * 1.12;
+  }
+
   return Math.max(span * 0.25, 1);
+}
+
+/*
+ * The highest and lowest y an element actually reaches.
+ *
+ * A LINE is its two ends. A `curve3` is a QUADRATIC, so its extremes are solved
+ * for rather than read off the control points: the drawn curve is pulled toward
+ * the Bend and does not pass through it, so the Bend's own y is neither the
+ * curve's highest nor its lowest point - using it would reserve space for a bow
+ * the student never sees, or clip one they do.
+ *
+ * A legacy many-point curve is sampled along its segments, because it is drawn
+ * as a chain of quadratics between the midpoints of consecutive points. Those
+ * midpoints are the visible extremes, so they are what is measured.
+ */
+function elementYExtent(element) {
+  let high = -Infinity;
+  let low = Infinity;
+
+  const see = (value) => {
+    if (Number.isFinite(value)) {
+      high = Math.max(high, value);
+      low = Math.min(low, value);
+    }
+  };
+
+  if (element?.kind === "curve3") {
+    const { start, bend, end } = element;
+
+    if (start && bend && end) {
+      /*
+       * A QUADRATIC BEZIER'S EXTREMA.
+       *
+       * B(t) = (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2, so dB/dt = 0 at
+       * t = (P0 - P1) / (P0 - 2P1 + P2). Evaluated at that t, when it lies
+       * within the segment, gives the curve's own extreme y.
+       */
+      see(start.y);
+      see(end.y);
+
+      const denominator = start.y - 2 * bend.y + end.y;
+
+      if (Math.abs(denominator) > 1e-12) {
+        const t = (start.y - bend.y) / denominator;
+
+        if (t > 0 && t < 1) {
+          const oneMinus = 1 - t;
+
+          see(
+            oneMinus * oneMinus * start.y +
+              2 * oneMinus * t * bend.y +
+              t * t * end.y,
+          );
+        }
+      }
+    }
+
+    return { high: high === -Infinity ? 0 : high, low: low === Infinity ? 0 : low };
+  }
+
+  pointsOf(element).forEach((point) => see(point.y));
+
+  return {
+    high: high === -Infinity ? 0 : high,
+    low: low === Infinity ? 0 : low,
+  };
 }
 
 /*
@@ -581,6 +693,34 @@ function drawGraph(svg, elements, range, options) {
   }
 
   /*
+   * THE SNAP INDICATION.
+   *
+   * A small ring on the point the placement will actually use, drawn in the
+   * application's snap colour, plus the kind of thing it caught. It is the
+   * same language the main canvas uses for a snap, so the sketch's magnet reads
+   * the same way the drawing's does - one application, one convention.
+   *
+   * It is drawn AFTER the elements so it is never hidden behind the stroke it
+   * is landing on, and it disappears the moment the cursor leaves the snap
+   * because the caller clears the state.
+   */
+  const snap = options?.activeSnap || null;
+
+  if (snap && snap.point) {
+    const at = scale.toScreen(snap.point);
+
+    parts.push(`
+        <circle class="sketch-editor-snap"
+          cx="${at.x}" cy="${at.y}" r="5"/>
+
+        <text class="sketch-editor-snap-label"
+          x="${at.x + 8}" y="${at.y - 7}">${escapeHtml(
+            snapLabel(snap.kind),
+          )}</text>
+      `);
+  }
+
+  /*
    * THE FRAME'S OWN LABELS: what the two ends of the x range are, ONCE, at the
    * bottom of the graph. The per-station numbers above say where each tick is;
    * these say what the axis as a whole spans, which is the thing a reader
@@ -610,10 +750,19 @@ function drawGraph(svg, elements, range, options) {
  * TEST that decides which one they grabbed - so a handle can never be drawn
  * somewhere the drag does not look for it.
  *
- * A line has its two ends. A three-point curve has its Start, its Bend and its
- * End - all three, because the Bend is the whole point of the tool and dragging
- * it is how a curve is shaped. A legacy many-point curve exposes every point it
- * was drawn through.
+ * A line has its two ends AND a middle handle. A three-point curve has its
+ * Start, its Bend and its End - all three, because the Bend is the whole point
+ * of the tool and dragging it is how a curve is shaped. A legacy many-point
+ * curve exposes every point it was drawn through.
+ *
+ * THE LINE'S MIDDLE HANDLE IS HOW A LINE BECOMES A CURVE.
+ *
+ * A student often knows the two ends first and only then wants the middle to
+ * bow - a moment diagram is a parabola between two known values. Requiring them
+ * to delete the line and redraw it as a curve throws away the endpoints they
+ * already placed, so the middle handle BENDS it instead: dragging it converts
+ * the line into a `curve3` whose Start and End are untouched and whose Bend is
+ * wherever they dragged.
  */
 function selectedElementPoints(element) {
   if (!element) {
@@ -623,7 +772,15 @@ function selectedElementPoints(element) {
   if (element.kind === "line") {
     return [
       { kind: "start", index: 0, point: element.start },
-      { kind: "end", index: 1, point: element.end },
+
+      /*
+       * THE MIDDLE HANDLE. It sits at the midpoint of the line, so it is
+       * exactly where a straight line's control point belongs - on the line,
+       * meaning "not bent yet". Dragging it off the line IS the bend.
+       */
+      { kind: "bend", index: 1, point: lineMidpoint(element) },
+
+      { kind: "end", index: 2, point: element.end },
     ].filter((entry) => entry.point);
   }
 
@@ -640,6 +797,20 @@ function selectedElementPoints(element) {
     index,
     point,
   }));
+}
+
+/*
+ * The midpoint of a straight element - where its bend handle sits.
+ */
+function lineMidpoint(element) {
+  if (!element?.start || !element?.end) {
+    return null;
+  }
+
+  return {
+    x: (element.start.x + element.end.x) / 2,
+    y: (element.start.y + element.end.y) / 2,
+  };
 }
 
 /*
@@ -742,6 +913,25 @@ function pointFromEvent(event, svg, scale) {
 }
 
 /*
+ * What a snap calls itself, in the graph's own words.
+ *
+ * The two INFERENCE kinds are named as the constraint they are - Horizontal
+ * and Vertical - because a student who is shown "Horizontal" knows their two
+ * points will share a y, whereas a generic "snap" tells them nothing about
+ * what the geometry is going to be.
+ */
+function snapLabel(kind) {
+  return (
+    {
+      endpoint: "Endpoint",
+      station: "Station",
+      horizontal: "Horizontal",
+      vertical: "Vertical",
+    }[kind] || "Snap"
+  );
+}
+
+/*
  * ========================================================
  * SNAPPING
  * ========================================================
@@ -790,9 +980,66 @@ function snapTolerances(scale) {
  * tell a snapped placement from a free one instead of having to guess.
  */
 function snapPoint(point, context) {
-  const { scale, stations, elements, excludeId } = context;
+  const { scale, stations, elements, excludeId, from } = context;
 
   const tolerance = snapTolerances(scale);
+
+  /*
+   * ========================================================
+   * HORIZONTAL AND VERTICAL INFERENCE, FROM THE LAST POINT
+   * ========================================================
+   *
+   * A diagram is drawn between values it already knows - a step at the same
+   * height, a jump at the same station - so the FIRST thing a student wants
+   * after placing a point is to move straight across from it or straight up.
+   *
+   * THIS IS A CONSTRAINT, NOT A LOOK. `from` is the point the stroke is
+   * working from, and when the cursor is within tolerance of one of its axes
+   * the matching coordinate is set to `from`'s EXACT value - not to a rounded
+   * one, and not merely drawn as though aligned. A step that looks horizontal
+   * and stores y = 40.03 against y = 40 is a defect the renderer hides and the
+   * analysis finds.
+   *
+   * IT IS CHECKED BEFORE THE STATION SNAP, because it uses a point the student
+   * has ALREADY placed and is therefore more specific than a station derived
+   * from the body. Between the two, the one the student is working from wins.
+   *
+   * A SQUARE KEEP-OUT around `from` hands the endpoint snap back: within that
+   * box the cursor is near the point itself, and a student there means the
+   * point, not an axis through it.
+   */
+  if (from && Number.isFinite(from.x) && Number.isFinite(from.y)) {
+    const dx = point.x - from.x;
+    const dy = point.y - from.y;
+
+    const nearThePoint =
+      Math.abs(dx) <= tolerance.x && Math.abs(dy) <= tolerance.y;
+
+    if (!nearThePoint) {
+      const flat = Math.abs(dy) <= tolerance.y;
+      const upright = Math.abs(dx) <= tolerance.x;
+
+      /*
+       * BOTH AXES CAN QUALIFY at a diagonal exactly 45 degrees from `from`.
+       * The NEARER axis wins, which is what the student is visibly closer to,
+       * and ties go to horizontal because it is the commoner intention in a
+       * diagram - a level step rather than a vertical jump.
+       */
+      if (flat && upright) {
+        return Math.abs(dy) <= Math.abs(dx)
+          ? { point: { x: point.x, y: from.y }, kind: "horizontal" }
+          : { point: { x: from.x, y: point.y }, kind: "vertical" };
+      }
+
+      if (flat) {
+        return { point: { x: point.x, y: from.y }, kind: "horizontal" };
+      }
+
+      if (upright) {
+        return { point: { x: from.x, y: point.y }, kind: "vertical" };
+      }
+    }
+  }
 
   let best = null;
 
@@ -1061,18 +1308,35 @@ function open(options = {}) {
   }
 
   /*
-   * THE SCALE IS CHOSEN ONCE, AND THEN IT IS THE SESSION'S.
+   * ========================================================
+   * THE AXIS REACHES THE GEOMETRY, AND HOLDS STILL DURING A GESTURE
+   * ========================================================
    *
-   * This is the fix for the graph that used to move under the cursor. The
-   * extent is worked out from what is already there when the editor OPENS - so
-   * an existing sketch is shown whole - and it is then REUSED for every redraw.
-   * Adding a point, dragging one, or deleting an element cannot change the
-   * mapping, so the graph stays put and the geometry stays under the mouse.
+   * TWO REQUIREMENTS PULL IN OPPOSITE DIRECTIONS, and both are right:
    *
-   * `drawGraph` is described the scale it should use rather than being left to
-   * derive one, so there is no second place that could choose a different one.
+   *   the axis must REACH the drawn geometry, so a diagram is never clipped
+   *   and the extent is never stale after a feature is added, moved or deleted;
+   *
+   *   and it must NOT chase the cursor, or a drag would rescale the graph on
+   *   every pointermove and the point being dragged would run away from the
+   *   mouse - the defect this editor was fixed for.
+   *
+   * SO IT IS RECOMPUTED AT THE END OF EVERY GESTURE AND NEVER DURING ONE. A
+   * stroke being drawn, a point being dragged and an element being moved all
+   * hold the scale they started with; the moment the gesture finishes - the
+   * commit, the release, the delete - `refreshScale` rebuilds it from the
+   * geometry as it now is. The graph therefore always fits what is drawn, and
+   * never moves while the student is drawing it.
+   *
+   * `drawGraph` is handed the scale rather than deriving one, so there is no
+   * second place that could choose a different extent.
    */
   let scale = makeScale(range, elements, { yRange: options.yRange });
+
+  /* Rebuild the extent from the geometry as it stands now. */
+  function refreshScale() {
+    scale = makeScale(range, elements, { yRange: options.yRange });
+  }
 
   /*
    * WHAT THE HINT SAYS WHILE A STROKE IS OPEN.
@@ -1100,6 +1364,13 @@ function open(options = {}) {
       scale,
       selectedId,
       pending,
+
+      /*
+       * WHERE THE CURSOR IS SNAPPED, so the mark is drawn on the point the
+       * placement will actually use - the same point the drag is working from,
+       * not a second opinion about it.
+       */
+      activeSnap,
 
       /*
        * THE BODY'S STATIONS, for the ticks. Passed through unchanged from the
@@ -1132,6 +1403,16 @@ function open(options = {}) {
 
     if (pending?.points.length) {
       message = pendingMessage();
+    }
+
+    /*
+     * AND WHAT IT IS SNAPPED TO, when it is. Said in words as well as drawn, so
+     * the student can tell that the magnet has caught the ENDPOINT of another
+     * element rather than the station under it - two different placements that
+     * look similar on a dense graph.
+     */
+    if (activeSnap) {
+      message = `${message} - ${activeSnap.kind}`;
     }
 
     hint.textContent = message;
@@ -1181,8 +1462,23 @@ function open(options = {}) {
   let justFinished = false;
 
   /*
+   * THE POINT THE CURSOR IS CURRENTLY SNAPPED TO, and what it snapped to.
+   *
+   * This is the DAETUM snap INDICATION for the sketch: without it a student
+   * cannot tell a snapped placement from a free one, and the whole point of
+   * the magnet is that they can rely on it. It is cleared as soon as the
+   * cursor leaves the snap, so it can never linger over a point that is no
+   * longer being offered.
+   */
+  let activeSnap = null;
+
+  /*
    * The graph point under the pointer, SNAPPED, with what it snapped to - so
    * the caller can place from it AND show the indication.
+   *
+   * THE INDICATION IS RECORDED HERE, once, rather than at each call site: four
+   * gestures place points and every one of them should light the same mark, so
+   * the record belongs with the question.
    */
   const snapAt = (event, excludeId) => {
     const raw = pointFromEvent(event, svg, scale);
@@ -1192,12 +1488,36 @@ function open(options = {}) {
       stations,
       elements,
       excludeId,
+
+      /*
+       * THE POINT THE STROKE IS WORKING FROM, so horizontal and vertical
+       * inference has something to align TO. While a stroke is open that is the
+       * last point already placed - the start of a line, or the Start and Bend
+       * of a curve as they are committed. Outside a stroke there is nothing to
+       * align to and the axes are free.
+       */
+      from: strokeAnchor(),
     });
+
+    activeSnap = snapped
+      ? { point: snapped.point, kind: snapped.kind }
+      : null;
 
     return {
       point: snapped ? snapped.point : raw,
       kind: snapped ? snapped.kind : null,
     };
+  };
+
+  /*
+   * The point the open stroke aligns to, or null when nothing is being drawn.
+   */
+  const strokeAnchor = () => {
+    if (!pending?.points?.length) {
+      return null;
+    }
+
+    return pending.points[pending.points.length - 1];
   };
 
   const screenFromEvent = (event) => {
@@ -1413,6 +1733,13 @@ function open(options = {}) {
         restoreOriginal(finished);
       }
 
+      /*
+       * THE GESTURE IS OVER, SO THE AXIS MAY NOW REACH THE GEOMETRY. It held
+       * its extent for the whole drag; this is where it is allowed to grow to
+       * fit the shape that drag produced.
+       */
+      refreshScale();
+
       redraw();
       return;
     }
@@ -1441,6 +1768,51 @@ function open(options = {}) {
 
   svg.addEventListener("pointercancel", () => {
     gesture = null;
+    activeSnap = null;
+  });
+
+  /*
+   * THE SNAP IS SHOWN WHILE HOVERING, TOO, not only while dragging.
+   *
+   * A student choosing where to click hovers before they commit, and the
+   * indication is exactly what tells them the click will land on the endpoint
+   * they are aiming at. Without this the mark appeared only mid-gesture, which
+   * is the moment it is least needed.
+   *
+   * It runs only when no gesture is in flight - the gesture's own move handler
+   * has already recorded the snap it is working from, and re-asking here would
+   * be a second opinion about the same point.
+   */
+  svg.addEventListener("pointermove", (event) => {
+    if (gesture) {
+      return;
+    }
+
+    if (tool !== "line" && tool !== "curve") {
+      return;
+    }
+
+    const before = activeSnap;
+
+    snapAt(event);
+
+    /*
+     * REDRAW ONLY WHEN THE INDICATION CHANGED. A pointer move fires tens of
+     * times a second and most of them are not on a snap at all, so repainting
+     * the whole graph for every one would make the cursor feel heavy for no
+     * visible difference.
+     */
+    const changed =
+      Boolean(before) !== Boolean(activeSnap) ||
+      (before &&
+        activeSnap &&
+        (before.kind !== activeSnap.kind ||
+          before.point.x !== activeSnap.point.x ||
+          before.point.y !== activeSnap.point.y));
+
+    if (changed) {
+      redraw();
+    }
   });
 
   /*
@@ -1505,6 +1877,9 @@ function open(options = {}) {
     selectedId = elements[elements.length - 1].id;
     pending = null;
     justFinished = true;
+
+    /* The stroke is committed, so the axis may reach it now. */
+    refreshScale();
   }
 
   /* COMMIT A THREE-POINT CURVE. Start, Bend and End, all from the cursor. */
@@ -1517,6 +1892,9 @@ function open(options = {}) {
 
     selectedId = elements[elements.length - 1].id;
     pending = null;
+
+    /* The curve is committed, so the axis may reach its bow now. */
+    refreshScale();
     justFinished = true;
   }
 
@@ -1533,6 +1911,41 @@ function open(options = {}) {
     }
 
     const handle = active.handle;
+
+    /*
+     * A LINE'S MIDDLE HANDLE BENDS IT INTO A CURVE.
+     *
+     * The two ENDS are kept exactly as they are and the element's KIND changes
+     * to `curve3`, whose Bend is wherever the student dragged. That is the
+     * whole point of the middle handle: a student who has placed the two ends
+     * of a moment diagram should not have to delete the line and redraw it as
+     * a curve to bow its middle.
+     *
+     * The bend is taken from the ORIGINAL line's ends, not the live element's,
+     * for the same reason every other drag is: a long drag rebuilt from its own
+     * previous frame accumulates error.
+     */
+    if (element.kind === "line" && handle.kind === "bend") {
+      const original = active.original;
+
+      delete element.start;
+      delete element.end;
+
+      element.kind = "curve3";
+      element.start = { x: original.start.x, y: original.start.y };
+      element.bend = { x: point.x, y: point.y };
+      element.end = { x: original.end.x, y: original.end.y };
+
+      /*
+       * THE HANDLE NOW BELONGS TO A CURVE, so the drag carries on against the
+       * bend of the element it has become. Without this the next frame would
+       * look for a line handle on a curve and leave the bend stuck where it
+       * was first set - the curve would jump once and then stop following.
+       */
+      active.handle = { kind: "bend", index: 1, point: element.bend };
+
+      return;
+    }
 
     if (element.kind === "line") {
       element[handle.kind === "start" ? "start" : "end"] = {
@@ -1652,6 +2065,9 @@ function open(options = {}) {
         if (selectedId === hit.id) {
           selectedId = null;
         }
+
+        /* The tallest thing may just have been erased. */
+        refreshScale();
       }
 
       redraw();
@@ -1760,6 +2176,9 @@ function open(options = {}) {
       if (selectedId === id) {
         selectedId = null;
       }
+
+      /* The extent comes from what is LEFT, not from what was removed. */
+      refreshScale();
 
       redraw();
 
@@ -1881,6 +2300,7 @@ const enggSketchEditor = {
   selectedElementPoints,
   snapPoint,
   snapXToStations,
+  snapLabel,
 };
 
 export default enggSketchEditor;

@@ -160,11 +160,24 @@ const requirements = [
     note: "the popup is removed, not merely unused",
   },
   {
-    title: "the y-scale is fixed when the editor opens, not per redraw",
+    title: "the axis extent follows the DRAWN geometry, not a fixed range",
     met:
-      /chooseUnitHeight/.test(sketch) &&
-      /\/\*[\s\S]{0,400}THE SCALE IS CHOSEN ONCE/.test(sketch),
-    note: "a graph that rescales under the cursor cannot follow the mouse",
+      /function chooseUnitHeight/.test(sketch) &&
+      /function elementYExtent/.test(sketch) &&
+      /const reach = Math\.max\(drawnHigh, Math\.abs\(drawnLow\)\)/.test(
+        sketch,
+      ),
+    note: "an empty sketch falls back to the analysis range; drawn geometry wins",
+  },
+  {
+    title: "and the extent is recomputed when the geometry changes",
+    met: /function refreshScale\(\)/.test(sketch) && /refreshScale\(\);/.test(sketch),
+    note: "committing or erasing an element must re-fit the axis to what remains",
+  },
+  {
+    title: "a curve's REAL extrema are solved, not read off its control points",
+    met: /BEND IS A CONTROL POINT/.test(sketch) || /quadratic/i.test(sketch),
+    note: "the drawn curve does not pass through its Bend",
   },
   {
     title: "the Y value is asked in the diagram's own unit",

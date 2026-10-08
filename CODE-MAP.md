@@ -361,7 +361,10 @@ examples:
 | `dimension-same-feature-angle.test.cjs` | the same requirement through the committed dimension and the inference |
 | `annotate-toolset.test.cjs` | the Annotate categories and that no command hides behind a submenu (§11) |
 | `deep-clone.test.cjs` | `deepClone`, including the `undefined` case that broke saving (§14) |
+| `variable-dimension.test.cjs` | Variable Dimension: the shared inference, expressions stored verbatim, the prompt order (§12) |
+| `box-selection.test.cjs` | box selection: crossing vs containment, the graph's INK over its raw values, point-placed Statics (§16) |
 | `enggdraw-round-trip.test.cjs` | the whole `.enggdraw` format: every feature kind and relationship through save → text → load (§15) |
+| `statics-value-prompt-and-support.test.cjs` | a typed answer (number / Unknown / symbol), unit-control widths, the fixed support's wall and hatch (§17) |
 | `dual-creation.test.cjs`, `statics-dual-creation.test.cjs` | click-move-click AND click-drag for every creation tool |
 | `responsive-layout.test.cjs` | the toolbar/section-bar one-row rule, panels never hidden, breakpoints descending (§13) |
 
@@ -574,6 +577,49 @@ No Enter, no popup, no mode: `dimension-placement.js → handleDimensionClick`.
 - reversed edge endpoints change nothing (§12);
 - parallel edges of one rectangle give a distance, not a zero angle (§19).
 
+### Variable Dimension is Smart Dimension's SIBLING
+
+```
+Smart Dimension     geometry -> place -> MEASURED value
+Variable Dimension  geometry -> place -> the STUDENT'S value
+```
+
+**The selection, the inference and the placement are the SAME code.**
+`isDimensionTool` covers both, so both go through
+`dimension-placement.js → handleDimensionClick` and
+`dimension-inference.js` — one line infers a length, two non-parallel lines an
+angle, two parallel lines a distance. Only the ANSWER differs.
+
+**The prompt comes LAST, and it is the shared popup.** `commitDimension` opens
+`openLoadValuePopup({ expression: true })` — the same component a Length and a
+Force use — *after* the geometry is chosen and the dimension placed. Nothing is
+created until the student answers, so cancelling leaves the drawing untouched.
+
+**A variable is asked for BEFORE the calibration gate**, and that ordering
+matters: a variable measures nothing, so it has no length to declare. Behind
+the gate it became the tool that SETS the sheet's scale, and on an uncalibrated
+sheet the calibration dialog swallowed the placement click.
+
+**The value is stored verbatim.** `object.symbol` holds `θ`, `L/2`, `3*x + 5`
+and `25` alike — never evaluated, never replaced by the measured geometry. The
+feature carries the inferred `dimensionType` too, so a variable is drawn by the
+dimension machinery rather than being a differently-shaped thing.
+
+**Where the symbol lives:** on the FEATURE (`variable.symbol`), which is where
+the renderer, the hit test and `variableText` read it. The panel used to read
+`geometry.symbol` and the setter used to write it — a place nothing reads — so
+the student's own symbol was invisible and an edit appeared to do nothing. Both
+now use the feature.
+
+**`expression: true` is opt-in.** A load magnitude and a force still require a
+number and still show the unit control; only a Variable Dimension accepts words
+and hides the unit. `tests/load-value-popup.test.cjs` pins the numeric path.
+
+Covered by `tests/variable-dimension.test.cjs` (29 checks): the shared
+inference, every expression form stored and displayed verbatim, no auto-value
+on a measured line, the panel/setter agreement, the prompt order, and the
+opt-in flag.
+
 ---
 
 ## 13. Layout, the three Hide controls, and responsive behaviour
@@ -662,3 +708,55 @@ document model is always sufficient to redraw.
 document with every feature kind and relationship shape, writes it to **text**,
 reads it back through the real reader and migration, and compares the models
 field by field — 29 checks, all passing.
+
+---
+
+## 16. What a typed value MEANS, and the fixed support
+
+### One reader for every value prompt
+
+Every Statics tool that asks for a value after placement asks the SAME question
+through the SAME popup (`ui/editors/load-value-popup.js`), so the answer must
+mean the same thing everywhere. `readStaticsValue(text, unit)` is the one
+reader, and it recognises the three states the model already has:
+
+| Typed | Means | Stored as |
+|---|---|---|
+| `250`, `-3.25` | a magnitude | `geometry.magnitude` (+ `geometry.unit`) |
+| **empty** | **Unknown** | `unknownValues.magnitude = true` |
+| `F₁`, `M`, `2*M` | the student's own symbol | `magnitudeLabel` |
+
+`applyStaticsValue(object, answer)` writes all three and **clears the others**,
+so a force cannot end up showing a number beside an Unknown mark.
+
+**Empty is an answer, not a mistake.** It used to be refused by the popup and
+read as zero by the callers — both wrong statements. **A symbol is never turned
+into zero** either: the old callers did `Math.max(0, Number(value) || 0)`, which
+silently replaced `F₁` with 0.
+
+`expression: true` is the ONE difference a Variable Dimension needs (§12); a
+load magnitude and a force still require a number and still show the unit
+control.
+
+### The trap: `addObject` may store a COPY
+
+`addObject` renames a feature by spreading it (`{ ...object, name }`) when the
+caller asked for a specific name, and pushed **that copy**. So a caller holding
+the object it passed in held something **not in the document** — every later
+write to it changed nothing on the sheet. It returns the stored object now, and
+callers use what it returns.
+
+This is worth knowing before writing to a feature after adding it: **use the
+returned object**, not the one you passed.
+
+### The fixed support
+
+A fixed end is where the member STOPS, so its wall line sits **at the attachment
+point** — `supportPlacement(..., { fixed: true })` uses zero clearance where
+every other support stands off by `SUPPORT_CLEARANCE`. The hatch strokes run
+along `out` (the direction the symbol's ground faces, i.e. away from the body),
+so they are always **behind the wall from the body's side**. The symbol rotates
+with the member's own frame, so a vertical body gets a horizontal wall.
+
+`tests/statics-value-prompt-and-support.test.cjs` covers the three value states,
+the unit-control widths, and the fixed support's placement and hatching.

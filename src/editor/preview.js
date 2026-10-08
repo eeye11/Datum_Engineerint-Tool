@@ -22,6 +22,7 @@ import { isArcTool } from "./tool-menus.js";
 import { setToolMessage } from "./toolbar-render.js";
 import { trussSnapGeometry, trussStageMessage } from "./truss-tool.js";
 import { isSupportType } from "../core/model/feature-types.js";
+import { applyStaticsValue, openLoadValuePopup, readStaticsValue } from "../ui/editors/load-value-popup.js";
 
 export function createPreview(
     type,
@@ -1596,7 +1597,23 @@ function staticsPreviewType(
         const object =
             enggDrawingState.geometryFactories.moment(
                 { x: position.x, y: position.y },
+
+                /*
+                 * A PLACEHOLDER SIZE, NOT A VALUE.
+                 *
+                 * The moment is created first so it EXISTS on the sheet - the
+                 * arc, its position and its sense - and the popup then asks
+                 * what its magnitude IS. It used to be given a hard-coded 50
+                 * and never asked at all, so every moment a student placed
+                 * silently claimed a magnitude they had not chosen.
+                 *
+                 * The hard-coded magnitude was also what the preview drew, so
+                 * the arc is already the right shape; this only settles the
+                 * number, and the popup is opened with it as the suggestion so
+                 * a student who likes the size presses Enter.
+                 */
                 interaction.magnitude ?? 50,
+
                 interaction.direction || "CCW",
                 {
                     style:
@@ -1619,10 +1636,15 @@ function staticsPreviewType(
         object.geometry.arcRadius =
             interaction.radiusPx;
 
-        enggDrawingState.addObject(
-            drawingState,
-            object
-        );
+        /*
+         * THE STORED OBJECT, not the one passed in - `addObject` may keep a
+         * renamed COPY of it, and the popup below writes to the feature.
+         */
+        const stored =
+            enggDrawingState.addObject(
+                drawingState,
+                object
+            );
 
         enggDrawingState.clearInteraction(
             drawingState
@@ -1633,14 +1655,150 @@ function staticsPreviewType(
             previousObjects
         );
 
+        enggDrawingState.selectObject(
+            drawingState,
+            stored.id
+        );
+
         renderProperties();
         renderCurrentDrawing();
 
-        setToolMessage(
-            "Moment placed - drag it to move, or use the Features panel to change its direction or magnitude"
-        );
+        /*
+         * ========================================================
+         * NOW ASK WHAT ITS MAGNITUDE IS
+         * ========================================================
+         *
+         * THE ORDER IS THE REQUIREMENT: place the moment, see it on the sheet,
+         * and only then answer for it. Asking first would be asking about
+         * something not yet drawn - the same mistake the creation-size popup
+         * avoids by keeping the geometry on screen while the number is typed.
+         *
+         * It is the SAME popup a Point Force and a load magnitude use, with
+         * the MOMENT units, so the student learns one value box rather than
+         * one per quantity.
+         */
+        openMomentValuePrompt(stored, previousObjects);
 
         return true;
+    }
+
+    /*
+     * Ask for a placed moment's magnitude, and apply whatever is answered.
+     *
+     * `readStaticsValue` decides what the answer MEANT - a number, an unknown,
+     * or the student's own symbol - and `applyStaticsValue` writes it into the
+     * three places the model already keeps those states. So `M`, `250` and an
+     * empty box all work, and none of them is silently turned into zero.
+     *
+     * EXPORTED because a moment has TWO creation paths - the two-stage one on a
+     * body, and the single-click one in free space - and both must ask the SAME
+     * question through the SAME popup. A copy of this in the other path would
+     * be a second place for `M` to mean a number.
+     */
+    export function openMomentValuePrompt(object, previousObjects) {
+        openLoadValuePopup({
+            title: "Applied Moment",
+            label: "Magnitude",
+
+            value: Number(object.geometry.magnitude) || "",
+
+            unit: momentUnit(object),
+
+            /*
+             * A MOMENT IS STATED IN A MOMENT UNIT. The popup is shared with
+             * forces and loads, whose units are N and kN/m, so the list is
+             * given here rather than assumed - offering kN/m for a moment
+             * would name the wrong quantity entirely.
+             */
+            units: MOMENT_UNITS,
+
+            onOpen: () => {
+                setToolMessage(
+                    "Enter the moment magnitude - leave it empty for Unknown"
+                );
+            },
+
+            onConfirm: (confirmed) => {
+                const answer = readStaticsValue(
+                    confirmed.text ?? "",
+                    confirmed.unit
+                );
+
+                applyStaticsValue(object, answer, {
+                    valueKey: "magnitude"
+                });
+
+                if (answer.kind === "number") {
+                    setMomentUnit(object, answer.unit);
+
+                    setToolMessage(
+                        `Moment placed - ${answer.value} ${
+                            answer.unit || ""
+                        }`
+                    );
+                } else if (answer.kind === "symbol") {
+                    setToolMessage(`Moment placed - ${answer.text}`);
+                } else {
+                    setToolMessage("Moment placed - magnitude Unknown");
+                }
+
+                enggDrawingState.commitDrawingChange(
+                    drawingState,
+                    previousObjects
+                );
+
+                renderProperties();
+                renderCurrentDrawing();
+            },
+
+            /*
+             * CANCEL KEEPS THE MOMENT. It is already placed and visible, so
+             * cancelling the question must not take it away - the student is
+             * abandoning the NUMBER, not the feature they just placed.
+             */
+            onCancel: () => {
+                setToolMessage(
+                    "Moment placed - magnitude not set, use the Features panel"
+                );
+
+                renderCurrentDrawing();
+            }
+        });
+    }
+
+    /*
+     * The units a moment is stated in.
+     *
+     * A moment is a force times a length, so its units are the force-length
+     * pairs a student actually writes - N·m and kN·m - plus the imperial pair
+     * where a drawing is in feet. Kept beside the moment's own code rather than
+     * in the shared load table, because it is THIS quantity's vocabulary.
+     */
+    const MOMENT_UNITS = ["N·m", "kN·m", "N·mm", "lb·ft"];
+
+    /* The unit a moment is currently stated in, or the default. */
+    function momentUnit(object) {
+        const stored = object?.geometry?.momentUnit;
+
+        return MOMENT_UNITS.includes(stored) ? stored : MOMENT_UNITS[0];
+    }
+
+    /*
+     * Record the unit a moment is stated in.
+     *
+     * THE UNIT DOES NOT CHANGE THE NUMBER. N·m and kN·m name the same physical
+     * quantity at different scale, and the student typed the number they meant,
+     * so the unit travels BESIDE the value exactly as a load's does - see the
+     * note at the head of load-profile.js. This is a label, not a conversion.
+     */
+    function setMomentUnit(object, unit) {
+        if (!object?.geometry || !unit) {
+            return;
+        }
+
+        if (MOMENT_UNITS.includes(unit)) {
+            object.geometry.momentUnit = unit;
+        }
     }
 
     /*

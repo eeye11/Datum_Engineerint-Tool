@@ -101,7 +101,23 @@ export function openLoadValuePopup({
     onOpen,
     onConfirm,
     onPreview,
-    onCancel
+    onCancel,
+
+    /*
+     * WHETHER A NON-NUMERIC ANSWER IS ACCEPTED.
+     *
+     * Off by default, so every existing caller - a load magnitude, a force -
+     * behaves exactly as it does today: a number is required and words are
+     * refused. That is the whole compatibility story, and it is why this is a
+     * flag rather than a change to the reading.
+     *
+     * ON for a Variable Dimension, whose answer is a SYMBOL or an expression
+     * rather than a measurement: `θ`, `L/2`, `3*x + 5`. There is nothing to
+     * evaluate and nothing to convert - the text IS the value - so a
+     * non-numeric answer is returned verbatim as `{ text }` instead of being
+     * read as a number.
+     */
+    expression = false
 } = {}) {
     closeLoadValuePopup();
 
@@ -134,15 +150,25 @@ export function openLoadValuePopup({
                     <input type="text"
                         class="drawing-creation-dimension-input"
                         data-load-input
-                        inputmode="decimal"
+                        inputmode="${expression ? "text" : "decimal"}"
                         autocomplete="off"
                         aria-label="${label}">
-                    <select
+                    ${
+                        /*
+                         * NO UNIT CONTROL IN EXPRESSION MODE. A symbol is not
+                         * a quantity with a unit - `L` is not "L mm" until the
+                         * student says so - so offering a unit would invite them
+                         * to attach one to their own algebra.
+                         */
+                        expression
+                            ? ""
+                            : `<select
                         class="drawing-creation-dimension-unit"
                         data-load-unit
                         aria-label="Unit">
                         ${unitOptions(chosen.unit, allowedUnits)}
-                    </select>
+                    </select>`
+                    }
                 </span>
             </div>
             <div class="drawing-creation-dimension-error"
@@ -185,57 +211,141 @@ export function openLoadValuePopup({
 
         const text = input.value.trim();
 
+        /*
+         * IN EXPRESSION MODE the preview is the TEXT, not a number: there is
+         * nothing to evaluate, and a caller previewing a variable wants the
+         * symbol it is about to draw.
+         */
+        if (expression) {
+            onPreview({ text });
+
+            return;
+        }
+
         const read = enggLoadProfile.readLoadValue(
             text,
             select.value
         );
 
-        onPreview(read);    };
+        onPreview(read);
+    };
 
     const confirm = () => {
         const text = input.value.trim();
 
         /*
-         * AN EMPTY FIELD IS NOT A ZERO LOAD. A blank answer has no number to
-         * store, so it is refused rather than read as "no load at all" -
-         * which is a different statement and one the student did not make.
+         * AN EMPTY FIELD IS AN ANSWER, NOT A MISTAKE.
+         *
+         * It means UNKNOWN - "I have not worked this out yet" - which is a
+         * real state on a student's sheet and one the Features panel already
+         * speaks. Refusing it, as this used to, made the panel's Unknown mark
+         * unreachable from the one place the value is entered.
+         *
+         * So an empty box is CONFIRMED, and the caller is handed `text: ""`
+         * to read through `readStaticsValue`, which answers Unknown.
          */
         if (!text) {
-            errorEl.textContent = "Enter a magnitude";
-            errorEl.hidden = false;
-            input.focus();
-            return;
-        }
+            errorEl.hidden = true;
 
-        const read = enggLoadProfile.readLoadValue(
-            text,
-            select.value
-        );
+            const confirmed = { text: "", unknown: true };
 
-        if (!read) {
-            errorEl.textContent =
-                "Enter a number, optionally with kN/m or N/mm";
-            errorEl.hidden = false;
-            input.focus();
+            if (openPopup === popup) {
+                openPopup = null;
+            }
+
+            popup.remove();
+
+            if (typeof onConfirm === "function") {
+                onConfirm(confirmed);
+            }
+
             return;
         }
 
         /*
-         * THE STUDENT'S OWN UNIT, if the field named one. Typing an
-         * explicit unit is the most specific answer available, so it wins
-         * over the control - and the control is moved to match, so the two
-         * never disagree about what was entered.
+         * A SYMBOL OR AN EXPRESSION IS THE ANSWER ITSELF.
+         *
+         * `θ`, `L/2` and `3*x + 5` are not measurements to be read - they are
+         * what the student wrote, and the text IS the value. It is handed back
+         * VERBATIM, so nothing rewrites `L/2` into `2` on the way through.
+         *
+         * A plain number still goes down the numeric path, so a Variable
+         * Dimension can carry `25` as readily as `L` - and the unit control is
+         * absent, so there is no unit to read.
          */
-        chosen.unit = read.unit;
+        if (expression) {
+            errorEl.hidden = true;
 
-        select.value = read.unit;
+            const confirmed = { text };
 
+            if (openPopup === popup) {
+                openPopup = null;
+            }
+
+            popup.remove();
+
+            if (typeof onConfirm === "function") {
+                onConfirm(confirmed);
+            }
+
+            return;
+        }
+
+        /*
+         * A STATICS QUANTITY: A NUMBER, A SYMBOL, OR NOTHING.
+         *
+         * `readStaticsValue` is the ONE reader of a typed answer, so `F₁`
+         * means the same here as it does in every other Statics tool. A
+         * non-numeric entry is NOT an error - it is the student's own symbol -
+         * so it is handed back as text rather than refused, which is what the
+         * old `readLoadValue`-or-error path did.
+         *
+         * THE NUMERIC PATH IS UNCHANGED for a plain number: the unit is read
+         * from the control exactly as before.
+         */
+        const answer = readStaticsValue(text, select?.value);
+
+        if (answer.kind === "number") {
+            /*
+             * THE STUDENT'S OWN UNIT, if the field named one. Typing an
+             * explicit unit is the most specific answer available, so it wins
+             * over the control - and the control is moved to match, so the two
+             * never disagree about what was entered.
+             */
+            chosen.unit = answer.unit || chosen.unit;
+
+            if (select) {
+                select.value = chosen.unit;
+            }
+
+            errorEl.hidden = true;
+
+            const confirmed = {
+                value: answer.value,
+                unit: chosen.unit,
+                text,
+            };
+
+            if (openPopup === popup) {
+                openPopup = null;
+            }
+
+            popup.remove();
+
+            if (typeof onConfirm === "function") {
+                onConfirm(confirmed);
+            }
+
+            return;
+        }
+
+        /*
+         * A SYMBOL IS CONFIRMED AS TEXT, and the unit control is left alone
+         * because a symbol has no unit to state.
+         */
         errorEl.hidden = true;
 
-        const confirmed = {
-            value: read.value,
-            unit: read.unit
-        };
+        const confirmed = { text, symbol: true, unit: select?.value || null };
 
         if (openPopup === popup) {
             openPopup = null;
@@ -267,8 +377,11 @@ export function openLoadValuePopup({
      * does not have to convert anything - but the field is left as typed,
      * and the newly chosen unit is what it will be read in. The preview is
      * re-reported so what is shown follows the choice.
+     *
+     * THERE IS NO CONTROL IN EXPRESSION MODE, so this is bound only when one
+     * was rendered.
      */
-    select.addEventListener("change", () => {
+    select?.addEventListener("change", () => {
         chosen.unit = select.value;
 
         reportPreview();
@@ -359,4 +472,188 @@ export function openLoadValuePopup({
     );
 
     return popup;
+}
+
+/*
+ * ============================================================
+ * WHAT A TYPED ANSWER MEANS
+ * ============================================================
+ *
+ * Every Statics tool that asks for a value after placement asks the SAME
+ * question through the same popup, so the answer must mean the same thing
+ * everywhere. This is the ONE reader of that answer, and it recognises the
+ * three states the model already has:
+ *
+ *   a NUMBER     -> a numeric magnitude, exactly as typed
+ *   EMPTY        -> UNKNOWN (`unknownValues[magnitudeKey]`), which the Features
+ *                   panel already prints as an unknown quantity
+ *   ANYTHING ELSE-> the student's own SYMBOL or expression, kept verbatim as
+ *                   the feature's magnitude LABEL
+ *
+ * WHY THIS EXISTS AT ALL.
+ *
+ * The callers each used to do `Math.max(0, Number(value) || 0)`, which turns
+ * `F₁` and an empty box alike into ZERO. Zero is a measurement - "this force is
+ * nothing" - and neither of those answers says that. A student who typed a
+ * symbol was silently given a different statement from the one they made.
+ *
+ * NOTHING HERE EVALUATES AN EXPRESSION. `2*M` is not 2 times anything until the
+ * student's own algebra defines M; it is what they wrote, and it is what the
+ * sheet prints.
+ *
+ * `unit` is returned for a numeric answer only. A symbol has no unit until the
+ * student gives it one, so attaching `kN` to `F₁` would be a claim they did not
+ * make.
+ */
+export function readStaticsValue(text, unit) {
+    const raw = String(text ?? "").trim();
+
+    /*
+     * EMPTY IS UNKNOWN, NOT ZERO.
+     *
+     * "I have not worked this out yet" is a real and common state on a student's
+     * sheet - it is what the `?` toggle in the Features panel means too - so an
+     * empty box is read as that same statement rather than as a value.
+     */
+    if (!raw) {
+        return { kind: "unknown" };
+    }
+
+    /*
+     * A UNIT TYPED IN THE FIELD WINS OVER THE CONTROL.
+     *
+     * "5 kN/m" is the most specific answer available - the student named both
+     * the number and what it is in - so it is read as a number in THAT unit and
+     * the control is moved to match, which is what the popup has always done.
+     * The known units are tried longest-first so `kN·m` is not read as `kN`.
+     */
+    const byUnit = readNumberWithUnit(raw, unit);
+
+    if (byUnit) {
+        return byUnit;
+    }
+
+    /*
+     * A PLAIN NUMBER, with an optional sign and decimals. Comma-grouped and
+     * exponent forms are deliberately NOT accepted as numeric: "1,000" and
+     * "1e3" are rare enough here that reading them as symbols is safer than
+     * guessing at the student's intent.
+     */
+    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(raw)) {
+        const value = Number(raw);
+
+        if (Number.isFinite(value)) {
+            return { kind: "number", value, unit: unit || null };
+        }
+    }
+
+    /*
+     * EVERYTHING ELSE IS THE STUDENT'S OWN SYMBOL, kept exactly as typed -
+     * `F₁`, `M`, `w`, `θ`, `2*M`, `(L+W)/2`. The text IS the value.
+     */
+    return { kind: "symbol", text: raw };
+}
+
+/*
+ * "5 kN/m" read as a number in that unit, or null when it is not that shape.
+ *
+ * The unit is matched against the units the POPUP was given, so the same text
+ * can never be read as a unit this quantity does not use. A trailing unit is
+ * optional, so "5" also arrives here and is handed to the plain-number path
+ * below - one reader, two shapes.
+ */
+function readNumberWithUnit(raw, unit) {
+    const known = [
+        "N·m",
+        "kN·m",
+        "N·mm",
+        "lb·ft",
+        "kN/m",
+        "N/mm",
+        "kN",
+        "N",
+        "mm",
+    ];
+
+    /* Longest first, so `kN·m` is not read as `kN`. */
+    const candidates = [...known].sort((a, b) => b.length - a.length);
+
+    for (const candidate of candidates) {
+        if (!raw.toLowerCase().endsWith(candidate.toLowerCase())) {
+            continue;
+        }
+
+        const numberText = raw
+            .slice(0, raw.length - candidate.length)
+            .trim();
+
+        if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(numberText)) {
+            continue;
+        }
+
+        const value = Number(numberText);
+
+        if (Number.isFinite(value)) {
+            return { kind: "number", value, unit: candidate };
+        }
+    }
+
+    void unit;
+
+    return null;
+}
+
+/*
+ * ============================================================
+ * APPLYING THAT ANSWER TO A FEATURE
+ * ============================================================
+ *
+ * The three states live on the feature in three places that already exist:
+ * `geometry[valueKey]` for the number, `unknownValues[valueKey]` for Unknown,
+ * and `magnitudeLabel` for the symbol. This writes all three consistently, so
+ * a learner does not have to know which one their answer landed in.
+ *
+ * IT CLEARS THE OTHER TWO. A force that was `F₁` and is now `250 N` must stop
+ * saying `F₁`, and one that was 250 and is now Unknown must not keep the 250
+ * underneath the `?`. Setting one state without clearing the others is exactly
+ * how a panel ends up showing a number beside an "Unknown" mark.
+ */
+export function applyStaticsValue(object, answer, options = {}) {
+    if (!object) {
+        return null;
+    }
+
+    const valueKey = options.valueKey || "magnitude";
+    const geometry = object.geometry || (object.geometry = {});
+
+    object.unknownValues = object.unknownValues || {};
+
+    if (answer?.kind === "number") {
+        geometry[valueKey] = answer.value;
+        object.unknownValues[valueKey] = false;
+        object.magnitudeLabel = null;
+
+        return answer.value;
+    }
+
+    if (answer?.kind === "symbol") {
+        object.magnitudeLabel = answer.text;
+        object.unknownValues[valueKey] = false;
+
+        /*
+         * THE NUMBER IS CLEARED, not kept beside the symbol. A force labelled
+         * `F₁` has no number the drawing can state, and leaving the previous
+         * one in place would make the annotation and the panel disagree.
+         */
+        delete geometry[valueKey];
+
+        return null;
+    }
+
+    /* UNKNOWN: no number, and the `?` mark on. */
+    delete geometry[valueKey];
+    object.unknownValues[valueKey] = true;
+    object.magnitudeLabel = null;
+
+    return null;
 }

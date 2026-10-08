@@ -438,10 +438,30 @@ function attachmentTypeIsDistance(attachment) {
     );
 }
 
+/*
+ * ========================================================
+ * WHERE A SUPPORT'S SYMBOL IS DRAWN
+ * ========================================================
+ *
+ * Most supports are drawn a CLEARANCE out from the member's face, because a
+ * triangle drawn starting exactly on the face looks partly inside the body it
+ * supports.
+ *
+ * A FIXED SUPPORT IS THE EXCEPTION, and it is an exception about MEANING
+ * rather than about looks: a fixed end is where the member STOPS. Its wall must
+ * sit AT the attachment point - so the member visibly ends against it - rather
+ * than a clearance away, which leaves a gap the member appears to pass through.
+ *
+ * `options.fixed` selects that, and the caller passes it from the feature's own
+ * type. Nothing else about the placement changes: the side, the angle and the
+ * distance along the body are all the same, so the two kinds of support still
+ * agree about which way is out and which end they are on.
+ */
 function supportPlacement(
     parent,
     attachment,
-    flipped
+    flipped,
+    options = {}
 ) {
     const frame = frameOf(parent);
 
@@ -452,13 +472,14 @@ function supportPlacement(
     const side = defaultSide(frame, flipped);
 
     /*
-     * The offset from the centreline out to the member's own face,
-     * and a little beyond it so the symbol sits clear of the drawn
-     * body rather than starting inside it.
+     * The offset from the centreline out to the member's own face, and a little
+     * beyond it so a triangular symbol sits clear of the drawn body. A FIXED
+     * support sits ON the face - no clearance - because its wall is the end of
+     * the member rather than a mark beside it.
      */
     const standoff =
         frame.halfDepth +
-        SUPPORT_CLEARANCE;
+        (options.fixed === true ? 0 : SUPPORT_CLEARANCE);
 
     return {
         attachment: { x: attachment.x, y: attachment.y },

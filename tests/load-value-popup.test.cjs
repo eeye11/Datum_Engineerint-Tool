@@ -211,14 +211,15 @@ console.log("\n  an empty or unusable field is refused, not stored\n");
   );
 
   check(
-    "an empty field does not confirm",
-    confirmed === null,
+    "an empty field CONFIRMS as Unknown, rather than being refused",
+    confirmed !== null && confirmed.unknown === true && confirmed.text === "",
     JSON.stringify(confirmed),
   );
 
   check(
-    "and the popup stays open so the mistake can be corrected",
-    popupElement() !== null,
+    "and the popup closes, because the answer was accepted",
+    popupElement() === null,
+    "Unknown is a real answer - the Features panel prints it as an unknown quantity",
   );
 
   popup.closeLoadValuePopup();

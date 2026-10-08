@@ -1229,12 +1229,26 @@ body.datum-topbar-hidden .drawing-workspace {
     stroke-width: 3px;
 }
 
+/*
+ * THE BOX-SELECTION RECTANGLE.
+ *
+ * A CLEAN OUTLINE, NOT A FILLED OVERLAY. It had a 12% tint, which on a large
+ * drag became a wash of colour over whatever the student was trying to read -
+ * the very geometry they were aiming at. The outline says the same thing
+ * without covering the thing being selected, and it is the convention every
+ * drawing application uses.
+ *
+ * `fill: none` rather than `transparent`, so there is no fill AT ALL: a
+ * transparent fill still catches pointer events on some renderers and would
+ * make the box itself a target.
+ */
 .drawing-selection-box {
-    fill: rgba(0, 169, 199, .12);
+    fill: none;
     pointer-events: none;
     stroke: #00a9c7;
     stroke-dasharray: 4 3;
     stroke-width: 1;
+    vector-effect: non-scaling-stroke;
 }
 
 .drawing-canvas.grid-off {
@@ -1572,6 +1586,30 @@ body.datum-topbar-hidden .drawing-workspace {
     font: inherit;
     min-width: 0;
     padding: 2px 3px;
+}
+
+/*
+ * A UNIT SELECT IS NEVER SQUEEZED BELOW ITS OWN SYMBOL.
+ *
+ * The `min-width: 0` above is right for a NUMBER field, which may be narrowed
+ * by its track and still readable because a number can be clipped and retyped.
+ * It is wrong for a UNIT: `kN·m` and `lb·ft` are symbols, and a clipped one
+ * reads as a DIFFERENT unit - `kN` is not `kN·m`, and a student cannot tell that
+ * the tail is missing rather than absent.
+ *
+ * So a unit select is given a floor wide enough for the units the application
+ * understands, and it is allowed to keep its own natural width when the track
+ * affords it. The value's own column shrinks instead, which is the right
+ * trade - a number that is narrow is still editable, a unit that is clipped is
+ * wrong.
+ */
+.drawing-properties-block select[data-property="loadUnit"],
+.drawing-properties-block select[data-property="forceUnit"],
+.drawing-properties-block select[data-property="momentUnit"],
+.drawing-properties-block select[data-property="lengthUnit"] {
+    flex: 0 0 auto;
+    min-width: 58px;
+    padding-right: 2px;
 }
 
 /*
@@ -3468,26 +3506,52 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
- * THE FRAME WRAPS THE DRAWING.
+ * ========================================================
+ * THE FRAME WRAPS THE DRAWING, AND BOUNDS IT IN BOTH DIRECTIONS
+ * ========================================================
  *
- * It is a border and a background around the figure, nothing more. It must NOT
- * clip and must NOT cap the height: either would either cut the drawing off or
- * collapse the box the drawing is measured against. The pane above is what
- * handles a figure that is too tall, by scrolling.
+ * THE DEFECT THIS FIXES. The frame was sized by WIDTH ALONE (`width: 100%`),
+ * so the figure's height followed the drawing's aspect ratio with no ceiling.
+ * A wide drawing inserted into the 395px-tall Rendered Solution pane came out
+ * taller than the pane and covered the whole workspace, with no way to dismiss
+ * it - the drawing reference appeared to take over the page.
+ *
+ * It was NOT a modal and nothing escaped into the document: the figure had
+ * simply OVERFLOWED its container. That is the same failure as a replaced
+ * element sized by one axis inside a container that cannot bound the other, so
+ * the fix is to bound it in BOTH directions.
+ *
+ *   max-height   a ceiling, so no aspect ratio can make the figure taller
+ *                than a share of the viewport
+ *   min-height0  lets the frame SHRINK rather than forcing its pane to grow
+ *   overflow     clips, so nothing can be drawn outside the frame whatever
+ *                the drawing contains
+ *
+ * The figure is therefore SCALED DOWN to fit when it is too large, which is
+ * what a reader expects of a figure in a document - the alternative, letting
+ * it run over the page, is the bug being fixed.
  */
 .drawing-reference-frame {
     background: #ffffff;
     border: 1px solid #d8dce1;
     border-radius: 6px;
     display: block;
+    max-height: 70vh;
+    min-height: 0;
+    overflow: hidden;
     width: 100%;
 }
 
 /*
- * The SVG IS the width of the frame, and its height follows from its own aspect
- * ratio. `height: auto` is what preserves the drawing's proportions.
+ * The SVG IS BOUNDED BOTH WAYS, and never stretched.
  *
- * THE EDITOR'S OWN POSITIONING IS UNDONE HERE, AND THAT IS THE WHOLE FIX.
+ * `max-width: 100%` and `max-height` together mean the drawing shrinks to fit
+ * whichever way it is too big; `object-fit: contain` preserves its proportions
+ * while it does. The pair is what stops the one-axis sizing that let a wide
+ * drawing escape its pane.
+ *
+ * THE EDITOR'S OWN POSITIONING IS UNDONE HERE, AND THAT IS THE OTHER HALF OF
+ * THE FIX.
  *
  * The renderer draws into the editor's canvas, so its SVG carries the class
  * `.drawing-renderer`, whose rule is `position: absolute; inset: 0; width: 100%;
@@ -3507,10 +3571,11 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 .drawing-reference-frame svg {
     display: block;
-    height: auto;
+    max-height: 70vh;
+    max-width: 100%;
+    object-fit: contain;
     inset: auto;
     position: static;
-    width: 100%;
 }
 
 .drawing-reference-figure figcaption {
@@ -4636,16 +4701,34 @@ body.datum-topbar-hidden .drawing-workspace {
 /*
  * The unit is a SELECT because the student chooses the unit their
  * number is read in - it is part of the quantity, not a caption on
- * it. It is sized to the widest unit symbol so switching from mm to
- * m does not make the popup jump, and it carries no browser chrome
- * of its own so it reads as part of the same field as the number.
+ * it. It carries no browser chrome of its own so it reads as part of the
+ * same field as the number.
+ *
+ * IT SIZES TO ITS WIDEST UNIT, NOT TO A FIXED FLOOR.
+ *
+ * This had `min-width: 38px`, chosen for the widest unit the popup was first
+ * used for - `mm`, `kN/m`. A MOMENT is stated in `kN·m` or `lb·ft`, which are
+ * wider, and a select does not grow past a width that was decided for it: the
+ * selected unit was cut off at the field's edge, with the tail of it hidden
+ * behind the caret. The number pad and the caret padding are kept, and the
+ * width is left to the CONTENT - so every unit the popup is given fits, and a
+ * longer one added later fits too without anyone measuring it.
+ *
+ * `width: auto` with the padding is what does it. A fixed width is what broke
+ * it, so there is deliberately no fixed width here at all.
  */
 .drawing-creation-dimension-unit {
     appearance: none;
     -webkit-appearance: none;
 
-    min-width: 38px;
-    padding: 0 14px 0 6px;
+    /*
+     * ROOM FOR THE CARET BESIDE THE TEXT: 6px before it, the caret's own ~14px
+     * strip after it. The `ch` unit would size to a digit rather than to the
+     * unit symbol, so plain padding is what is used.
+     */
+    padding: 0 16px 0 6px;
+
+    width: auto;
 
     border: none;
     border-left: 1px solid #d0d0d0;
@@ -4662,8 +4745,8 @@ body.datum-topbar-hidden .drawing-workspace {
     background-image: linear-gradient(45deg, transparent 50%, #555555 50%),
         linear-gradient(135deg, #555555 50%, transparent 50%);
     background-position:
-        right 6px center,
-        right 2px center;
+        right 7px center,
+        right 3px center;
     background-size: 4px 4px, 4px 4px;
     background-repeat: no-repeat;
 
@@ -4672,6 +4755,13 @@ body.datum-topbar-hidden .drawing-workspace {
     font-family: Arial, sans-serif;
     font-size: 12px;
     cursor: pointer;
+
+    /*
+     * NO TEXT ELLIPSIS, and the text is never wrapped. A unit is a symbol; a
+     * truncated `kN…` is worse than a wider field, so the control is allowed
+     * to take the room it needs.
+     */
+    white-space: nowrap;
 }
 
 .drawing-creation-dimension-unit:hover {
@@ -5431,6 +5521,32 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .sketch-editor-handle:hover {
     fill: var(--datum-green-tint);
+}
+
+/*
+ * THE SNAP INDICATION.
+ *
+ * A hollow ring on the point the placement will use, in the same colour the
+ * main canvas uses for a snap - so a student learns ONE indication and it
+ * means the same thing in both places. Hollow rather than filled, because it
+ * marks a point rather than hiding it.
+ */
+.sketch-editor-snap {
+    fill: none;
+    stroke: #00a9c7;
+    stroke-width: 2;
+    pointer-events: none;
+}
+
+.sketch-editor-snap-label {
+    fill: #008ca6;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    paint-order: stroke;
+    pointer-events: none;
+    stroke: #ffffff;
+    stroke-width: 3px;
 }
 
 .sketch-editor-stroke {

@@ -5,10 +5,12 @@
 import enggMeasurement from "../core/geometry/measurement-core.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDimensions from "../core/scale/dimensions.js";
+import enggQuantities from "../core/units/quantities.js";
+import enggDimensionEdit from "../features/dimensions/dimension-edit.js";
 import enggScaleCalibration from "../core/scale/scale-calibration.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggSmartDimension from "../features/dimensions/smart-dimension.js";
-import enggVariableDimension from "../features/dimensions/variable-dimension.js";
+import { openLoadValuePopup, readStaticsValue } from "../ui/editors/load-value-popup.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
@@ -181,6 +183,37 @@ export function commitDimension(
     refs,
     placement
 ) {
+    /*
+     * ========================================================
+     * A VARIABLE DIMENSION ASKS FOR ITS VALUE, NOT FOR THE SCALE
+     * ========================================================
+     *
+     * THIS TEST COMES FIRST, AHEAD OF THE CALIBRATION GATE, and that ordering
+     * is the fix. A variable states the STUDENT'S quantity - a symbol, a
+     * number, an expression - and measures NOTHING: it has no number to print
+     * and therefore no scale to establish. So the calibration question is not
+     * merely unnecessary for it, it is wrong: it would ask the student to
+     * declare how long a line is in the same breath as telling the tool that
+     * the line's length is an unknown.
+     *
+     * Left behind the gate, a Variable Dimension became the tool that SETS the
+     * drawing's scale, which is the opposite of what it is for - and on an
+     * uncalibrated sheet nothing happened at all, because the calibration
+     * dialog took the placement click.
+     */
+    if (
+        drawingState.activeTool ===
+        "variable-dimension"
+    ) {
+        openVariablePrompt({
+            previousObjects: null,
+            refs,
+            placement
+        });
+
+        return null;
+    }
+
     /*
      * THE FIRST DIMENSION ESTABLISHES THE SCALE.
      *
@@ -367,19 +400,21 @@ function commitDimensionNow({
      * length to convert - an unknown has no units until the student gives it
      * one.
      */
-    const variable =
-        drawingState.activeTool === "variable-dimension";
-
-    const object = variable
-        ? enggDrawingState.geometryFactories["variable-dimension"]({
-              refs,
-              placement
-          })
-        : enggDrawingState.geometryFactories.dimension({
-              dimensionType,
-              refs,
-              placement
-          });
+    /*
+     * ========================================================
+     * A DIMENSION IS COMMITTED HERE; A VARIABLE NEVER REACHES IT
+     * ========================================================
+     *
+     * A Variable Dimension was answered for at the top of this function - it
+     * asked the student for its value before anything was created - so by the
+     * time the code arrives here the tool is Smart Dimension or Dimension and
+     * the feature is a measured dimension.
+     */
+    const object = enggDrawingState.geometryFactories.dimension({
+        dimensionType,
+        refs,
+        placement
+    });
 
     enggDrawingState.addObject(
         drawingState,
@@ -405,17 +440,6 @@ function commitDimensionNow({
         object.id
     );
 
-    if (variable) {
-        setToolMessage(
-            `Variable placed - ${enggVariableDimension.variableText(object)}`
-        );
-
-        renderProperties();
-        renderCurrentDrawing();
-
-        return object;
-    }
-
     const measured =
         enggDimensionModel.formatMeasurement(
             object,
@@ -433,6 +457,281 @@ function commitDimensionNow({
 
     return object;
 }
+
+/*
+ * ========================================================
+ * ASK FOR A VARIABLE DIMENSION'S VALUE, THEN CREATE IT
+ * ========================================================
+ *
+ * THE SAME POPUP every other value in the application is entered through -
+ * `openLoadValuePopup`, the component a Length and a Force use. It is not a
+ * second dialog: it is the existing one, opened with `expression: true`, which
+ * is the ONE difference a Variable Dimension needs.
+ *
+ * WHY THAT MATTERS BEYOND TIDINESS. A student learns one value box: one place
+ * it appears, one set of keys, one way to confirm and cancel. A bespoke
+ * variable dialog would be a second thing to learn for the same act, and the
+ * first variable a student ever makes is exactly when they have the least
+ * patience for that.
+ *
+ * The prompt comes AFTER the geometry is chosen and the dimension placed, so
+ * the answer is given with the thing being named already on screen.
+ */
+function openVariablePrompt({ previousObjects, refs, placement }) {
+    /*
+     * THE TITLE NAMES WHAT IS BEING NAMED, from the dimension type the
+     * SELECTION inferred - the same inference Smart Dimension uses. So a pair
+     * of non-parallel lines asks for an angle, and a single line asks for a
+     * length, without the student having told the tool which it was.
+     */
+    const dimensionType = drawingState.interaction.dimensionChoice;
+
+    openLoadValuePopup({
+        title: "Variable Dimension",
+        label: variablePromptLabel(dimensionType),
+        value: "",
+
+        /*
+         * EXPRESSION MODE. A symbol or an expression is accepted and handed
+         * back verbatim; a plain number is accepted too. The unit control is
+         * absent, because an unknown quantity has no unit until the student
+         * gives it one.
+         */
+        expression: true,
+
+        onConfirm: ({ text }) => {
+            const previous =
+                previousObjects ||
+                enggDrawingState.snapshotDrawing(drawingState);
+
+            const object =
+                enggDrawingState.geometryFactories["variable-dimension"]({
+                    refs,
+                    placement,
+                    symbol: text
+                });
+
+            /*
+             * THE DIMENSION TYPE THE SELECTION IMPLIED IS KEPT ON THE FEATURE,
+             * so a variable can be drawn the same way a dimension is - an
+             * angular variable gets an arc, a linear one gets a dimension line -
+             * and `variable-dimension` remains a sibling of `dimension` rather
+             * than a second, differently-shaped thing.
+             */
+            object.dimensionType = dimensionType || null;
+
+            enggDrawingState.addObject(drawingState, object);
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previous
+            );
+
+            enggDrawingState.clearInteraction(drawingState);
+
+            enggDrawingState.selectObject(drawingState, object.id);
+
+            setToolMessage(`Variable placed - ${object.symbol}`);
+
+            renderProperties();
+            renderCurrentDrawing();
+        },
+
+        onCancel: () => {
+            /*
+             * NOTHING WAS CREATED, so nothing is undone. The interaction is
+             * released so the tool is ready for the next attempt rather than
+             * sitting behind a half-placed dimension.
+             */
+            enggDrawingState.clearInteraction(drawingState);
+
+            setToolMessage("Variable Dimension cancelled");
+
+            renderCurrentDrawing();
+        }
+    });
+}
+
+/*
+ * What the prompt calls the value it wants.
+ *
+ * Named after the QUANTITY the student just selected, so the question reads as
+ * a question about their drawing: "Angle" is a different answer from "Length".
+ */
+function variablePromptLabel(dimensionType) {
+    return (
+        {
+            angular: "Angle",
+            "point-line": "Distance",
+            horizontal: "Length",
+            vertical: "Length",
+            aligned: "Length",
+            linear: "Length",
+            diameter: "Diameter",
+            radius: "Radius"
+        }[dimensionType] || "Value"
+    );
+}
+
+/*
+ * ========================================================
+ * DOUBLE-CLICKING A DIMENSION EDITS ITS VALUE
+ * ========================================================
+ *
+ * The SAME popup every other value in the application is entered through - the
+ * component a Length, a Force and a moment magnitude use. A dimension used to
+ * open its own editor, whose first question was the sheet's World Scale; that
+ * is a question about the DRAWING, not about the dimension, and it arrived
+ * every time a student simply wanted to change a number.
+ *
+ * WHAT THE TWO KINDS EXPECT IS THE ONLY DIFFERENCE:
+ *
+ *   Smart Dimension    a measured value, shown so it can be corrected
+ *   Variable Dimension the student's own symbol or expression, shown so it can
+ *                      be edited
+ *
+ * Both keep their REFERENCES whatever is typed - the popup changes what the
+ * dimension SAYS, never what it is attached to.
+ */
+export function openDimensionValuePrompt(object) {
+    if (!object) {
+        return false;
+    }
+
+    const variable =
+        object.type === "variable-dimension";
+
+    /*
+     * A VARIABLE DIMENSION'S CURRENT TEXT IS ITS SYMBOL, read from the FEATURE
+     * - which is where the model stores it and where the panel reads it. An
+     * empty symbol opens as an empty field, which is a real state: named but
+     * not yet written.
+     *
+     * A SMART DIMENSION'S IS ITS MEASUREMENT, read live so the field shows the
+     * number the dimension is currently stating.
+     */
+    const current = variable
+        ? object.symbol ?? ""
+        : enggDimensionModel.formatMeasurement(
+              object,
+              drawingState
+          ) || "";
+
+    openLoadValuePopup({
+        title: variable ? "Variable Dimension" : "Dimension",
+        label: variable
+            ? variablePromptLabel(object.dimensionType)
+            : "Value",
+
+        /*
+         * A LENGTH UNIT IS A SELECTABLE UNIT, so the non-expression path is
+         * used for a measured dimension - it offers the sheet's own length
+         * units and reads a typed unit out of the field. A variable has no
+         * unit until the student gives it one, so it takes the expression
+         * path, where the unit control is absent and the text is the value.
+         */
+        value: current,
+        expression: variable,
+        units: variable ? undefined : MEASURED_UNITS,
+
+        onConfirm: (confirmed) => {
+            const previous =
+                enggDrawingState.snapshotDrawing(drawingState);
+
+            if (variable) {
+                /*
+                 * THE STUDENT'S OWN VALUE, KEPT VERBATIM.
+                 *
+                 * An empty field means the symbol is cleared, which is the
+                 * state "not yet written" - the same state a new variable
+                 * starts in. Nothing is measured and nothing is substituted:
+                 * this dimension states what the student wrote.
+                 */
+                object.symbol = String(confirmed.text ?? "");
+            } else {
+                /*
+                 * ====================================================
+                 * A MEASURED DIMENSION IS DRIVEN, NOT OVERWRITTEN
+                 * ====================================================
+                 *
+                 * THE NUMBER IS APPLIED TO THE GEOMETRY, and the dimension
+                 * then MEASURES it as it always has. Nothing numeric is stored
+                 * on the dimension itself - see the head of dimension-model.js
+                 * - so a dimension can never become a frozen label, and the
+                 * Features panel and the sheet cannot disagree: both read the
+                 * same measurement on every frame.
+                 *
+                 * THIS IS WHY `applyStaticsValue` IS NOT USED HERE. That writes
+                 * a magnitude ONTO the feature, which would be a second copy of
+                 * a number the geometry already owns - free to go stale the
+                 * moment anything moved, and exactly the "static value after the
+                 * first definition" the requirement forbids.
+                 */
+                const answer = readStaticsValue(
+                    confirmed.text ?? "",
+                    confirmed.unit
+                );
+
+                if (answer.kind === "number") {
+                    const millimetres =
+                        answer.value *
+                        (enggQuantities?.LENGTH_UNITS?.[
+                            answer.unit
+                        ]?.mm ?? 1);
+
+                    enggDimensionEdit.applyDimensionValue(
+                        object,
+                        drawingState,
+                        millimetres
+                    );
+                } else if (answer.kind === "symbol") {
+                    /*
+                     * A SYMBOL ON A DIMENSION IS ITS LABEL, which the panel
+                     * already shows; the measurement is left driving beside it.
+                     */
+                    object.magnitudeLabel = answer.text;
+                }
+            }
+
+            /*
+             * THE REFERENCES ARE UNTOUCHED. `sourceRefs` is not written here
+             * at all, so the dimension is still measuring the same geometry - a
+             * value edit changes what it SAYS, never what it is attached to.
+             */
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previous
+            );
+
+            setToolMessage(
+                variable
+                    ? `Variable Dimension updated - ${object.symbol || "empty"}`
+                    : `Dimension updated - ${
+                          enggDimensionModel.formatMeasurement(
+                              object,
+                              drawingState
+                          ) || "Unknown"
+                      }`
+            );
+
+            renderProperties();
+            renderCurrentDrawing();
+        },
+
+        onCancel: () => {
+            setToolMessage("Dimension edit cancelled");
+
+            renderCurrentDrawing();
+        }
+    });
+
+    return true;
+}
+
+/*
+ * The units a measured dimension may be stated in, offered by the popup.
+ */
+const MEASURED_UNITS = ["mm", "cm", "m", "in", "ft"].concat(["N", "kN"]);
 
 /*
  * WHICH FEATURE IS BEING DIMENSIONED

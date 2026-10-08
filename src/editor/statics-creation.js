@@ -8,6 +8,7 @@ import enggCreationDimensioning from "../features/dimensions/creation-dimensioni
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { RIGID_BODY_HEIGHT, RIGID_BODY_WIDTH, staticsForceLineWidth } from "./constants.js";
 import { beginCreationDimensioning, commitCreatedFeature } from "./creation-sizing.js";
+import { openMomentValuePrompt } from "./preview.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { STATICS_PLACEMENT_TOOLS } from "./statics-tools.js";
@@ -377,10 +378,21 @@ export function createStaticsFeature(
         return;
     }
 
-    enggDrawingState.addObject(
-        drawingState,
-        object
-    );
+    /*
+     * THE OBJECT THE DOCUMENT ACTUALLY HOLDS.
+     *
+     * `addObject` may store a COPY of what it is given - it renames a feature
+     * by spreading it - so the object passed in is not always the object on the
+     * sheet. Anything that writes to the feature AFTER adding it must therefore
+     * write to what was returned, or the write lands on a stray copy: the
+     * moment's magnitude popup did exactly that, and its Unknown mark never
+     * reached the panel.
+     */
+    const stored =
+        enggDrawingState.addObject(
+            drawingState,
+            object
+        );
 
     enggDrawingState.commitDrawingChange(
         drawingState,
@@ -393,7 +405,7 @@ export function createStaticsFeature(
 
     enggDrawingState.selectObject(
         drawingState,
-        object.id
+        stored.id
     );
 
     setToolMessage(
@@ -402,4 +414,24 @@ export function createStaticsFeature(
 
     renderProperties();
     renderCurrentDrawing();
+
+    /*
+     * ========================================================
+     * A MOMENT PLACED IN FREE SPACE IS ASKED ABOUT TOO
+     * ========================================================
+     *
+     * A moment has TWO creation paths, and both must end the same way:
+     *
+     *   on a body   two stages (point, then radius), committed by
+     *               `commitMomentPlacement`
+     *   in free space this one, a single click
+     *
+     * The two-stage path was made to ask; this one was not, so a moment placed
+     * in empty space was still silently given a magnitude of 50 that the
+     * student never chose. The question is opened from the SHARED function, so
+     * `M`, `250` and an empty box mean the same thing whichever path placed it.
+     */
+    if (type === "moment") {
+        openMomentValuePrompt(stored, previous);
+    }
 }

@@ -1429,12 +1429,22 @@ export function updateFeatureProperty(object, key, value) {
          * written it yet, so falling back to a default would overwrite their
          * intent on every keystroke.
          *
+         * WRITTEN TO THE FEATURE, NOT TO ITS GEOMETRY. The model keeps the
+         * symbol on the variable itself (`variable.symbol`), because that is
+         * where the renderer, the hit test and `variableText` read it - so this
+         * used to write to `geometry.symbol`, a place nothing reads, and an
+         * edit appeared to do nothing at all.
+         *
+         * ANYTHING IS ACCEPTED: a name, a number, or an expression such as
+         * `L/2`. This is the student's own algebra and it is never evaluated,
+         * rewritten or reduced to a number here.
+         *
          * Nothing else about the feature changes: the references, the placement
          * and every relationship stay exactly as they were, so editing the
          * symbol cannot detach the variable from the geometry it names.
          */
         if (key === 'symbol') {
-            g.symbol = String(value ?? '');
+            object.symbol = String(value ?? '');
 
             return true;
         }

@@ -14,7 +14,7 @@ import { beginCreationDimensioning, commitCreatedFeature } from "./creation-sizi
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { objectAtPoint } from "./hit-testing.js";
-import { openLoadValuePopup } from "../ui/editors/load-value-popup.js";
+import { applyStaticsValue, openLoadValuePopup, readStaticsValue } from "../ui/editors/load-value-popup.js";
 import { LOAD_BUILD_PHASES, beginDistributedLoadConstruction, continueDistributedLoadBuild, distributedLoadDirectionCursor, distributedLoadPointOnBody, distributedLoadRegionMidpoint, isVaryingLoadTool, startDistributedLoadBuild, takeDistributedLoadEnd, takeDistributedLoadStart, takeDistributedLoadVector } from "./load-tool.js";
 import { commitMomentPlacement } from "./preview.js";
 import { beginStaticsAttachment, continueStaticsAttachment, staticsBodyAtPoint } from "./statics-attachment.js";
@@ -1379,21 +1379,46 @@ export function beginOrCompleteGeometry(
                 },
 
                 onConfirm: confirmed => {
+                    /*
+                     * WHAT THE TYPED ANSWER MEANS.
+                     *
+                     * `readStaticsValue` is the ONE reader: a number is a
+                     * magnitude, an EMPTY box is Unknown, and anything else is
+                     * the student's own symbol. This used to be
+                     * `Math.max(0, Number(value) || 0)`, which turned `F₁` and
+                     * an empty box alike into ZERO - a measurement the student
+                     * never stated.
+                     *
+                     * The geometry is still built from a NUMBER, because a
+                     * vector needs a length to draw; for a symbol or an
+                     * unknown the vector keeps the size the drag chose and the
+                     * STATEMENT lives on the feature, which is what the
+                     * annotation and the panel then report.
+                     */
+                    const answer = readStaticsValue(
+                        confirmed.text ?? "",
+                        confirmed.unit
+                    );
+
                     const magnitude =
-                        Math.max(
-                            0,
-                            Number(confirmed.value) || 0
-                        );
+                        answer.kind === "number"
+                            ? Math.max(0, answer.value)
+                            : Math.max(
+                                  0,
+                                  Number(object.geometry.magnitude) || 0
+                              );
 
                     /*
                      * THE CHOSEN UNIT IS RECORDED ON THE FORCE, so the
                      * annotation and the Features panel write the magnitude
                      * the way the student stated it.
                      */
-                    enggLoadProfile.setForceUnit(
-                        object.geometry,
-                        confirmed.unit
-                    );
+                    if (answer.kind === "number") {
+                        enggLoadProfile.setForceUnit(
+                            object.geometry,
+                            confirmed.unit
+                        );
+                    }
 
                     /*
                      * THE VECTOR IS REBUILT FROM THE NEW MAGNITUDE.
@@ -1414,6 +1439,11 @@ export function beginOrCompleteGeometry(
                         magnitude,
                         vector.angle
                     );
+
+                    /* The number, the Unknown mark or the symbol. */
+                    applyStaticsValue(object, answer, {
+                        valueKey: "magnitude"
+                    });
 
                     commitCreatedFeature(
                         object,

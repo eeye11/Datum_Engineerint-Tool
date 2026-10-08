@@ -5,8 +5,9 @@
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isIdleForEditing } from "./annotation-tool.js";
 import { beginCreationDrag, finishCreationDrag, moveCreationDrag } from "./creation-drag.js";
-import { handleCanvasClick, openDimensionEditorFor, openNoteEditorFor, syncSelectionInteraction } from "./canvas-click.js";
+import { handleCanvasClick, openNoteEditorFor, syncSelectionInteraction } from "./canvas-click.js";
 import { isEditableAnnotate } from "./annotate-creation.js";
+import { openDimensionValuePrompt } from "./dimension-tool.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
 import { isConstructionTool } from "./construction-tools.js";
@@ -94,7 +95,32 @@ export function installCanvasEvents() {
                         event.preventDefault();
                         event.stopPropagation();
 
-                        openDimensionEditorFor(pointed);
+                        /*
+                         * THE STANDARD VALUE POPUP, NOT A DIMENSION EDITOR.
+                         *
+                         * A double-click on a dimension opens the SAME value
+                         * box a Length, a Force and a moment magnitude use - the
+                         * one the student already knows - and NEVER the World
+                         * Scale question. A scale is a property of the SHEET,
+                         * and it was being asked every time somebody wanted to
+                         * change a number.
+                         */
+                        openDimensionValuePrompt(pointed);
+
+                        return;
+                    }
+
+                    /*
+                     * A VARIABLE DIMENSION EDITS THE SAME WAY, because it is
+                     * the same act - open the value, change it, keep the
+                     * references. Only the text it expects differs, and the
+                     * prompt reads that from the feature itself.
+                     */
+                    if (pointed?.type === "variable-dimension") {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        openDimensionValuePrompt(pointed);
 
                         return;
                     }

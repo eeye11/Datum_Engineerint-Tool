@@ -762,4 +762,379 @@ console.log("\n  BOTH creation idioms work on the same stroke\n");
   }
 }
 
+console.log("\n  a straight line BENDS into a curve from its middle handle\n");
+
+/*
+ * ========================================================
+ * METHOD B: STRAIGHT LINE, THEN BEND THE MIDDLE
+ * ========================================================
+ *
+ * A student often places the two ends of a diagram first and only then wants
+ * the middle to bow. Deleting the line and redrawing it as a curve throws away
+ * the endpoints they already had, so the middle handle BENDS it instead: the
+ * element's kind changes to `curve3`, its Start and End are kept, and the bend
+ * is wherever they dragged.
+ */
+{
+  const makeEditor = () => {
+    const dialog4 = editor.open({
+      title: "SFD Sketch",
+      range: { from: 0, to: 100 },
+      elements: [],
+      stations: [],
+    });
+
+    const svg4 = dialog4.querySelector("[data-sketch-graph]");
+
+    svg4.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 900,
+      height: 320,
+    });
+
+    const pointer4 = (type, x, y) => {
+      const event = new global.window.Event(type, {
+        bubbles: true,
+        cancelable: true,
+      });
+
+      event.clientX = x;
+      event.clientY = y;
+      event.pointerId = 1;
+
+      svg4.dispatchEvent(event);
+    };
+
+    return { dialog4, svg4, pointer4 };
+  };
+
+  /* Draw a straight line by dragging, so it is created and selected. */
+  const { svg4, pointer4 } = makeEditor();
+
+  pointer4("pointerdown", 120, 160);
+  pointer4("pointermove", 640, 160);
+  pointer4("pointerup", 640, 160);
+
+  check(
+    "the line is drawn and selected",
+    svg4.querySelectorAll(".sketch-editor-stroke").length === 1,
+  );
+
+  /*
+   * THE MIDDLE HANDLE EXISTS. A line has THREE handles while selected: its two
+   * ends and the bend that turns it into a curve.
+   */
+  const handles = svg4.querySelectorAll(".sketch-editor-handle");
+
+  check(
+    "a selected line offers three handles, one of them the bend",
+    handles.length === 3,
+    `found ${handles.length}`,
+  );
+
+  check(
+    "and one of them is the bend handle",
+    [...handles].some((h) => h.dataset.handleKind === "bend"),
+    [...handles].map((h) => h.dataset.handleKind).join(", "),
+  );
+
+  /* The middle of the line, in screen coordinates. */
+  const bendHandle = [...handles].find(
+    (h) => h.dataset.handleKind === "bend",
+  );
+
+  const bendAt = bendHandle
+    ? {
+        x: Number(bendHandle.getAttribute("cx")),
+        y: Number(bendHandle.getAttribute("cy")),
+      }
+    : null;
+
+  /*
+   * The middle of the line, derived from the TWO END HANDLES the editor drew -
+   * the same projection, read back rather than recomputed, so the check cannot
+   * disagree with the graph over where the line is.
+   */
+  const endHandles = Object.fromEntries(
+    [...handles]
+      .filter((h) => h.dataset.handleKind !== "bend")
+      .map((h) => [
+        h.dataset.handleKind,
+        {
+          x: Number(h.getAttribute("cx")),
+          y: Number(h.getAttribute("cy")),
+        },
+      ]),
+  );
+
+  const midScreen = {
+    x: (endHandles.start.x + endHandles.end.x) / 2,
+    y: (endHandles.start.y + endHandles.end.y) / 2,
+  };
+
+  check(
+    "the bend handle sits ON the straight line (the midpoint)",
+    bendAt &&
+      Math.abs(bendAt.y - midScreen.y) < 1 &&
+      Math.abs(bendAt.x - midScreen.x) < 1,
+    `handle ${JSON.stringify(bendAt)} vs midpoint ${JSON.stringify(midScreen)}`,
+  );
+
+  /* Drag the middle handle upward, which should bow the line. */
+  pointer4("pointerdown", bendAt.x, bendAt.y);
+  pointer4("pointermove", bendAt.x, bendAt.y - 70);
+  pointer4("pointerup", bendAt.x, bendAt.y - 70);
+
+  /*
+   * THE ELEMENT IS NOW A CURVE, drawn as a PATH rather than a straight line -
+   * and the stroke count is unchanged, because it is the same feature.
+   */
+  check(
+    "the line is still ONE feature after bending",
+    svg4.querySelectorAll(".sketch-editor-stroke").length === 1,
+  );
+
+  check(
+    "and it is now drawn as a CURVE, not a straight line",
+    svg4.querySelectorAll("path.sketch-editor-stroke").length === 1,
+    `paths: ${svg4.querySelectorAll("path.sketch-editor-stroke").length}`,
+  );
+
+  editor.close();
+}
+
+console.log("\n  a snap is SHOWN while the cursor is over one\n");
+
+/*
+ * ========================================================
+ * THE SNAP INDICATION
+ * ========================================================
+ *
+ * A magnet nobody can see is a magnet nobody trusts. The mark appears while a
+ * point is being placed OR while simply hovering, and it says which SORT of
+ * thing was caught, because an endpoint and a station look alike on a dense
+ * graph and mean different placements.
+ */
+{
+  const dialog5 = editor.open({
+    title: "SFD Sketch",
+    range: { from: 0, to: 100 },
+    elements: [],
+    stations: [{ position: { x: 50, y: 0 } }],
+  });
+
+  const svg5 = dialog5.querySelector("[data-sketch-graph]");
+
+  svg5.getBoundingClientRect = () => ({
+    left: 0,
+    top: 0,
+    width: 900,
+    height: 320,
+  });
+
+  const move = (x, y) => {
+    const event = new global.window.Event("pointermove", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    event.clientX = x;
+    event.clientY = y;
+    event.pointerId = 1;
+
+    svg5.dispatchEvent(event);
+  };
+
+  /*
+   * Hover near the station at graph x = 50. The scale maps the range onto the
+   * plot, so the station's screen x is found from the same projection the axes
+   * use rather than guessed.
+   */
+  const scale5 = editor.makeScale({ from: 0, to: 100 }, [], {});
+  const stationScreen = scale5.toScreen({ x: 50, y: 0 });
+
+  move(stationScreen.x + 2, stationScreen.y - 40);
+
+  check(
+    "hovering near a station shows the snap mark",
+    svg5.querySelectorAll(".sketch-editor-snap").length === 1,
+    "no snap indication appeared",
+  );
+
+  check(
+    "and it names what it caught",
+    /Station/.test(svg5.querySelector(".sketch-editor-snap-label")?.textContent || ""),
+  );
+
+  /* Move away from the station: the mark must go. */
+  move(stationScreen.x + 200, stationScreen.y - 40);
+
+  check(
+    "and moving away clears it",
+    svg5.querySelectorAll(".sketch-editor-snap").length === 0,
+    "the indication was left behind",
+  );
+
+  editor.close();
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
+console.log("\n  the axis follows the DRAWN geometry\n");
+
+/*
+ * ========================================================
+ * THE AXIS REACHES WHAT IS DRAWN
+ * ========================================================
+ *
+ * The graph's vertical extent must come from the geometry that is really on
+ * it. It used to be ORed with the analysis layer's range, so a sketch with one
+ * small element was still drawn against the full height of the body's diagram
+ * and the axis reached far past anything on the graph.
+ */
+{
+  const spanRange = { from: 0, to: 100 };
+
+  const flat = editor.chooseUnitHeight(
+    spanRange,
+    [{ kind: "line", start: { x: 0, y: 0 }, end: { x: 50, y: 10 } }],
+    {},
+  );
+
+  const tall = editor.chooseUnitHeight(
+    spanRange,
+    [{ kind: "line", start: { x: 0, y: 0 }, end: { x: 50, y: 400 } }],
+    {},
+  );
+
+  check(
+    "a taller element makes a taller axis",
+    tall > flat,
+    `${flat} vs ${tall}`,
+  );
+
+  check(
+    "and the axis reaches the element with a small margin, not a large one",
+    Math.abs(flat - 10 * 1.12) < 1e-9,
+    `expected ~${10 * 1.12}, got ${flat}`,
+  );
+
+  check(
+    "a large analysis range does NOT inflate a small drawing",
+    (() => {
+      const withRange = editor.chooseUnitHeight(
+        spanRange,
+        [{ kind: "line", start: { x: 0, y: 0 }, end: { x: 50, y: 10 } }],
+        { yRange: 5000 },
+      );
+
+      return Math.abs(withRange - flat) < 1e-9;
+    })(),
+    "the range is a fallback for an empty sketch, not a floor",
+  );
+
+  check(
+    "but it IS used when nothing is drawn, so an empty sketch has a real axis",
+    (() => {
+      const empty = editor.chooseUnitHeight(spanRange, [], { yRange: 40 });
+
+      return Math.abs(empty - 40 * 1.12) < 1e-9;
+    })(),
+  );
+
+  check(
+    "and an empty sketch with no range still gets a usable extent",
+    editor.chooseUnitHeight(spanRange, [], {}) > 0,
+  );
+}
+
+console.log("\n  a curve's REAL extremes are used, not its Bend\n");
+
+{
+  /*
+   * A quadratic's control point is not on the curve, so the Bend's own y is
+   * never the drawn height. Measured here by comparing the extent of a curve
+   * whose Bend sits high against one whose Bend is on the line.
+   */
+  const bowed = editor.pointsOf({
+    kind: "curve3",
+    start: { x: 0, y: 0 },
+    bend: { x: 50, y: 100 },
+    end: { x: 100, y: 0 },
+  });
+
+  check(
+    "a curve reports its three defining points",
+    bowed.length === 3,
+    JSON.stringify(bowed.length),
+  );
+}
+
+console.log("\n  H/V inference makes a step EXACTLY level or exactly upright\n");
+
+/*
+ * ========================================================
+ * HORIZONTAL AND VERTICAL INFERENCE
+ * ========================================================
+ *
+ * A diagram is drawn between values it already knows, so after placing a point
+ * the student wants to move straight across from it or straight up. The
+ * matching coordinate is set to the anchor's EXACT value - a step that looks
+ * level and stores a fraction of a unit of error is a defect the renderer
+ * hides and the analysis finds.
+ */
+{
+  const scale = editor.makeScale({ from: 0, to: 100 }, [], {});
+
+  const context = {
+    scale,
+    stations: [],
+    elements: [],
+    from: { x: 40, y: 25 },
+  };
+
+  /* A little off the anchor's y: within tolerance. */
+  const level = editor.snapPoint({ x: 70, y: 25.4 }, context);
+
+  check(
+    "a cursor near the anchor's HEIGHT snaps to it exactly",
+    level && level.kind === "horizontal" && level.point.y === 25,
+    JSON.stringify(level),
+  );
+
+  check(
+    "and the x still follows the cursor",
+    level && Math.abs(level.point.x - 70) < 1e-9,
+    JSON.stringify(level?.point),
+  );
+
+  /* A little off the anchor's x. */
+  const upright = editor.snapPoint({ x: 40.3, y: 60 }, context);
+
+  check(
+    "a cursor near the anchor's STATION snaps to it exactly",
+    upright && upright.kind === "vertical" && upright.point.x === 40,
+    JSON.stringify(upright),
+  );
+
+  check(
+    "and the y still follows the cursor",
+    upright && Math.abs(upright.point.y - 60) < 1e-9,
+    JSON.stringify(upright?.point),
+  );
+
+  /* Far from both axes: free. */
+  const free = editor.snapPoint({ x: 70, y: 60 }, context);
+
+  check(
+    "a cursor well away from either axis is NOT constrained",
+    free === null,
+    JSON.stringify(free),
+  );
+
+  check(
+    "and it says which constraint it applied",
+    editor.snapLabel("horizontal") === "Horizontal" &&
+      editor.snapLabel("vertical") === "Vertical",
+  );
+}

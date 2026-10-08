@@ -1558,6 +1558,23 @@ function newFeatureId(
     return `${type}-${generated}`;
 }
 
+/*
+ * Add a feature to the document, and return THE OBJECT THAT WAS STORED.
+ *
+ * RETURNING THE STORED OBJECT IS THE POINT OF THIS CHANGE, and it fixes a
+ * trap that had already caught two features.
+ *
+ * The naming branch below builds `{ ...object, name }` - a SHALLOW COPY - and
+ * pushes THAT. So a caller who kept the object it passed in was holding a
+ * reference to something NOT in the document: every later write to it, however
+ * correct, changed nothing on the sheet. A Moment's magnitude popup wrote
+ * `unknownValues` onto the copy, and the panel went on showing the placeholder.
+ *
+ * The two branches also used to return DIFFERENT KINDS of thing - the copy in
+ * one, and an id string in the other - so a caller could not rely on either.
+ * They now both return the stored object, which carries its `id`, so an
+ * existing `const id = addObject(...)` still works.
+ */
 function addObject(state, object) {
     const baseName =
         object.name.match(/\d+$/)
@@ -1610,6 +1627,11 @@ function addObject(state, object) {
         );
 
     if (requestedName) {
+        /*
+         * A SHALLOW COPY, but it is the copy that is STORED and RETURNED - so
+         * a caller's reference is the document's object rather than a stray
+         * one the naming step left behind.
+         */
         const named = {
             ...object,
             name: object.name
@@ -1645,7 +1667,7 @@ function addObject(state, object) {
 
     state.objects.push(object);
 
-    return object.id;
+    return object;
 }
 function removeObject(state, objectId) {
     state.objects = state.objects.filter(

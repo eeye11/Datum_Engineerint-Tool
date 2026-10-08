@@ -5,6 +5,9 @@
 import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
+import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggDimensionModel from "../features/dimensions/dimension-model.js";
+import enggDrawingRenderer from "../rendering/renderer.js";
 import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { distance } from "./construction-geometry.js";
 import { drawingState } from "./editor-state.js";
@@ -778,7 +781,7 @@ export function objectIntersectsSelection(
     }
 
     /*
-     * A Point has no extent, so it is selected when it is in
+     * A POINT HAS NO EXTENT, so it is selected when it is in
      * the rectangle.
      */
     if (object.type === "point") {
@@ -788,6 +791,39 @@ export function objectIntersectsSelection(
                 geometry,
             selectionBox
         );
+    }
+
+    /*
+     * ========================================================
+     * A FEATURE PLACED AT A POINT
+     * ========================================================
+     *
+     * A support, a moment, a particle, a reference point, a connection: each is
+     * drawn AT a location rather than along a span, and the location is its
+     * `position`.
+     *
+     * THEY REACHED THE FALLBACK AND WERE MISSED. `objectPoints` answers with
+     * the points a feature is DEFINED BY, and for several Statics types that is
+     * not `geometry.position` - so a rectangle dragged over a support found
+     * nothing, and the support could be clicked but not swept up. Testing the
+     * placement directly is what makes one rectangle select a beam AND the
+     * support sitting on it.
+     *
+     * Checked BEFORE the fallback so the answer does not depend on what
+     * `objectPoints` happens to return for a given type.
+     */
+    if (
+        geometry.position &&
+        Number.isFinite(geometry.position.x) &&
+        Number.isFinite(geometry.position.y)
+    ) {
+        /*
+         * A span-shaped body is tested on its LINE, above; anything else with
+         * a position is a mark at that position.
+         */
+        if (!isSpanShapedType(object.type)) {
+            return pointInsideSelection(geometry.position, selectionBox);
+        }
     }
 
     /*
@@ -995,6 +1031,87 @@ export function objectIntersectsSelection(
     }
 
     /*
+     * ========================================================
+     * AN ANALYSIS DIAGRAM: TEST ITS INK, IN WORLD COORDINATES
+     * ========================================================
+     *
+     * The three diagrams - SFD, BMD and AFD - are ONE type,
+     * `analysis-diagram`, told apart by `geometry.diagramType`. So they are
+     * covered by one case, and they behave identically: that is the requirement
+     * that the three must not be three implementations.
+     *
+     * WHAT IS TESTED IS WHAT IS DRAWN. A sketched diagram is projected by
+     * `analysisSketchMarks`, and a plotted one by `analysisPlotMarks` - the
+     * SAME functions the renderer draws from - so a rectangle drawn over the
+     * ink covers the ink.
+     *
+     * TESTING THE RAW STORED POINTS IS THE DEFECT THIS FIXES. A sketch element
+     * holds GRAPH-LOCAL numbers (a station and a value), not points on the
+     * sheet, so a box over a curve compared with numbers that are not where the
+     * curve is found nothing at all - which is why a student could click a
+     * diagram but never sweep one up.
+     */
+    if (object.type === "analysis-diagram") {
+        return diagramMarks(geometry).some(mark =>
+            polylineIntersectsSelection(mark.points, selectionBox)
+        );
+    }
+
+    /*
+     * AN ANNOTATE FEATURE: ITS OWN DRAWN FORM.
+     *
+     * A leader, a callout and an arrow are LINES with text at one end, so a box
+     * that crosses the pen must take the feature even when the words are
+     * outside it - which is what a student drawing a rectangle around a leader
+     * means. A note, a symbol, a tolerance and a table are drawn at a point, so
+     * their own extent is the test.
+     *
+     * The annotation model owns where each kind is drawn, so this asks it
+     * rather than re-deriving the shapes here.
+     */
+    if (object.type === "annotate") {
+        const line =
+            geometry.start && geometry.end
+                ? segmentIntersectsSelection(
+                      geometry.start,
+                      geometry.end,
+                      selectionBox
+                  )
+                : false;
+
+        if (line) {
+            return true;
+        }
+
+        return annotateExtent(object).some(point =>
+            pointInsideSelection(point, selectionBox)
+        );
+    }
+
+    /*
+     * A LEGACY ANNOTATION (a derived magnitude label): selected where its box
+     * touches the rectangle, measured from the placement its own model gives.
+     */
+    if (object.type === "annotation") {
+        return annotationBoxIntersectsSelection(object, selectionBox);
+    }
+
+    /*
+     * A DIMENSION: the lines it is drawn with, plus its own text.
+     *
+     * `graphicsFor` is the one place that says where a dimension draws - the
+     * renderer and the drag both read it - so a rectangle tested against it
+     * covers what the student sees, for a linear dimension, an angle and a
+     * radius alike, without a case for each.
+     */
+    if (
+        object.type === "dimension" ||
+        object.type === "variable-dimension"
+    ) {
+        return dimensionIntersectsSelection(object, selectionBox);
+    }
+
+    /*
      * Anything else: it is selected if any of the points the
      * object is drawn through is in the rectangle. That is the
      * same generous test the Feature Tree relies on, and it is
@@ -1117,4 +1234,232 @@ export function distributedLoadArrowScreenLength(
     }
 
     return world * Math.max(scale, 1e-6);
+}
+
+/*
+ * ========================================================
+ * THE STROKES A DIAGRAM DRAWS, IN WORLD COORDINATES
+ * ========================================================
+ *
+ * A sketched diagram's strokes come from the renderer's `analysisSketchMarks`
+ * and a plotted one's from `analysisPlotMarks` - the very functions the sheet
+ * draws with - so selection and rendering are one geometry, not two.
+ *
+ * Every mark is normalised to `{ points: [...] }` here, because a plot mark may
+ * be a curve (many points) or a vertical line (two), and the intersection test
+ * only cares about the polyline either way.
+ */
+function diagramMarks(geometry) {
+    const renderer = enggDrawingRenderer;
+
+    if (!renderer) {
+        return [];
+    }
+
+    const marks =
+        geometry?.mode === "plot"
+            ? renderer.analysisPlotMarks?.(geometry) || []
+            : renderer.analysisSketchMarks?.(geometry) || [];
+
+    return marks
+        .map((mark) => ({
+            points: mark.points
+                ? mark.points
+                : [mark.from, mark.to],
+        }))
+        .filter(
+            (mark) =>
+                Array.isArray(mark.points) &&
+                mark.points.length >= 2
+        );
+}
+
+/*
+ * THE POINTS THAT BOUND AN ANNOTATE FEATURE.
+ *
+ * A point-placed kind has one (its placement); a geometric kind has its two
+ * ends. The text box is deliberately NOT measured here - the anchor is what a
+ * student aims a rectangle at, and measuring a text box would make a small mark
+ * claim a screen-sized region.
+ */
+function annotateExtent(object) {
+    const geometry = object?.geometry || {};
+
+    return [geometry.position, geometry.start, geometry.end].filter(
+        (point) =>
+            point &&
+            Number.isFinite(point.x) &&
+            Number.isFinite(point.y)
+    );
+}
+
+/*
+ * WHETHER A LEGACY ANNOTATION'S BOX MEETS THE RECTANGLE.
+ *
+ * The annotation model says where the text sits and how big it is, so its own
+ * `annotationTextBounds` is used rather than a second estimate - the same
+ * bounds the hit test uses, which is what keeps a click and a rectangle
+ * agreeing about how much room a label takes.
+ */
+function annotationBoxIntersectsSelection(object, selectionBox) {
+    const model = enggAnnotationModel;
+
+    if (!model?.annotationTextBounds) {
+        return false;
+    }
+
+    let bounds = null;
+
+    try {
+        bounds = model.annotationTextBounds(object, drawingState);
+    } catch (error) {
+        bounds = null;
+    }
+
+    if (!bounds) {
+        return Boolean(
+            object.placement &&
+                pointInsideSelection(object.placement, selectionBox)
+        );
+    }
+
+    /* Two axis-aligned boxes overlap unless one is wholly to a side. */
+    return !(
+        bounds.maxX < selectionBox.minX ||
+        bounds.minX > selectionBox.maxX ||
+        bounds.maxY < selectionBox.minY ||
+        bounds.minY > selectionBox.maxY
+    );
+}
+
+/*
+ * WHETHER A DIMENSION MEETS THE RECTANGLE.
+ *
+ * A dimension is drawn as extension lines, an arc or a line, and a text frame -
+ * and `graphicsFor` is the one place that says where each of those goes. So the
+ * graphics are read and each drawn LINE is tested, plus the text frame.
+ *
+ * A `variable-dimension` is drawn by the same machinery, so it takes the same
+ * path rather than needing a case of its own.
+ */
+function dimensionIntersectsSelection(object, selectionBox) {
+    const model = enggDimensionModel;
+
+    if (!model?.graphicsFor) {
+        return Boolean(
+            object.placement &&
+                pointInsideSelection(object.placement, selectionBox)
+        );
+    }
+
+    let graphics = null;
+
+    try {
+        graphics = model.graphicsFor(object, drawingState);
+    } catch (error) {
+        graphics = null;
+    }
+
+    if (!graphics) {
+        return Boolean(
+            object.placement &&
+                pointInsideSelection(object.placement, selectionBox)
+        );
+    }
+
+    const segments = dimensionSegments(graphics);
+
+    if (
+        segments.some(([start, end]) =>
+            segmentIntersectsSelection(start, end, selectionBox)
+        )
+    ) {
+        return true;
+    }
+
+    /*
+     * THE TEXT ITSELF, so a rectangle drawn over "125 mm" takes the dimension
+     * even when it misses the extension lines - which is the commonest way a
+     * student selects a dimension they can only partly see.
+     */
+    const frame = graphics.textFrame;
+
+    if (frame) {
+        const corners = [
+            { x: frame.minX, y: frame.minY },
+            { x: frame.maxX, y: frame.minY },
+            { x: frame.maxX, y: frame.maxY },
+            { x: frame.minX, y: frame.maxY },
+        ].filter(
+            (corner) =>
+                Number.isFinite(corner.x) &&
+                Number.isFinite(corner.y)
+        );
+
+        if (corners.length === 4) {
+            if (corners.some((c) => pointInsideSelection(c, selectionBox))) {
+                return true;
+            }
+
+            /* Or the whole frame swallows the rectangle. */
+            if (
+                frame.minX <= selectionBox.minX &&
+                frame.maxX >= selectionBox.maxX &&
+                frame.minY <= selectionBox.minY &&
+                frame.maxY >= selectionBox.maxY
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/*
+ * The line segments a dimension's graphics describe.
+ *
+ * `graphicsFor` returns different shapes for different dimension types - an
+ * angular dimension has an `arc` and `extensions`, a radial one has a `line`,
+ * a linear one has `line` and `extensionLines`. Rather than a branch per type,
+ * every array of point pairs is collected, which covers each of them and any
+ * type added later.
+ */
+function dimensionSegments(graphics) {
+    const segments = [];
+
+    const addPath = (path) => {
+        if (!Array.isArray(path) || path.length < 2) {
+            return;
+        }
+
+        for (let index = 1; index < path.length; index += 1) {
+            const start = path[index - 1];
+            const end = path[index];
+
+            if (
+                start &&
+                end &&
+                Number.isFinite(start.x) &&
+                Number.isFinite(end.x)
+            ) {
+                segments.push([start, end]);
+            }
+        }
+    };
+
+    addPath(graphics.line);
+    addPath(graphics.arc);
+
+    [graphics.extensions, graphics.extensionLines, graphics.witnessLines]
+        .filter(Array.isArray)
+        .forEach((group) =>
+            group.forEach((entry) => {
+                if (Array.isArray(entry)) {
+                    addPath(entry);
+                }
+            })
+        );
+
+    return segments;
 }
