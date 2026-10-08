@@ -64,6 +64,17 @@ export const toolIcons = {
 	"Variable Dimension": drawingIcon(`<path ${iconStroke} d="M4 6v12M16 6v12M4 12h12M4 12l3-2M4 12l3 2M16 12l-3-2M16 12l-3 2"/><path ${iconStroke} d="M8 9.5l4 5M12 9.5l-4 5"/>`),
 	"Annotation": drawingIcon(`<path ${iconStroke} d="M4 5h8M4 9h8M4 13h5"/><path ${iconStroke} d="M12 16l1.5-4L18 7l-4.5 1.5L12 13"/>`),
 	"Note / Text": drawingIcon(`<path ${iconStroke} d="M4 4h12v9H9l-4 3v-3H4zM7 7h6M7 10h4"/>`),
+
+	/*
+	 * LABEL - a short identifier for a feature or subfeature.
+	 *
+	 * Drawn as a tag with its own leader tick, because that is what a label
+	 * IS: a name hung off a piece of geometry rather than a paragraph of
+	 * prose. It is deliberately different from Note / Text, which is drawn
+	 * as a text box, so the two read as different tools and different
+	 * features.
+	 */
+	Label: drawingIcon(`<path ${iconStroke} d="M4 6h9l3 4-3 4H4z"/><path ${iconStroke} d="M7 8.5h4M7 11.5h2"/>`),
 	Leader: drawingIcon(`<path ${iconStroke} d="M4 15L15 5M12 5h4v4"/><circle ${iconStroke} cx="4" cy="15" r="1"/>`),
 	Arrow: drawingIcon(`<path ${iconStroke} d="M4 16L16 4M11 4h5v5"/>`),
 	Callout: drawingIcon(`<path ${iconStroke} d="M4 4h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path ${iconStroke} d="M6 7h5M6 10h3"/>`),
@@ -308,6 +319,129 @@ export const drawingToolGroups = [
 ];
 
 /*
+ * ========================================================
+ * ANNOTATE: THE TOOL GROUPS
+ * ========================================================
+ *
+ * Annotate is an ENGINEERING-DRAWING discipline, and it is organised
+ * EXACTLY the way Statics is: a short list of category headings, each with
+ * its commands listed directly underneath. The two are deliberately the
+ * same shape, because a student who has learned where a Statics tool lives
+ * should not have to learn a second arrangement for an Annotate one.
+ *
+ *     SELECTION     the shared selection system, offered first
+ *
+ *     CREATE        every annotate command, listed directly
+ *
+ * THERE IS NO SUB-CATEGORY LEVEL, AND THAT IS THE WHOLE POINT.
+ *
+ * A tool is a COMMAND. A command that is behind another command is a
+ * command the student has to go looking for, and the words for the kinds of
+ * annotation - Dimensions, Text, Leader - are descriptions, not places. So
+ * there is no "Dimensions -> Smart Dimension", no caret, no flyout and no
+ * hover menu: "Variable Dimension" and "Smart Dimension" and the other
+ * eight are VISIBLE AND CLICKABLE THE MOMENT Annotate is selected.
+ *
+ * This mirrors Statics exactly. Bodies, Loads and Supports open menus there
+ * because each one is a FAMILY OF FEATURES with genuinely different
+ * geometry - a pin support and a roller support are different drawings - so
+ * choosing between them is a real step. Annotate's commands are not like
+ * that: a Smart Dimension and a Variable Dimension are two separate tools
+ * with two separate buttons, and grouping them behind a "Dimensions" parent
+ * would add a click and hide a command without deciding anything.
+ *
+ * THE TOOL IDS ARE DELIBERATELY THE FEATURE KINDS.
+ *
+ * `note`, `label`, `leader`, `callout`, `arrow`, `symbol`, `tolerance`,
+ * `table` are the ids the creation layer and the panel both key on, so a
+ * tool and the feature it makes cannot drift apart: there is one word for
+ * each thing. `variable-dimension` and `smart-dimension` keep the ids they
+ * already had, because the dimension tools are shared with the existing
+ * dimension system.
+ */
+export const annotateToolGroups = [
+	{
+		id: "annotate-selection",
+		label: "Selection",
+		tools: [{ id: "select", label: "Select", shortcut: "Esc" }]
+	},
+
+	/*
+	 * ========================================================
+	 * ORGANISED BY WHAT AN ANNOTATION DOES
+	 * ========================================================
+	 *
+	 * A single "Create" heading holding all ten commands was too broad:
+	 * a measurement, a piece of writing, a leader and a table are
+	 * fundamentally different KINDS of annotation, and a student looking for
+	 * one had to read the whole list to find it. The categories below answer
+	 * the question the student actually arrives with:
+	 *
+	 *     Need a measurement?              Dimensions
+	 *     Need writing?                    Text
+	 *     Need to point at geometry?       Leaders
+	 *     Need a free arrow?               Markup
+	 *     Need a symbol or a tolerance?    Symbols & Tolerances
+	 *     Need a table?                    Tables
+	 *
+	 * THESE ARE CATEGORIES, NOT SUBMENUS.
+	 *
+	 * Every tool is listed DIRECTLY under its category and is clickable the
+	 * moment Annotate is selected. There is no caret, no flyout and no
+	 * second level: the hierarchy stops at Annotate -> Category -> Tool,
+	 * exactly as it does in Statics. The `submenu` flag is therefore absent
+	 * from every entry here - it is the flag Geometry and Statics use for
+	 * the tools that DO open a menu (Arc, Bodies, Loads), and leaving it off
+	 * is what makes each of these activate immediately.
+	 *
+	 * The headings are Organise, not Hide: a category is a place to look,
+	 * never a step to complete.
+	 */
+	{
+		id: "annotate-dimensions",
+		label: "Dimensions",
+		tools: [
+			{ id: "variable-dimension", label: "Variable Dimension" },
+			{ id: "smart-dimension", label: "Smart Dimension" }
+		]
+	},
+	{
+		id: "annotate-text",
+		label: "Text",
+		tools: [
+			{ id: "note", label: "Note / Text" },
+			{ id: "label", label: "Label" }
+		]
+	},
+	{
+		id: "annotate-leaders",
+		label: "Leaders",
+		tools: [
+			{ id: "leader", label: "Leader" },
+			{ id: "callout", label: "Callout" }
+		]
+	},
+	{
+		id: "annotate-markup",
+		label: "Markup",
+		tools: [{ id: "arrow", label: "Arrow" }]
+	},
+	{
+		id: "annotate-symbols-tolerances",
+		label: "Symbols & Tolerances",
+		tools: [
+			{ id: "symbol", label: "Symbol" },
+			{ id: "tolerance", label: "Tolerance" }
+		]
+	},
+	{
+		id: "annotate-tables",
+		label: "Tables",
+		tools: [{ id: "table", label: "Table" }]
+	}
+];
+
+/*
  * Disciplines that are organised into labelled sections,
  * mirroring how the Geometry tools are grouped.
  *
@@ -316,6 +450,7 @@ export const drawingToolGroups = [
  * panel headings.
  */
 export const disciplineToolGroups = {
+	ANNOTATE: annotateToolGroups,
 	STATICS: [
 		{
 			id: "statics-selection",
@@ -449,7 +584,7 @@ export const drawToolLabelById = Object.fromEntries(drawToolDefinitions.map(tool
 
 export const engineeringTools = {
 	GEOMETRY: sidebarToolDefinitions.map(tool => tool.label),
-	ANNOTATE: ["Dimension", "Smart Dimension", "Variable Dimension", "Annotation", "Note / Text", "Leader", "Arrow", "Callout", "Symbol", "Tolerance", "Table", "Reference"],
+	ANNOTATE: ["Variable Dimension", "Smart Dimension", "Note / Text", "Label", "Leader", "Callout", "Arrow", "Symbol", "Tolerance", "Table"],
 	STATICS: ["Particle", "Rigid Body", "Beam", "Truss", "Cable", "Shaft", "Point Force", "Distributed Load", "Varying Distributed Load", "Moment", "Pin Support", "Roller Support", "Fixed Support", "Smooth Support", "Pin Connection", "Fixed Connection", "Slider Connection", "Free Body Diagram"],
 	DYNAMICS: ["Particle", "Rigid Body", "Velocity", "Acceleration", "Rotation", "Motion Path"],
 	FLUIDS: ["Pipe", "Reservoir", "Valve", "Pump", "Flow Arrow", "Pressure"],

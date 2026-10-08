@@ -919,10 +919,15 @@ export function finishActiveConstruction() {
      * records its stage in `dimensionStage`, not in `phase` - so
      * `isConstructionInProgress` is false while references are being
      * collected, and a check that relied on it would never fire.
+     *
+     * ARMED counts too. A single measurable object previews its own
+     * measurement at once, but Enter is still an honest way to say "place
+     * this one now" - the deliberate workflow is kept, not removed.
      */
     if (
         isDimensionTool(drawingState.activeTool) &&
-        interaction?.dimensionStage === "selecting"
+        (interaction?.dimensionStage === "selecting" ||
+            interaction?.dimensionStage === "armed")
     ) {
         return commitDimensionSelection();
     }

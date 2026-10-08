@@ -7,6 +7,7 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import { analysisAxisForPlacement } from "./analysis-tools.js";
 import { isAnnotationTool } from "./annotation-tool.js";
+import { annotateInstruction, isAnnotateTool, updateAnnotateAnchorPreview } from "./annotate-creation.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { arcThroughThreePoints, distance, rectangleGeometry, resolveCentrepointArc } from "./construction-geometry.js";
 import { dimensionSelectionInstruction } from "./dimension-placement.js";
@@ -276,6 +277,37 @@ export function updatePreview(
     }
 
     /*
+     * AN ARMED ANNOTATE MARK, PREVIEWING TO THE CURSOR.
+     *
+     * A leader, a callout and an arrow hold their first end and follow the
+     * cursor to their second. The preview is written to the INTERACTION
+     * only - the document is untouched until the commit - and the renderer
+     * draws it from `annotateStart`/`annotateEnd`, so there is one drawing
+     * path for the preview and the feature.
+     *
+     * Handled before the construction phases below because an armed
+     * annotation has no construction phase at all: it is a mark being
+     * positioned, not geometry being built.
+     */
+    if (
+        isAnnotateTool(
+            drawingState.activeTool
+        ) &&
+        interaction.annotateStage === "anchor"
+    ) {
+        updateAnnotateAnchorPreview(resolution);
+
+        reportConstructionStatus(
+            resolution,
+            annotateInstruction(
+                drawingState.activeTool
+            )
+        );
+
+        return;
+    }
+
+    /*
      * THE DIMENSION'S TWO LIVE STAGES.
      *
      * PLACEMENT: the references are settled and only the annotation's
@@ -313,6 +345,42 @@ export function updatePreview(
         reportConstructionStatus(
             resolution,
             "Place the dimension"
+        );
+
+        return;
+    }
+
+    /*
+     * ARMED: a complete single measurement is previewed and following the
+     * cursor, but the tool is still accepting a second reference.
+     *
+     * This is the stage that lets one line's length appear at once AND a
+     * second line still turn the pair into an angle. The placement position
+     * tracks the pointer exactly as it does in `placement`, so the preview
+     * looks identical; only what the NEXT CLICK means differs.
+     */
+    if (
+        isDimensionTool(
+            drawingState.activeTool
+        ) &&
+        interaction.dimensionStage ===
+            "armed" &&
+        interaction.dimensionRefs?.length
+    ) {
+        const point =
+            resolution.effectiveConstructionPoint;
+
+        if (point) {
+            interaction.dimensionPlacement =
+                {
+                    x: point.x,
+                    y: point.y
+                };
+        }
+
+        reportConstructionStatus(
+            resolution,
+            "Click another reference for an angle, or click empty space to place"
         );
 
         return;

@@ -1448,5 +1448,135 @@ export function updateFeatureProperty(object, key, value) {
             return true;
         }
     }
+
+    if (object.type === 'annotate') {
+        /*
+         * ========================================================
+         * AN ANNOTATE FEATURE'S OWN FIELDS
+         * ========================================================
+         *
+         * A note, a label, a leader, a callout, an arrow, a symbol, a
+         * tolerance and a table all store their specifics on `geometry`,
+         * which is where the renderer, the hit test and the save path all
+         * read them from - see features/annotations/annotate-model.js. So
+         * the panel writes there too, and nothing has to be copied about: a
+         * value typed in the panel IS the value drawn and saved.
+         *
+         * A PLACEMENT COORDINATE is handled by the shared length-coordinate
+         * branch at the top of this function, which already converts typed
+         * millimetres to world units for any key beginning `position.`,
+         * `start.` or `end.` - so a moved note and a moved arrow both land
+         * where the student typed, through the one conversion.
+         */
+        if (key === 'text') {
+            object.text = String(value ?? '');
+
+            return true;
+        }
+
+        if (key === 'annotateKind') {
+            /*
+             * The KIND is not retyped here - it is chosen by which tool made
+             * the feature - so this only guards against a panel writing a
+             * kind the model does not know.
+             */
+            return false;
+        }
+
+        if (key === 'symbolId') {
+            g.symbolId = String(value ?? 'datum');
+
+            return true;
+        }
+
+        if (key === 'toleranceMode') {
+            g.toleranceMode = String(value ?? 'symmetric');
+
+            return true;
+        }
+
+        if (
+            key === 'toleranceValue' ||
+            key === 'toleranceUpper' ||
+            key === 'toleranceLower'
+        ) {
+            const field =
+                key === 'toleranceValue'
+                    ? 'value'
+                    : key === 'toleranceUpper'
+                      ? 'upper'
+                      : 'lower';
+
+            g.toleranceValues = g.toleranceValues || {};
+            g.toleranceValues[field] = value;
+
+            return true;
+        }
+
+        if (key === 'rows' || key === 'columns') {
+            const number = Math.max(
+                1,
+                Math.round(Number(value) || 1)
+            );
+
+            const nextRows =
+                key === 'rows' ? number : Number(g.rows) || 1;
+
+            const nextColumns =
+                key === 'columns' ? number : Number(g.columns) || 1;
+
+            /*
+             * RESIZING KEEPS WHAT WAS TYPED. The cell list is rebuilt to the
+             * new shape, preserving every cell that still exists and blanking
+             * the ones that are new - so growing a table never loses work and
+             * shrinking one never leaves a cell with no grid position.
+             */
+            const oldCells = Array.isArray(g.cells) ? g.cells : [];
+            const oldColumns = Number(g.columns) || 1;
+
+            const cells = [];
+
+            for (let row = 0; row < nextRows; row += 1) {
+                for (let column = 0; column < nextColumns; column += 1) {
+                    const kept =
+                        row < (Number(g.rows) || 1) &&
+                        column < oldColumns
+                            ? oldCells[row * oldColumns + column]
+                            : '';
+
+                    cells.push(kept === undefined ? '' : kept);
+                }
+            }
+
+            g.rows = nextRows;
+            g.columns = nextColumns;
+            g.cells = cells;
+
+            return true;
+        }
+
+        const cellMatch = /^cell\.(\d+)$/.exec(key);
+
+        if (cellMatch) {
+            const index = Number(cellMatch[1]);
+
+            if (!Array.isArray(g.cells)) {
+                g.cells = [];
+            }
+
+            g.cells[index] = String(value ?? '');
+
+            return true;
+        }
+
+        if (key.startsWith('start.') || key.startsWith('end.')) {
+            const [pointKey, axis] = key.split('.');
+
+            g[pointKey] = g[pointKey] || { x: 0, y: 0 };
+            g[pointKey][axis] = worldValue;
+
+            return true;
+        }
+    }
     return false;
 }

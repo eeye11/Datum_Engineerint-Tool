@@ -19,6 +19,14 @@ src/
   references/ solution/ sheets/ api/ assets/
 ```
 
+Two shared toolkits sit inside `core/` and are worth knowing before writing a
+helper of your own — see §14:
+
+```
+core/geometry/points.js   distance, distanceToSegment, unitVector, midpoint, …
+core/util/clone.js        deepClone, deepCloneAll
+```
+
 ---
 
 ## 1. Where do I look for…?
@@ -41,6 +49,13 @@ src/
 | How something is drawn on the canvas | `src/rendering/renderer.js` |
 | What fits on screen / Fit | `src/editor/viewport.js` |
 | The bottom-bar tool message | `src/editor/toolbar-render.js` (`setToolMessage`) |
+| **Annotate** — notes, labels, leaders, arrows, symbols, tolerances, tables | `src/features/annotations/annotate-model.js` (data) + `src/editor/annotate-creation.js` (interaction) |
+| Which tools the **Annotate** section shows, and their categories | `src/editor/tools.js` (`annotateToolGroups`) |
+| **Angular dimensioning** — which of the four sectors is dimensioned | `src/features/dimensions/dimension-model.js` (`angleSectorLegs`) |
+| Point/segment maths (distance, nearest point on a segment) | `src/core/geometry/points.js` |
+| Deep-copying any value | `src/core/util/clone.js` (`deepClone`) |
+| The top-bar / Tools / Features **Hide** controls | `src/editor/workspace-layout.js` + `.drawing-*` rules in `src/styles/editor.css` |
+| The responsive breakpoints and icon-only modes | `src/styles/editor.css` (the `@media` blocks near the end) |
 
 ---
 
@@ -51,10 +66,12 @@ src/
 | `model/drawing-state.js` | The document: `objects`, `selection`, `interaction`, camera. **All geometry factories** (`.geometryFactories.force`, `.load`, `.varying-load`, `.beam`, …), `addObject`, `commitDrawingChange`, `snapshotDrawing`, `selectObject`. |
 | `model/feature-types.js` | Which types are bodies/connections/supports (`STATICS_BODY_TYPES`, `isSupportType`, …). |
 | `geometry/feature-geometry.js` | Shape maths: corners, centres, `definingPoints`, `translateObject`. |
+| `geometry/points.js` | **The point/segment primitives**, shared: `distance`, `distanceToSegment`, `unitVector`, `segmentDirection`, `midpoint`, `closestPointOnSegment`. Pure, no DOM — used by the model, the renderer, snapping and tests. |
 | `geometry/measurement-core.js` | Anchors a dimension/annotation can attach to (`resolveAnchor`, `twoPointSpan`). |
 | `scale/dimensions.js` | **World Scale** — calibration, `isCalibrated`, `readScale`. |
 | `units/quantities.js` | Unit tables (`LENGTH_UNITS`, `LENGTH_UNITS[...].mm`). |
 | `snapping/object-snap.js` | The one resolver: `resolveConstructionPoint` (snap + H/V inference). |
+| `util/clone.js` | **The deep copy**: `deepClone`, `deepCloneAll`. Replaces `JSON.parse(JSON.stringify(x))` written out by hand, and answers the `undefined` case that once made saving a drawing with an annotation fail. |
 | `selection/*` | Selection helpers used by box selection. |
 
 **Key idea:** a feature is a plain object `{ id, type, name, geometry, style,
@@ -86,7 +103,7 @@ beam / cable / shaft / truss / rigid-body / point / line / circle / arc / …
 ### dimensions/
 | File | Owns |
 |---|---|
-| `dimension-model.js` | `createDimension`, `measurementFor`, `formatMeasurement`, **`graphicsFor`** (line/arc/**textAnchor** the renderer and the drag read), `dimensionDirection`. |
+| `dimension-model.js` | `createDimension`, `measurementFor`, `formatMeasurement`, **`graphicsFor`** (line/arc/**textAnchor** the renderer and the drag read), `dimensionDirection`. **`angleSectorLegs`** is the one place the ANGULAR SECTOR is decided — see §11. |
 | `dimension-editor.js` | The dimension **value** dialog (`drawing-dimension-dialog`). |
 | `smart-dimension.js` | The Smart Dimension tool's reference selection. |
 | `creation-dimension.js` | The shared creation popup (one or two values + unit). Enter handling lives here. |
@@ -97,6 +114,7 @@ beam / cable / shaft / truss / rigid-body / point / line / circle / arc / …
 | File | Owns |
 |---|---|
 | `annotation-model.js` | Derived magnitude labels: `derivedAnnotations`, `textFor`, `annotationTextBounds`, `annotationAnchor`, `moveDerivedAnnotation`, `resetDerivedAnnotation`. Also `loadText`/`profileText` (which read the load unit). |
+| `annotate-model.js` | **The Annotate features.** `ANNOTATE_KINDS` (note, label, leader, callout, arrow, symbol, tolerance, table), `createAnnotate`, `textOf`, `isGeometricKind`, `translateAnnotation`, `boundsOf`, plus `SYMBOL_LIBRARY` and `TOLERANCE_MODES`. These are ONE feature type (`annotate`) with a `kind`, so selection/move/undo/save/panel are shared. |
 
 ---
 
@@ -110,6 +128,7 @@ beam / cable / shaft / truss / rigid-body / point / line / circle / arc / …
 | `tool-menus.js` | Submenus (Bodies, Loads, Supports, …), `isArcTool`, polygon prompt. |
 | `statics-tools.js` | Statics tool tables: `STATICS_CHILD_TOOLS`, `STATICS_SPAN_TOOLS`, `STATICS_PLACEMENT_TOOLS`, `STATICS_BODY_ATTACHED_TOOLS`, instructions. |
 | `construction-tools.js` | `isConstructionTool`, `shouldClickSelectExistingObject`. |
+| `annotate-creation.js` | **The Annotate interaction layer.** `isAnnotateTool`, `handleAnnotateClick`, `beginAnnotateAnchor`, `completeAnnotateAt`, `commitAnnotate`, `isEditableAnnotate`. Point-placed kinds take one click; geometric kinds (leader, callout, arrow) take both click-move-click and drag. |
 | `dimension-tool.js`, `annotation-tool.js` | `isDimensionTool`, `isAnnotationTool` (used by the drag router). |
 
 ### Interaction flow
@@ -121,7 +140,8 @@ canvas-events.js   pointer/mouse/dblclick listeners (the entry point)
    └─ canvas-click.js     what a CLICK does → geometry-creation.js / dimension / annotation
 pointer.js         snapping resolution + the bottom-bar feedback text
 preview.js         live previews for every tool
-hit-testing.js     objectAtPoint, pickDerivedMagnitude, pickDimensionOrAnnotation
+hit-testing.js     objectAtPoint, pickDerivedMagnitude, pickDimensionOrAnnotation, hitTestAnnotateTarget
+annotate-creation.js  the Annotate tools' own small state machines (point placement, anchor→end)
 handles.js         handleAtPoint, manipulationHandles (where grab handles sit)
 keyboard-shortcuts.js  Enter/Escape/Delete → finishActiveConstruction, cancelInteraction
 ```
@@ -245,6 +265,23 @@ is. See the `const highlighted = false` in `renderer.js`.
   `editor/handles.js → manipulationHandles` (dimension → `graphics.textAnchor`;
   derived label → `pickDerivedMagnitude` in `hit-testing.js`).
 
+- **Add an Annotate kind (note, label, leader, …)**
+  1. Add it to `ANNOTATE_KINDS` in `features/annotations/annotate-model.js` —
+     `geometric: true` if it is a start-and-end mark (so it takes both the
+     click and the drag), `targeted: true` if it attaches to a feature.
+  2. Add a tool to a category in `tools.js → annotateToolGroups`. The tool id
+     IS the kind id, and `ANNOTATE_TOOL_KINDS` is derived from the model, so
+     the two cannot drift.
+  3. Draw it in `rendering/renderer.js → appendAnnotateEntity`, and give it
+     panel rows in `feature-panel-markup.js` (the `object.type === "annotate"`
+     branch).
+  Interaction, selection, moving, undo and save are already handled.
+
+- **Change how an angle is measured or drawn**
+  `features/dimensions/dimension-model.js → angleSectorLegs` is the ONE place
+  the sector is chosen; both the value and the arc are built from it, so they
+  cannot disagree. See §11.
+
 ---
 
 ## 9. Tests and QA
@@ -262,6 +299,17 @@ Useful test files to copy from: `tests/sketch-editor.test.cjs` (rendering +
 DOM), `tests/load-value-popup.test.cjs` (popup keys), `tests/dimension-drag-edit.test.cjs`
 (model round-trips).
 
+Tests that pin the behaviour described in §11–§14, worth reading as worked
+examples:
+
+| Test | Pins |
+|---|---|
+| `dimension-angle-sector.test.cjs` | the angular sector: cursor choice, right angle, reversed endpoints, rotation, the vertex case (§12) |
+| `annotate-toolset.test.cjs` | the Annotate categories and that no command hides behind a submenu (§11) |
+| `deep-clone.test.cjs` | `deepClone`, including the `undefined` case that broke saving (§14) |
+| `dual-creation.test.cjs`, `statics-dual-creation.test.cjs` | click-move-click AND click-drag for every creation tool |
+| `responsive-layout.test.cjs` | the toolbar/section-bar one-row rule, panels never hidden, breakpoints descending (§13) |
+
 ---
 
 ## 10. Load units in one line
@@ -271,3 +319,142 @@ geometry (`geometry.loadUnit`), read by `load-profile.loadUnit` and used by the
 annotation (`loadText`/`profileText`), the Features panel
 (`statics-panel.js` → `data-property="loadUnit"`), and the popups. Changing it
 changes the label only — never the stored magnitude.
+
+---
+
+## 11. The Annotate system
+
+**One feature type, eight kinds.** Everything under Annotate is a feature of
+`type: "annotate"` with an `annotateKind` — `note`, `label`, `leader`,
+`callout`, `arrow`, `symbol`, `tolerance`, `table`. They share a kind because
+they are the same SHAPE of thing (content + placement + optional target +
+style), so selection, moving, undo, save and the panel are written once rather
+than eight times.
+
+**Where the data lives** — all of it on the feature, so it serialises with no
+special case:
+
+```
+id, name            identity ("Note 1", "Leader 2", …)
+annotateKind        which of the eight
+ text              the content (a symbol/tolerance render from fields instead)
+targetFeatureId     the feature a label/leader/callout/tolerance is about
+geometry.position   where a point-placed kind sits (world units)
+ geometry.start/end the two ends of a geometric kind (world units)
+ geometry.symbolId, geometry.toleranceMode/Values, geometry.rows/columns/cells
+style               fontSize, stroke, arrowhead, leaderStyle
+```
+
+**Two interaction shapes, decided by the kind:**
+
+- **Point-placed** (note, label, symbol, tolerance, table) — one click.
+- **Geometric** (leader, callout, arrow) — a start and an end, so BOTH
+  click-move-click and click-drag, through the same classification the geometry
+  tools use (`creation-drag.js`).
+
+**The toolset** (`tools.js → annotateToolGroups`) is category headings with the
+tools listed directly under them — **categories, not submenus**:
+
+```
+Selection · Dimensions · Text · Leaders · Markup · Symbols & Tolerances · Tables
+```
+
+Tool id === kind id, and `ANNOTATE_TOOL_KINDS` is derived from the model's own
+`ANNOTATE_KINDS`, so a kind cannot end up with no tool.
+
+**Rendering** is `renderer.js → appendAnnotateEntity`, one function for all
+eight kinds. **Hit testing** is `hit-testing.js → annotateContainsPoint` (text
+box, plus the line for a leader/arrow and the grid for a table). **Moving** is
+`drag.js` (`annotation-offset`, world-space delta from the ORIGINAL geometry,
+so the mark never jumps). **Panel rows** are the `object.type === "annotate"`
+branch in `feature-panel-markup.js`, and **property writes** are the same-named
+branch in `property-update.js`.
+
+The LEGACY `annotation` type (derived magnitude labels) is unchanged and lives
+in `annotation-model.js`; both file under the **Annotate** group in the tree.
+
+---
+
+## 12. Angular dimensioning, and why it works the way it does
+
+Two lines crossing make **four** angular regions, in two values. For a 35°
+pair: `35° 145° 35° 145°`. Three separate things decide the final dimension,
+and they are deliberately kept apart:
+
+| | decided by | where |
+|---|---|---|
+| **the angle value** | the world-space geometry | `measureAngle` |
+| **which of the four sectors** | the cursor (the dimension's placement) | `angleSectorLegs` |
+| **the arc radius** | the cursor's distance from the vertex | `angularGraphics` |
+
+**`angleSectorLegs` is the single decision point.** Both the measured value
+(`measureAngle`) and the drawn arc (`angularGraphics`) are built from its two
+legs, so a label reading 35° can never sit over an arc drawn through 145°.
+
+**The sector is derived from `dimension.placement`, not stored beside it.**
+Placement is already world-space and already survives zoom, pan, Fit, save and
+reload — so there is one piece of state to keep in step with the geometry, not
+two.
+
+**Endpoint order cannot change the answer.** A line has an AXIS, not an arrow:
+the same physical line stored end-to-start must read the same angle. The legs
+are built from the vertex outward (`legDirection`), never from a raw
+`end - start`, so reversing a line changes nothing — the cursor still chooses
+acute or obtuse.
+
+**Guarantees, each covered by `tests/dimension-angle-sector.test.cjs`:**
+
+- acute / obtuse chosen by the cursor;
+- a right angle reads 90 in all four sectors;
+- reversing either line's endpoints changes no sector;
+- rotating the whole geometry changes no sector;
+- a placement ON the vertex chooses nothing (rather than a spurious sector);
+- **parallel lines produce no angular dimension at all** — the mode falls to a
+  point-line distance, so a misleading arc is never drawn.
+
+---
+
+## 13. Layout, the three Hide controls, and responsive behaviour
+
+Three INDEPENDENT visibility controls — none implies anything about the others:
+
+| Control | Hides | Where |
+|---|---|---|
+| **Top-bar Hide** | the drawing's two top bars (global tool bar + tool-type bar) | the button sits at the right of the **style strip** (the Thickness row), which is the one row that never hides and never scrolls sideways; the restore control is the slim `Show Top Bar` strip on the canvas's top edge |
+| **Tools Hide** | the Tools panel | its own arrow, on the left rail |
+| **Features Hide** | the Features panel | its own arrow, on the right rail |
+
+It does **not** hide the Datum header, the document name, or the Written
+Solution / Engineering Drawing tabs. State lives on `editorState.topBarHidden`
+(session only, never saved) and the CSS class `body.datum-topbar-hidden` is the
+one place "hidden" is defined.
+
+**The workspace is a 6-row grid**, and the rows are matched to their children
+by POSITION. Hiding a row means setting its track to `0` and leaving the list
+SIX long — re-stating a shorter list re-assigns every remaining row to the
+wrong child and collapses the canvas. See the note above
+`body.datum-topbar-hidden .drawing-workspace` in `styles/editor.css`.
+
+**Responsive rules** (all in `styles/editor.css`):
+
+- the top toolbar and the tool-type bar are `nowrap` + `overflow-x: auto` —
+  ONE row that scrolls, never a wrapped second line;
+- panels go full → narrower → compact → **icon-only**, and are NEVER
+  `display: none`d by width;
+- the style strip **wraps** (its grid row is `auto`, not a fixed 28px), and
+  every control is `flex: 0 0 auto` with its own width, so nothing overlaps;
+- the page never scrolls sideways because a panel is open.
+
+---
+
+## 14. Shared primitives (do not re-implement these)
+
+| Primitive | Module |
+|---|---|
+| `distance`, `distanceToSegment`, `closestPointOnSegment`, `unitVector`, `segmentDirection`, `midpoint` | `core/geometry/points.js` |
+| `deepClone`, `deepCloneAll` | `core/util/clone.js` |
+
+The point maths used to be written out in `hit-testing`, `construction-geometry`,
+`object-snap` and the sketch editor — four copies of one clamp, and four
+chances for a hit test and a snap to disagree. Both modules are pure (no DOM,
+no model) and may be imported from anywhere, including tests.

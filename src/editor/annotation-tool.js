@@ -357,7 +357,18 @@ export function isIdleForEditing() {
      * the distributed-load and statics-span phases are only entered
      * once a first point exists, so their emptiness is itself the
      * signal that nothing is pending.
+     *
+     * A DIMENSION'S OWN STAGES ARE NOT IDLE EITHER. The dimension tool
+     * records its progress in `dimensionStage`, not in `phase`, so while a
+     * measurement is armed or being placed `phase` is still "idle". Left
+     * out of this test, a double-click during dimension placement would be
+     * read as "open the dimension under the cursor" and would steal the
+     * gesture from the tool the student is actually running.
      */
+    if (drawingState.interaction.dimensionStage) {
+        return false;
+    }
+
     return (
         drawingState.interaction
                 .phase === "idle" ||

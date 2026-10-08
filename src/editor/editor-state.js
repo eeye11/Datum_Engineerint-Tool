@@ -95,6 +95,17 @@ export const editorState = {
     drawingZoom: drawingState.camera.zoom * 100,
 
     /*
+     * WHETHER THE TOP BAR IS FOLDED AWAY.
+     *
+     * A property of how someone is working rather than of the drawing they
+     * are working on, so it lives here - on the running editor state - and
+     * not in the document. It therefore survives redraws, tool changes and
+     * window resizes, and is deliberately not saved into a file: reopening a
+     * drawing should not reopen somebody else's layout.
+     */
+    topBarHidden: false,
+
+    /*
      * THE STATICS DISPLAY SECTION.
      *
      * A single Vector Scale control, drawn above whichever Statics feature

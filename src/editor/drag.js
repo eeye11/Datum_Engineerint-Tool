@@ -3,6 +3,7 @@
  */
 
 import enggDrawingState from "../core/model/drawing-state.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { objectsByIds } from "./clipboard-commands.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
@@ -165,7 +166,10 @@ export function beginManipulationDrag(
             point
         );
 
-    if (overlay?.type === "dimension") {
+    if (
+        overlay?.type === "dimension" ||
+        overlay?.type === "annotate"
+    ) {
         /*
          * ARMED, NOT CLAIMED.
          *
@@ -179,6 +183,11 @@ export function beginManipulationDrag(
          *
          * The move begins on the first `pointermove` that actually travels,
          * in `updateManipulationDrag`, which is where the drag is promoted.
+         *
+         * AN ANNOTATE FEATURE IS ARMED THE SAME WAY. A note, a leader or a
+         * table is dragged to reposition it, which is an offset move like a
+         * dimension's - the press arms it and the first real movement starts
+         * it, so a press that stays put is still a click that selects.
          */
         editorState.manipulationDrag = {
             pointerId: event.pointerId,
@@ -303,8 +312,20 @@ export function updateManipulationDrag(
         editorState.manipulationDrag.object
             ?.type === "dimension";
 
+    /*
+     * AN ANNOTATE FEATURE ALSO FOLLOWS THE CURSOR EXACTLY.
+     *
+     * Its placement is where the mark is printed, not a measurement, so
+     * snapping it would pull the words onto whatever geometry happened to
+     * be near. Moved from the raw pointer, with the grab offset preserved,
+     * so the mark never jumps under the cursor.
+     */
+    const draggingAnnotate =
+        editorState.manipulationDrag.object
+            ?.type === "annotate";
+
     const point =
-        draggingDimension
+        draggingDimension || draggingAnnotate
             ? resolution.rawPointerPoint ||
               resolution.effectiveConstructionPoint
             : resolution.effectiveConstructionPoint;
@@ -523,6 +544,59 @@ function applyManipulation(
         };
 
         object.placementMode = "manual";
+
+        return true;
+    }
+
+    /*
+     * AN ANNOTATE FEATURE MOVES BY A WORLD-SPACE DELTA.
+     *
+     * The delta is taken from the ORIGINAL geometry, not applied
+     * cumulatively to the live one, so the mark cannot drift by accumulating
+     * rounding, and the grab offset is preserved exactly: the point under the
+     * cursor when the drag began stays under the cursor all the way - the
+     * mark never jumps first (spec 61).
+     *
+     * A point-placed mark moves its position; a leader, a callout or an arrow
+     * moves BOTH ends by the same delta, so it keeps its shape and length and
+     * simply relocates. That is one function in the model, so the two cannot
+     * disagree about what "move" means.
+     */
+    if (object.type === "annotate") {
+        if (
+            !point ||
+            !Number.isFinite(point.x) ||
+            !Number.isFinite(point.y)
+        ) {
+            return false;
+        }
+
+        const original =
+            drag.originals?.[object.id];
+
+        const start = drag.start;
+
+        if (!original || !start) {
+            return false;
+        }
+
+        const deltaX = point.x - start.x;
+        const deltaY = point.y - start.y;
+
+        /*
+         * Rebuild from the ORIGINAL every frame, so the newest delta is
+         * applied to the shape as it was, and the annotation lands exactly
+         * delta away from where it started.
+         */
+        object.geometry = JSON.parse(
+            JSON.stringify(original.geometry)
+        );
+
+        enggAnnotate.translateAnnotation(
+            object,
+            deltaX,
+            deltaY
+        );
 
         return true;
     }

@@ -92,6 +92,55 @@ export function handleDimensionClick(
     );
 
     /*
+     * ========================================================
+     * AN ARMED SINGLE MEASUREMENT CAN STILL TAKE A PARTNER
+     * ========================================================
+     *
+     * A student who has clicked ONE line has a complete measurement -
+     * that line's length - and it previews at once (see
+     * `armSingleMeasurement`). But two lines ALSO have a measurement
+     * between them: the angle. If clicking the first line threw the tool
+     * straight into placement, the second line could never be picked -
+     * the next click would only choose where to stand the length
+     * dimension, and controlling an angle would be impossible.
+     *
+     * So while a single measurement is ARMED, a click that lands on
+     * another measurable reference ADDS it, and the pair's own
+     * measurement (an angle between two lines, a distance between two
+     * points) is inferred and previewed in its place. A click on empty
+     * space is not a reference: it commits the armed single measurement
+     * where it stands, which is the placement gesture.
+     */
+    if (
+        interaction.dimensionStage === "armed" &&
+        interaction.dimensionFirstRef
+    ) {
+        if (!reference) {
+            /*
+             * A CLICK ON NOTHING PLACES THE MEASUREMENT THE STUDENT
+             * ALREADY HAS.
+             *
+             * The armed length is previewed and following the cursor, so
+             * clicking away from every reference is exactly "put it
+             * here". The armed descriptor and its refs were captured when
+             * the first reference was taken, so committing them here does
+             * not depend on this click resolving to anything.
+             */
+            commitArmedMeasurement(point);
+
+            return;
+        }
+
+        acceptSecondDimensionReference(
+            interaction.dimensionFirstRef,
+            reference,
+            point
+        );
+
+        return;
+    }
+
+    /*
      * Nothing under the cursor, and no reference already chosen: the
      * click has no meaning. Refused rather than measuring from a stray
      * coordinate.
@@ -132,20 +181,15 @@ export function handleDimensionClick(
 /*
  * The first reference has been chosen.
  *
- * EVERY reference now behaves the same way: it is RECORDED and the
- * tool waits. Nothing is measured on a click any more, because the
- * student decides when they have finished choosing by pressing Enter.
+ * A reference that MEASURES ON ITS OWN - a Line, Beam, Truss, Cable, Shaft,
+ * Reference Line, Circle or Arc - is ARMED: its length, diameter or radius is
+ * previewed at once and follows the cursor. A single POINT is genuinely
+ * incomplete and simply waits for its partner.
  *
- * That is the whole point of the workflow. A single click on a Beam
- * used to measure it and move straight to placement, which meant the
- * student could not pick a Beam and then say "actually, angle it
- * against that Truss" - the tool had already committed. Recording
- * every reference and waiting for Enter means the SET is what the
- * student chose, and the measurement is derived from it afterwards.
- *
- * It also means a single point is no longer special: a point is a
- * valid reference that simply needs a partner, and the tool says so
- * by counting rather than by switching behaviour.
+ * ARMED IS NOT PLACED. The measurement is previewed but the tool is still
+ * selecting, so a second reference can be added on the next click - which is
+ * what makes an angle between two lines reachable at all. The placement click
+ * is the click that lands on no reference (or Enter).
  */
 function acceptFirstDimensionReference(
     reference,
@@ -155,6 +199,90 @@ function acceptFirstDimensionReference(
         reference,
         point
     );
+}
+
+/*
+ * Hold a complete single-object measurement, previewing it while still
+ * accepting a second reference.
+ *
+ * This is the step that makes BOTH workflows possible at once. The first
+ * click on a line shows its length immediately - no waiting on Enter, no
+ * empty screen - but the tool does not commit, so a second click on another
+ * line can still turn the pair into an angle. `dimensionStage` is "armed"
+ * (not "placement") to mark that distinction: the preview follows the
+ * cursor, but the next click is not automatically a placement.
+ */
+function armSingleMeasurement(
+    reference,
+    descriptor,
+    point
+) {
+    enggDrawingState.setInteraction(
+        drawingState,
+        {
+            dimensionStage: "armed",
+            dimensionPickedRefs: [reference],
+            dimensionFirstRef: reference,
+            dimensionFirstPoint: {
+                x: point.x,
+                y: point.y
+            },
+            dimensionSecondRef: null,
+            dimensionChoice: descriptor.dimensionType,
+            dimensionTarget:
+                reference?.featureId || null,
+            dimensionTargets: [reference.featureId].filter(Boolean),
+            dimensionCandidates: [descriptor],
+            dimensionRefs: descriptor.refs,
+            dimensionPlacement: {
+                x: point.x,
+                y: point.y
+            }
+        }
+    );
+
+    setToolMessage(
+        dimensionChoiceLabel(
+            descriptor.dimensionType
+        ) +
+            " - click another reference for an angle, or click empty space to place, Esc to cancel"
+    );
+
+    renderCurrentDrawing();
+}
+
+/*
+ * Place the measurement that is currently armed.
+ *
+ * Called by the click that resolved to no reference - the student clicked
+ * away from every feature, which is the placement gesture - and by the Enter
+ * key. The armed choice and refs are committed at the clicked point, through
+ * the same `commitDimension` every other path uses, so the value, the
+ * calibration question and the single undo entry are identical.
+ */
+function commitArmedMeasurement(
+    point
+) {
+    const interaction =
+        drawingState.interaction;
+
+    if (
+        interaction.dimensionStage !== "armed" ||
+        !interaction.dimensionRefs?.length
+    ) {
+        return false;
+    }
+
+    commitDimension(
+        interaction.dimensionChoice,
+        interaction.dimensionRefs,
+        {
+            x: point.x,
+            y: point.y
+        }
+    );
+
+    return true;
 }
 
 /*
@@ -202,9 +330,7 @@ export function beginDimensionReferenceSelection(
         const descriptor = inferDimensionDescriptor(reference, null);
 
         if (descriptor?.refs?.length) {
-            beginDimensionPlacement(reference, descriptor, point, [
-                reference.featureId
-            ].filter(Boolean));
+            armSingleMeasurement(reference, descriptor, point);
 
             return;
         }

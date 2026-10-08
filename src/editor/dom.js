@@ -72,3 +72,16 @@ export const drawingLineType = document.getElementById("drawingLineType");
 export const drawingToolPanelToggle = document.getElementById("drawingToolPanelToggle");
 
 export const drawingFeaturesPanelToggle = document.getElementById("drawingFeaturesPanelToggle");
+
+/*
+ * THE TOP BAR'S HIDE / SHOW PAIR.
+ *
+ * `headerHideButton` lives in the header and `drawingTopBarShow` on the
+ * canvas, and they are the two halves of ONE state: while the bar is shown
+ * the Hide button is present and the Show button is hidden, and while the
+ * bar is hidden it is the other way round. Keeping both refs here lets the
+ * workspace layout flip them together.
+ */
+export const headerHideButton = document.getElementById("headerHideButton");
+
+export const drawingTopBarShow = document.getElementById("drawingTopBarShow");

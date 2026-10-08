@@ -9,8 +9,23 @@ import enggAnalysisDependencies from "../features/analysis/analysis-dependencies
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
-import { distance } from "./construction-geometry.js";
+import { distance, distanceToSegment } from "../core/geometry/points.js";
+
+/*
+ * THE POINT PRIMITIVES ARE RE-EXPORTED, NOT RE-DEFINED.
+ *
+ * `distanceToSegment` and `distance` live in core/geometry/points.js. Both
+ * used to be written out here AND in dimension-inference AND in the sketch
+ * editor, which is three copies of one clamp - and three chances for a hit
+ * test and a snap to disagree about whether a click landed on a line.
+ *
+ * They are re-exported so the modules that already import them from THIS file
+ * keep working; the import above is what makes them usable inside it as well,
+ * since a re-export does not bring a name into scope.
+ */
+export { distance, distanceToSegment };
 import { drawingCanvas } from "./dom.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { axisLabelPositions } from "../core/geometry/axis-labels.js";
@@ -55,59 +70,6 @@ function distanceToPolygon(
             );
         },
         Infinity
-    );
-}
-
-export function distanceToSegment(
-    point,
-    start,
-    end
-) {
-    const dx =
-        end.x -
-        start.x;
-
-    const dy =
-        end.y -
-        start.y;
-
-    const lengthSquared =
-        dx * dx +
-        dy * dy;
-
-    const ratio =
-        lengthSquared
-            ? Math.max(
-                0,
-                Math.min(
-                    1,
-                    (
-                        (
-                            point.x -
-                            start.x
-                        ) * dx +
-
-                        (
-                            point.y -
-                            start.y
-                        ) * dy
-                    ) /
-                    lengthSquared
-                )
-            )
-            : 0;
-
-    return distance(
-        point,
-        {
-            x:
-                start.x +
-                ratio * dx,
-
-            y:
-                start.y +
-                ratio * dy
-        }
     );
 }
 
@@ -217,6 +179,169 @@ function annotationTextOf(
     } catch (error) {
         return object.text || "";
     }
+}
+
+/*
+ * ========================================================
+ * AN ANNOTATE FEATURE, BY ITS DRAWN FORM
+ * ========================================================
+ *
+ * A note is picked on its words, like a legacy annotation. A LEADER, an
+ * ARROW and a TABLE are picked on their LINES as well, because a mark that
+ * is mostly a line must be grabbable anywhere along it - a student aiming
+ * at a leader's stem means the leader, not the paragraph at its end.
+ *
+ * The tolerance is a few screen pixels converted to drawing units, so the
+ * pick target is the same physical size at any zoom, and it is SMALL: a
+ * tight box around what is drawn, never a huge region that a tiny mark
+ * would claim (spec 62).
+ */
+function annotateContainsPoint(object, point) {
+    if (object.visible === false) {
+        return false;
+    }
+
+    const geometry = object.geometry || {};
+
+    const tolerance =
+        ANNOTATE_PICK_TOLERANCE_PIXELS /
+        Math.max(drawingState.camera.zoom, 0.25);
+
+    /*
+     * THE WORDS. Every kind has a text box at a placement - the note's
+     * prose, a label's tag, a symbol's glyph, a tolerance's value, a
+     * callout's box. A kind with no text (an arrow, a bare table) simply
+     * matches nothing here and falls through to its geometry.
+     */
+    const text = annotateTextOf(object);
+
+    const anchor =
+        geometry.position ||
+        geometry.end ||
+        geometry.start;
+
+    if (text && anchor) {
+        const fontSize =
+            Number(object.style?.fontSize) || 12;
+
+        const lines = String(text)
+            .split("\n")
+            .filter((line) => line.length > 0);
+
+        if (lines.length) {
+            const lineHeight = fontSize * 1.2;
+
+            const widest = Math.max(
+                ...lines.map((line) => line.length)
+            );
+
+            const halfWidth =
+                (widest * fontSize * 0.58) / 2 +
+                fontSize * 0.5;
+
+            const halfHeight =
+                (lines.length * lineHeight) / 2 +
+                fontSize * 0.35;
+
+            if (
+                Math.abs(point.x - anchor.x) <= halfWidth &&
+                Math.abs(point.y - anchor.y) <= halfHeight
+            ) {
+                return true;
+            }
+        }
+    }
+
+    /*
+     * THE LINE. A leader, a callout's stem and an arrow are grabbed along
+     * their length, within the pick tolerance.
+     */
+    if (geometry.start && geometry.end) {
+        if (
+            distanceToSegment(
+                point,
+                geometry.start,
+                geometry.end
+            ) <= tolerance
+        ) {
+            return true;
+        }
+    }
+
+    /*
+     * A TABLE'S GRID. Its box is rows x columns cells, so the pick is the
+     * whole rectangle the drawn table occupies.
+     */
+    if (object.annotateKind === "table" && geometry.position) {
+        const width = enggAnnotate.tableWidthOf(object);
+        const height = enggAnnotate.tableHeightOf(object);
+
+        const withinX =
+            point.x >= geometry.position.x - tolerance &&
+            point.x <= geometry.position.x + width + tolerance;
+
+        const withinY =
+            point.y >= geometry.position.y - tolerance &&
+            point.y <= geometry.position.y + height + tolerance;
+
+        if (withinX && withinY) {
+            return true;
+        }
+    }
+
+    /*
+     * A POINT-PLACED MARK WITH NO TEXT - a bare dot or crosshair. Picked
+     * within the same small tolerance of its anchor.
+     */
+    if (anchor && !text) {
+        return distance(point, anchor) <= tolerance;
+    }
+
+    return false;
+}
+
+/*
+ * The text an annotate feature shows, from the model so a symbol's glyph or
+ * a tolerance's value is what is measured rather than a stored field.
+ */
+function annotateTextOf(object) {
+    try {
+        return enggAnnotate.textOf(object) || object.text || "";
+    } catch (error) {
+        return object.text || "";
+    }
+}
+
+/*
+ * A tight pick tolerance in SCREEN pixels, converted to drawing units at
+ * the call site so it does not vary with zoom.
+ */
+const ANNOTATE_PICK_TOLERANCE_PIXELS = 6;
+
+/*
+ * The feature a targeted annotate tool would attach to, under the pointer.
+ *
+ * A thin wrapper over the shared hit test, kept here so the creation layer
+ * does not reach into the model directly and so "what can a label name"
+ * has one answer: whatever the ordinary pick finds, minus the annotations
+ * themselves (an annotation is not a feature to hang another off).
+ */
+export function hitTestAnnotateTarget(point) {
+    const object = objectAtPoint(point);
+
+    if (!object) {
+        return null;
+    }
+
+    if (
+        object.type === "annotate" ||
+        object.type === "annotation" ||
+        object.type === "dimension"
+    ) {
+        return null;
+    }
+
+    return object;
 }
 
 /*
@@ -423,6 +548,23 @@ export function objectAtPoint(
                             object,
                             point
                         )
+                    );
+                }
+
+                /*
+                 * AN ANNOTATE FEATURE IS HIT BY ITS OWN DRAWN FORM - a
+                 * text box, a leader line, an arrow, a symbol, a table's
+                 * grid - so the test is the one the renderer uses, read
+                 * from the model. A leader is caught by the pen, not only
+                 * by the words at the end of it, because grabbing a leader
+                 * anywhere along it is what a CAD user expects.
+                 */
+                if (
+                    object.type === "annotate"
+                ) {
+                    return annotateContainsPoint(
+                        object,
+                        point
                     );
                 }
 
@@ -1366,7 +1508,9 @@ function pickDimensionOrAnnotation(
                     (object.type ===
                         "dimension" ||
                         object.type ===
-                            "annotation") &&
+                            "annotation" ||
+                        object.type ===
+                            "annotate") &&
                     objectAtPointContains(
                         object,
                         point
@@ -1629,17 +1773,24 @@ function objectAtPointContains(
     object,
     point
 ) {
-    return (
-        object.type === "annotation"
-            ? annotationContainsPoint(
-                object,
-                point
-            )
-            : dimensionContainsPoint(
-                object,
-                point,
-                DIMENSION_PICK_TOLERANCE_PIXELS
-            )
+    if (object.type === "annotation") {
+        return annotationContainsPoint(
+            object,
+            point
+        );
+    }
+
+    if (object.type === "annotate") {
+        return annotateContainsPoint(
+            object,
+            point
+        );
+    }
+
+    return dimensionContainsPoint(
+        object,
+        point,
+        DIMENSION_PICK_TOLERANCE_PIXELS
     );
 }
 

@@ -4,6 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isAnnotationTool } from "./annotation-tool.js";
+import { annotateInstruction, isAnnotateTool } from "./annotate-creation.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { isDimensionTool } from "./dimension-tool.js";
 import { drawingCanvas, drawingRedo, drawingUndo, toolList } from "./dom.js";
@@ -126,6 +127,21 @@ export function activateTool(
 
     closePolygonSidesPrompt();
 
+    /*
+     * PICKING A TOOL ABANDONS WHATEVER THE LAST ONE WAS PART-WAY THROUGH.
+     *
+     * The `select` branch above already does this, and for the same reason:
+     * a half-finished operation must never be left running underneath the
+     * tool that replaced it. Without it here, an armed annotate anchor - a
+     * leader holding its first end, waiting for a second click - survived the
+     * switch, and the NEXT tool's first press completed it: clicking Arrow
+     * after Leader made a second LEADER. Clearing the interaction with the
+     * tool change is what makes "this tool is now running" true.
+     */
+    enggDrawingState.clearInteraction(
+        drawingState
+    );
+
     enggDrawingState.setActiveTool(
         drawingState,
         nextTool
@@ -171,6 +187,18 @@ export function initialToolMessage(
         isAnnotationTool(toolId)
     ) {
         return "Click a feature to label it, or empty space for a note";
+    }
+
+    /*
+     * AN ANNOTATE TOOL NAMES ITS OWN FIRST STEP.
+     *
+     * A geometric kind - a leader, a callout, an arrow - begins by asking
+     * for its starting point; a point-placed kind asks for its location.
+     * The wording comes from ONE function in the creation layer, so the
+     * bottom bar and the tool can never describe different things.
+     */
+    if (isAnnotateTool(toolId)) {
+        return annotateInstruction(toolId);
     }
 
     if (

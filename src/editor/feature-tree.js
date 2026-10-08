@@ -225,6 +225,30 @@ function componentGroups() {
                 object
             ) || "Geometry";
 
+            /*
+             * ANNOTATE FEATURES FILE UNDER THEIR OWN HEADING.
+             *
+             * A note, a leader, a dimension and a table are marks ON a
+             * drawing rather than geometry OF it, so "Geometry" would be a
+             * lie about what they are. They group under "Annotate", which
+             * is also the tool category that made them, so the tree and the
+             * toolset read the same way.
+             *
+             * The legacy `annotation` type groups there too: a value label
+             * beside a force is an annotation in exactly this sense, and two
+             * headings for one idea would be a reading the student has to
+             * reconcile.
+             */
+            if (
+                group === "Geometry" &&
+                (object.type === "annotate" ||
+                    object.type === "annotation" ||
+                    object.type === "dimension" ||
+                    object.type === "variable-dimension")
+            ) {
+                group = "Annotate";
+            }
+
             if (
                 group === "Geometry" &&
                 object.type === "construction"

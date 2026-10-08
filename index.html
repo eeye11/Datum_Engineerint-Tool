@@ -336,6 +336,48 @@
                     -->
                     <button class="drawing-status-toggle active" id="drawingDimensionsToggle" type="button" aria-pressed="true">Dimensions ON</button>
                     <button class="drawing-status-toggle active" id="drawingMagnitudesToggle" type="button" aria-pressed="true">Magnitudes ON</button>
+
+                    <!--
+                        THE DRAWING BARS' OWN HIDE CONTROL.
+
+                        IT LIVES ON THIS ROW, AT ITS FAR RIGHT.
+
+                        This strip is the last row of the drawing's chrome, and
+                        it is always present - unlike the two bars above it,
+                        which this button is for. So the control that hides them
+                        sits on the one row that does not hide, which is what
+                        keeps it reachable at every width: a control placed on a
+                        bar it collapses would disappear with it, and one placed
+                        inside a horizontally-scrolling bar would slide off the
+                        edge on a narrow screen.
+
+                        `margin-left: auto` pushes it to the trailing edge of
+                        the row however many controls precede it, and it is
+                        `flex: 0 0 auto` so it never shrinks into a neighbour.
+
+                        IT HIDES ONLY THE DRAWING'S TWO TOP BARS - the global
+                        tool bar and the tool-type bar. It does NOT hide the
+                        Datum header, the document name or the Written Solution /
+                        Engineering Drawing tabs, and it does not touch the Tools
+                        or Features panels: three independent hide controls, as
+                        the other two are.
+
+                        It names the ACTION ("Hide"), not the state. The way
+                        back is the Show control on the canvas's top edge.
+                    -->
+                    <button
+                        class="drawing-topbar-hide"
+                        id="headerHideButton"
+                        type="button"
+                        title="Hide the drawing's top bars to give the canvas more room"
+                        aria-controls="drawing"
+                        aria-expanded="true"
+                    >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M3 10l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="header-hide-text">Hide</span>
+                    </button>
                 </div>
 
                 <!--
@@ -368,6 +410,34 @@
                 </div>
 
                 <div class="drawing-canvas-area">
+                    <!--
+                        THE WAY BACK, ONCE THE TOP BAR IS HIDDEN.
+
+                        Lives ON the canvas rather than in the bar it restores,
+                        because it must be reachable while that bar does not
+                        exist. It is a slim strip along the canvas's top edge,
+                        hidden entirely while the top bar is shown - so it costs
+                        nothing until it is needed, and the drawing keeps every
+                        pixel it reclaimed.
+
+                        It is deliberately NOT a floating overlay: an overlay
+                        would sit ON TOP of the work, which is the opposite of
+                        what hiding the bar was for.
+                    -->
+                    <button
+                        class="drawing-topbar-show"
+                        id="drawingTopBarShow"
+                        type="button"
+                        title="Show the top bar"
+                        aria-controls="drawing"
+                        hidden
+                    >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>Show Top Bar</span>
+                    </button>
+
                     <div class="drawing-canvas" aria-label="Engineering drawing canvas">
                     </div>
                 </div>

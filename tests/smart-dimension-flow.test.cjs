@@ -264,6 +264,18 @@ const sandbox = {
   objectWithId: byId,
   findDimensionTarget: () => null,
   twoPointSpanOf: twoPointSpan,
+
+  /*
+   * THE SHARED POINT PRIMITIVES, loaded from the real module.
+   *
+   * `distance` and `distanceToSegment` used to be extracted from the
+   * controller's own source, because each module carried its own copy. They
+   * now live once, in core/geometry/points.js, so the sandbox is given that
+   * module rather than a sliced-out function - which is closer to what the
+   * application does and cannot drift from it.
+   */
+  ...require(modulePath("points.js")),
+
   window: {
     enggFeatureGeometry: {
       rectangleCorners: (geometry) => {
@@ -296,8 +308,6 @@ const pieces = [
   "perpendicularDistanceDescriptor",
   "compositeSegmentPoints",
   "compositeSegmentReference",
-  "distance",
-  "distanceToSegment",
   "lineLengthDescriptor",
   "pairOrientation",
   "pointPairDescriptor",

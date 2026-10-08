@@ -11,6 +11,7 @@ import enggAnalysisFrame from "../features/analysis/analysis-frame.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggVariableDimension from "../features/dimensions/variable-dimension.js";
 
@@ -1135,6 +1136,395 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         });
 
         svg.appendChild(textNode);
+    }
+
+    /*
+     * ========================================================
+     * AN ANNOTATE FEATURE: ONE DRAW, EIGHT KINDS
+     * ========================================================
+     *
+     * Every annotate feature shares a core: text at a placement, drawn in
+     * the feature's own style. A kind adds to that core only what its shape
+     * needs - a pen for a leader and a callout, a head for an arrow and a
+     * leader, a box for a callout and a tolerance, a grid for a table - so
+     * the eight cannot drift in how they honour placement, style or the
+     * draw order. It is the same reason they share one FEATURE type.
+     *
+     * ALL GEOMETRY IS WORLD-SPACE. Every point is projected through
+     * `toScreen` on the way out, so a mark sits where the drawing puts it at
+     * any zoom, pan or window size, and never where the screen did.
+     */
+    function appendAnnotateEntity(svg, entity, state, toScreen, style) {
+        const model = enggAnnotate;
+
+        if (!model || entity.visible === false) {
+            return;
+        }
+
+        const kind = entity.annotateKind;
+        const geometry = entity.geometry || {};
+
+        const stroke = style.stroke || "#000000";
+        const fontSize = Number(style.fontSize) || 12;
+        const lineHeight = fontSize * 1.2;
+
+        const start =
+            geometry.start && toScreen(geometry.start);
+
+        const end =
+            geometry.end && toScreen(geometry.end);
+
+        const anchor =
+            geometry.position && toScreen(geometry.position);
+
+        /*
+         * THE LEADER OR ARROW SHAFT, drawn before the content so the text
+         * sits ON TOP of its own pen rather than under it.
+         */
+        if (start && end) {
+            svg.appendChild(
+                createSvgElement("line", {
+                    x1: start.x,
+                    y1: start.y,
+                    x2: end.x,
+                    y2: end.y,
+                    stroke,
+                    "stroke-width": 1
+                })
+            );
+
+            /*
+             * THE ARROWHEAD SITS AT THE POINTED END.
+             *
+             * For a leader and a callout the pen points at the target, so
+             * the head is at `start`. For an Arrow the head is at `end`, the
+             * direction the student dragged towards - the two kinds point
+             * opposite ways on purpose, and each says so here rather than by
+             * a shared guess.
+             */
+            const headAt = kind === "arrow" ? end : start;
+            const tailAt = kind === "arrow" ? start : end;
+
+            if (
+                (kind === "arrow" || kind === "leader" || kind === "callout") &&
+                style.arrowhead !== "none"
+            ) {
+                appendAnnotateArrowhead(
+                    svg,
+                    headAt,
+                    tailAt,
+                    stroke,
+                    style.arrowhead
+                );
+            }
+        }
+
+        /*
+         * THE TEXT AND ITS FRAME.
+         *
+         * The content sits at the END of a leader's pen, at the arrow's
+         * head, or at its own placement - whichever the kind has. A kind
+         * with no text (an arrow, a bare table) draws none.
+         */
+        const textAt = anchor || end;
+        const text = model.textOf(entity);
+
+        if (textAt && text) {
+            const lines = String(text).split("\n");
+
+            /*
+             * A CALLOUT AND A TOLERANCE WEAR A BOX.
+             *
+             * The box is what says "this is a statement about the part",
+             * as against a bare note, and it is sized to the text it holds
+             * so the two cannot come apart.
+             */
+            if (kind === "callout" || kind === "tolerance") {
+                const width = widestLineWidth(lines, fontSize) + 8;
+                const height = lines.length * lineHeight + 4;
+
+                svg.appendChild(
+                    createSvgElement("rect", {
+                        x: textAt.x - width / 2,
+                        y: textAt.y - height / 2,
+                        width,
+                        height,
+                        fill: "#ffffff",
+                        stroke,
+                        "stroke-width": 0.8
+                    })
+                );
+            }
+
+            /*
+             * A TABLE IS ITS GRID AND ITS CELLS.
+             */
+            if (kind === "table") {
+                appendAnnotateTable(
+                    svg,
+                    entity,
+                    textAt,
+                    toScreen,
+                    stroke,
+                    fontSize
+                );
+            } else {
+                appendAnnotateText(
+                    svg,
+                    lines,
+                    textAt,
+                    stroke,
+                    fontSize,
+                    lineHeight,
+                    entity.style?.align
+                );
+            }
+        }
+    }
+
+    function widestLineWidth(lines, fontSize) {
+        const widest = Math.max(
+            1,
+            ...lines.map((line) => String(line).length)
+        );
+
+        return widest * fontSize * 0.58;
+    }
+
+    /*
+     * The words, centred on the point they belong to.
+     */
+    function appendAnnotateText(
+        svg,
+        lines,
+        at,
+        stroke,
+        fontSize,
+        lineHeight,
+        align
+    ) {
+        const anchorName =
+            align === "center"
+                ? "middle"
+                : align === "right"
+                  ? "end"
+                  : "start";
+
+        const firstY =
+            at.y -
+            ((lines.length - 1) * lineHeight) / 2 +
+            fontSize * 0.35;
+
+        const textNode = createSvgElement("text", {
+            x: at.x,
+            y: firstY,
+            fill: stroke,
+            "font-size": fontSize,
+            "font-family": "Arial, sans-serif",
+            "text-anchor": anchorName
+        });
+
+        lines.forEach((line, index) => {
+            if (index === 0) {
+                textNode.textContent = line;
+                return;
+            }
+
+            const tspan = createSvgElement("tspan", {
+                x: at.x,
+                dy: lineHeight
+            });
+
+            tspan.textContent = line;
+            textNode.appendChild(tspan);
+        });
+
+        svg.appendChild(textNode);
+    }
+
+    /*
+     * A head at the pointed end, aimed along the shaft.
+     *
+     * Built from the two projected ends rather than from an angle, so it
+     * follows the pen exactly however the drawing is rotated or zoomed. A
+     * closed head is filled; an open one is two strokes.
+     */
+    function appendAnnotateArrowhead(
+        svg,
+        head,
+        tail,
+        stroke,
+        headStyle
+    ) {
+        const dx = head.x - tail.x;
+        const dy = head.y - tail.y;
+        const length = Math.hypot(dx, dy);
+
+        if (length < 1e-6) {
+            return;
+        }
+
+        const ux = dx / length;
+        const uy = dy / length;
+
+        const size = 9;
+        const spread = 4;
+
+        const base = {
+            x: head.x - ux * size,
+            y: head.y - uy * size
+        };
+
+        const left = {
+            x: base.x - uy * spread,
+            y: base.y + ux * spread
+        };
+
+        const right = {
+            x: base.x + uy * spread,
+            y: base.y - ux * spread
+        };
+
+        if (headStyle === "open") {
+            svg.appendChild(
+                createSvgElement("path", {
+                    d: `M${left.x} ${left.y}L${head.x} ${head.y}L${right.x} ${right.y}`,
+                    fill: "none",
+                    stroke,
+                    "stroke-width": 1.2,
+                    "stroke-linecap": "round",
+                    "stroke-linejoin": "round"
+                })
+            );
+
+            return;
+        }
+
+        svg.appendChild(
+            createSvgElement("path", {
+                d: `M${head.x} ${head.y}L${left.x} ${left.y}L${right.x} ${right.y}Z`,
+                fill: stroke,
+                stroke,
+                "stroke-width": 0.8,
+                "stroke-linejoin": "round"
+            })
+        );
+    }
+
+    /*
+     * A table: its grid, then its cells.
+     *
+     * Drawn from the stored rows, columns and cells, in the feature's own
+     * units, so the grid on screen IS the grid that was saved - not a
+     * picture of one. Resizing the table resizes this, because there is
+     * nothing but the feature's data behind it.
+     */
+    function appendAnnotateTable(
+        svg,
+        entity,
+        at,
+        toScreen,
+        stroke,
+        fontSize
+    ) {
+        const model = enggAnnotate;
+        const geometry = entity.geometry || {};
+        const rows = Number(geometry.rows) || 1;
+        const columns = Number(geometry.columns) || 1;
+
+        const cellW = model.TABLE_CELL_W;
+        const cellH = model.TABLE_CELL_H;
+
+        const topLeft = at;
+
+        /* The outer frame. */
+        const bottomRight = toScreen({
+            x: geometry.position.x + columns * cellW,
+            y: geometry.position.y + rows * cellH
+        });
+
+        const width = bottomRight.x - topLeft.x;
+        const height = bottomRight.y - topLeft.y;
+
+        svg.appendChild(
+            createSvgElement("rect", {
+                x: topLeft.x,
+                y: topLeft.y,
+                width,
+                height,
+                fill: "#ffffff",
+                stroke,
+                "stroke-width": 0.9
+            })
+        );
+
+        /* The inner rules. */
+        for (let column = 1; column < columns; column += 1) {
+            const x = topLeft.x + (width * column) / columns;
+
+            svg.appendChild(
+                createSvgElement("line", {
+                    x1: x,
+                    y1: topLeft.y,
+                    x2: x,
+                    y2: topLeft.y + height,
+                    stroke,
+                    "stroke-width": 0.6
+                })
+            );
+        }
+
+        for (let row = 1; row < rows; row += 1) {
+            const y = topLeft.y + (height * row) / rows;
+
+            svg.appendChild(
+                createSvgElement("line", {
+                    x1: topLeft.x,
+                    y1: y,
+                    x2: topLeft.x + width,
+                    y2: y,
+                    stroke,
+                    "stroke-width": 0.6
+                })
+            );
+        }
+
+        /* Every cell's own text. */
+        const cells = Array.isArray(geometry.cells)
+            ? geometry.cells
+            : [];
+
+        for (let row = 0; row < rows; row += 1) {
+            for (let column = 0; column < columns; column += 1) {
+                const value = cells[row * columns + column];
+
+                if (!value) {
+                    continue;
+                }
+
+                const cellCentre = {
+                    x:
+                        topLeft.x +
+                        (width * (column + 0.5)) / columns,
+                    y:
+                        topLeft.y +
+                        (height * (row + 0.5)) / rows +
+                        fontSize * 0.35
+                };
+
+                const textNode = createSvgElement("text", {
+                    x: cellCentre.x,
+                    y: cellCentre.y,
+                    fill: stroke,
+                    "font-size": fontSize * 0.85,
+                    "font-family": "Arial, sans-serif",
+                    "text-anchor": "middle"
+                });
+
+                textNode.textContent = value;
+                svg.appendChild(textNode);
+            }
+        }
     }
 
     /*
@@ -2307,6 +2697,23 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             }
 
             appendVariableDimensionEntity(svg, entity, state, toScreen, style);
+            parentSvg.appendChild(svg);
+            return;
+        }
+
+        /*
+         * AN ANNOTATE FEATURE.
+         *
+         * A note, a label, a leader, a callout, an arrow, a symbol, a
+         * tolerance or a table. All eight are drawn by ONE function, because
+         * they are one type; what differs is the kind, which decides the
+         * shape drawn around the same text-and-placement core. A note is
+         * text; a leader adds a pen; an arrow is a pen with a head; a table
+         * is a grid. Keeping them in one function is what stops two of them
+         * drifting apart in the way they respond to style or placement.
+         */
+        if (entity.type === "annotate") {
+            appendAnnotateEntity(svg, entity, state, toScreen, style);
             parentSvg.appendChild(svg);
             return;
         }
@@ -7055,7 +7462,9 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          */
         const heldFirst =
             state.interaction
-                .dimensionStage === "first"
+                .dimensionStage === "first" ||
+            state.interaction
+                .dimensionStage === "armed"
                 ? state.interaction
                       .dimensionFirstRef
                 : null;
@@ -7263,6 +7672,67 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
                 svg.appendChild(previewGroup);
             }
+        }
+
+        /*
+         * THE ANNOTATE PREVIEW.
+         *
+         * An armed leader, callout or arrow is drawn from its held anchor to
+         * the cursor, through the very routine that draws the committed
+         * feature - so the pen, the head and the box the student sees are
+         * exactly what they will get. The preview lives on the INTERACTION,
+         * never the document, so it cannot be selected, saved or undone, and
+         * Escape removes it by clearing the interaction.
+         */
+        if (
+            state.interaction.annotateStage === "anchor" &&
+            state.interaction.annotateStart
+        ) {
+            const toScreenAnnotate =
+                (point) =>
+                    enggDrawingState.engineeringToScreen(
+                        point,
+                        bounds,
+                        state
+                    );
+
+            const previewMark = {
+                id: "annotate-preview",
+                type: "annotate",
+                annotateKind:
+                    state.interaction.annotateKind,
+                text: "",
+                geometry: {
+                    start: state.interaction.annotateStart,
+                    end: state.interaction.annotateEnd
+                },
+                style: {
+                    stroke: "#1f5c38",
+                    fontSize: 12,
+                    arrowhead: "closed"
+                }
+            };
+
+            const previewGroup =
+                createSvgElement("g");
+
+            previewGroup.classList.add(
+                "drawing-annotate-preview"
+            );
+            previewGroup.setAttribute(
+                "opacity",
+                "0.72"
+            );
+
+            appendAnnotateEntity(
+                previewGroup,
+                previewMark,
+                state,
+                toScreenAnnotate,
+                previewMark.style
+            );
+
+            svg.appendChild(previewGroup);
         }
 
         const preview =

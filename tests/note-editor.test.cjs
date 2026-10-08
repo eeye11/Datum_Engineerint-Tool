@@ -224,7 +224,7 @@ console.log(
    */
   check(
     "an unselected annotation is selected first, not swallowed",
-    /pointed\?\.type === "annotation"[\s\S]{0,120}selectedObjectIds\.includes/.test(
+    /pointed\?\.type === "annotation"[\s\S]{0,200}selectedObjectIds\.includes/.test(
       code,
     ),
     "the unselected-feature guard still names dimensions only",

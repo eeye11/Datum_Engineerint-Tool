@@ -1,9 +1,11 @@
 /* Central source of truth for structured engineering drawings. */
 import enggAnnotationModel from "../../features/annotations/annotation-model.js";
+import enggAnnotate from "../../features/annotations/annotate-model.js";
 import enggDimensionModel from "../../features/dimensions/dimension-model.js";
 import enggVariableDimension from "../../features/dimensions/variable-dimension.js";
 import enggMeasurement from "../geometry/measurement-core.js";
 import enggDrawingSnap from "../snapping/object-snap.js";
+import { deepClone } from "../util/clone.js";
 
 const BASE_PIXELS_PER_UNIT = 2.4;
 
@@ -457,7 +459,19 @@ function createGeometryObject(type, geometry, options = {}) {
          * the feature; the measurement describes it.
          */
         dimension: "Dimension",
-        annotation: "Annotation"
+        annotation: "Annotation",
+
+        /*
+         * THE ANNOTATE FEATURES.
+         *
+         * One type, `annotate`, with a kind deciding the specifics - see
+         * features/annotations/annotate-model.js for why one type rather
+         * than eight. The NAME is per-kind so a Features list reads
+         * "Note 1" and "Leader 2" rather than "Annotate 1" eight times;
+         * `addObject` numbers duplicates within a kind through the same
+         * naming pass every other feature uses.
+         */
+        annotate: "Annotation"
     }[type] || type;
 
     return {
@@ -503,9 +517,7 @@ function createGeometryObject(type, geometry, options = {}) {
          * fixed fields below cannot be overwritten by them.
          */
         ...(options.content
-            ? JSON.parse(
-                JSON.stringify(options.content)
-            )
+            ? deepClone(options.content)
             : {}),
 
         /*
@@ -1472,6 +1484,49 @@ const geometryFactories = {
                 }
             }
         );
+    },
+
+    /*
+     * THE ANNOTATE FEATURES: notes, labels, leaders, callouts, arrows,
+     * symbols, tolerances and tables.
+     *
+     * ONE factory for all eight, because they are one type. The kind lives
+     * in `content.annotateKind` and the specifics - a tolerance's mode and
+     * values, a table's grid, a symbol's id - live in `content.geometry`,
+     * which `createGeometryObject` copies verbatim on the way onto the
+     * feature and `cloneFeatureForSave` copies on the way into a file.
+     *
+     * The geometric data is therefore REAL geometry on the feature, not a
+     * borrowed field: it moves with the drawing, survives zoom and Fit, and
+     * serialises without any special case in the save or load path.
+     */
+    annotate: (options = {}) => {
+        const created =
+            enggAnnotate.createAnnotate(options);
+
+        return createGeometryObject(
+            "annotate",
+            created.geometry,
+            {
+                id: created.id,
+
+                /*
+                 * NAMED BY ITS KIND, so a Features list reads "Note 1",
+                 * "Leader 2", "Table 1" rather than "Annotation 1" eight
+                 * times. `addObject` numbers duplicates within a name through
+                 * the same pass every other feature uses, so two notes become
+                 * Note 1 and Note 2 without any numbering logic here.
+                 */
+                name: created.name,
+                style: created.style,
+                content: {
+                    annotateKind: created.annotateKind,
+                    text: created.text,
+                    targetFeatureId: created.targetFeatureId,
+                    visible: created.visible
+                }
+            }
+        );
     }
 };
 
@@ -1835,8 +1890,21 @@ function clearSelection(state) {
     state.selection.selectedObjectIds = [];
 }
 
+/*
+ * A DEEP COPY OF WHATEVER THE HISTORY STORES, through the shared helper.
+ *
+ * WHAT THIS IS HANDED IS NOT ALWAYS AN ARRAY. It began as the feature list,
+ * and it is now the DOCUMENT snapshot - an object carrying the objects, the
+ * sheets, the scale and the camera - so a helper that assumed a list returned
+ * an empty array and Undo restored an empty drawing.
+ *
+ * `deepClone` copies either shape, which is why it is the one used here. The
+ * array-shaped `deepCloneAll` exists for the callers that genuinely have only
+ * a list and want the empty case answered without a JSON round trip; it is
+ * deliberately not used on a value that might not be one.
+ */
 function cloneObjects(objects) {
-    return JSON.parse(JSON.stringify(objects));
+    return deepClone(objects);
 }
 
 /*
@@ -2174,7 +2242,7 @@ function snapshotDocument(state) {
          * lost" must not look alike.
          */
         scale: state.scale
-            ? JSON.parse(JSON.stringify(state.scale))
+            ? deepClone(state.scale)
             : null
     };
 }
@@ -2214,7 +2282,7 @@ function restoreDocumentSnapshot(state, entry) {
      */
     if (entry && Object.prototype.hasOwnProperty.call(entry, "scale")) {
         state.scale = entry.scale
-            ? JSON.parse(JSON.stringify(entry.scale))
+            ? deepClone(entry.scale)
             : null;
     }
     /*
@@ -2441,6 +2509,27 @@ function clearInteraction(state) {
     state.interaction.annotationTarget = null;
     state.interaction.annotationTargetName = null;
     state.interaction.annotationPlacement = null;
+
+    /*
+     * AN ANNOTATE FEATURE BEING MADE.
+     *
+     * A geometric annotate mark - a leader, a callout, an arrow - holds its
+     * first end on the interaction while the student chooses the second, and
+     * its kind and target alongside it. All of it is temporary: nothing is in
+     * the document until the commit, so this is what Escape clears and what
+     * switching tools must clear too.
+     *
+     * LEAVING `annotateStage` BEHIND WAS A REAL DEFECT. The next tool's first
+     * press would find the stale anchor still held and complete a SECOND
+     * feature of the PREVIOUS kind - so clicking Arrow after Leader produced
+     * two leaders. Everything the operation owns is therefore dropped here,
+     * with the rest of the interaction.
+     */
+    state.interaction.annotateStage = null;
+    state.interaction.annotateKind = null;
+    state.interaction.annotateStart = null;
+    state.interaction.annotateEnd = null;
+    state.interaction.annotateTarget = null;
 
     state.interaction.effectiveConstructionPoint = null;
 
@@ -2741,28 +2830,23 @@ function screenToEngineering(
 function cloneFeatureForSave(object) {
     const copy = { ...object };
 
-    if (object.geometry !== undefined) {
-        copy.geometry = JSON.parse(
-            JSON.stringify(object.geometry)
-        );
-    }
-
     /*
-     * The optionally-present sub-objects are copied when they are there, and
-     * left absent when they are not - never materialised as an empty object,
-     * so a reopened feature is the same shape it was saved as.
+     * THE FIELDS THAT MUST NOT BE SHARED WITH THE LIVE MODEL.
+     *
+     * Each is copied through `deepClone`, which ANSWERS `undefined` WITH
+     * `undefined` - so the `if (x !== undefined)` guards this used to carry
+     * are gone. They were there because `JSON.parse(JSON.stringify(undefined))`
+     * throws, and writing the idiom out meant every site had to remember
+     * that: one that did not made SAVING A DRAWING CONTAINING ANY ANNOTATION
+     * fail outright, because an annotation has no `geometry` to copy. The
+     * guard is now in one place, in the helper, where it cannot be forgotten.
+     *
+     * A field that was absent stays absent - never materialised as an empty
+     * object - so a reopened feature has the shape it was saved with.
      */
-    if (object.style !== undefined) {
-        copy.style = JSON.parse(
-            JSON.stringify(object.style)
-        );
-    }
-
-    if (object.metadata !== undefined) {
-        copy.metadata = JSON.parse(
-            JSON.stringify(object.metadata)
-        );
-    }
+    copy.geometry = deepClone(object.geometry);
+    copy.style = deepClone(object.style);
+    copy.metadata = deepClone(object.metadata);
 
     /*
      * The remaining plain sub-objects a feature may carry: a dimension's
@@ -2780,11 +2864,7 @@ function cloneFeatureForSave(object) {
         "load",
         "profile"
     ].forEach((key) => {
-        if (object[key] !== undefined) {
-            copy[key] = JSON.parse(
-                JSON.stringify(object[key])
-            );
-        }
+        copy[key] = deepClone(object[key]);
     });
 
     return copy;

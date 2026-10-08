@@ -6,6 +6,7 @@ import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
 import { analysisFrameExtents } from "../features/analysis/analysis-frame.js";
 import enggDrawingExport from "../file/document-export.js";import { arcSelectionPoints, distributedLoadArrowScreenLength } from "./box-selection.js";
@@ -398,7 +399,67 @@ export function renderedBounds(
         points.push(point)
     );
 
+    /*
+     * AN ANNOTATE FEATURE CONTRIBUTES ITS OWN EXTENT.
+     *
+     * A note, a label, a leader, a callout, an arrow, a symbol, a tolerance
+     * and a table are DRAWING CONTENT, and the student may put any of them
+     * far from the geometry they describe - so they belong in the bounds
+     * Fit measures and Print reserves (spec 66).
+     *
+     * A point-placed mark contributes its text box; a geometric one also
+     * contributes both of its ends, so a leader running to the corner of a
+     * sheet is not cropped by a Fit that measured only the words at its head.
+     */
+    annotateBoundsPoints(object).forEach((point) =>
+        points.push(point)
+    );
+
     return points;
+}
+
+/*
+ * The corners of an annotate feature's box and the ends of its lines.
+ *
+ * Read from the annotation model, which owns where each kind is drawn, so
+ * Fit and the renderer cannot disagree about how much room a mark takes.
+ */
+function annotateBoundsPoints(object) {
+    if (!object || object.type !== "annotate") {
+        return [];
+    }
+
+    if (object.visible === false) {
+        return [];
+    }
+
+    const model = enggAnnotate;
+
+    if (!model) {
+        return [];
+    }
+
+    const points = model.boundsOf(object);
+
+    /*
+     * WHETHER MAGNITUDES AND DIMENSIONS ARE HIDDEN applies to the marks
+     * that ARE a measurement. A note the student wrote is theirs and is
+     * always measured for; a dimension-like mark follows the toggle, so a
+     * hidden one does not keep the drawing fitted to empty space.
+     */
+    const hidden =
+        drawingState.display?.showDimensions === false;
+
+    const measurementKinds = ["tolerance"];
+
+    if (hidden && measurementKinds.includes(object.annotateKind)) {
+        return [];
+    }
+
+    return points.map((point) => ({
+        x: Number(point.x) || 0,
+        y: Number(point.y) || 0
+    }));
 }
 
 /*

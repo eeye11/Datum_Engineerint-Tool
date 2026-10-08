@@ -840,11 +840,38 @@ function measureAngle(
    */
   const vertex = nearestVertex(firstSpan, secondSpan);
 
-  const a = vertex
+  /*
+   * ========================================================
+   * THE CURSOR CHOOSES WHICH OF THE FOUR SECTORS IS DIMENSIONED
+   * ========================================================
+   *
+   * Two lines crossing make FOUR angular regions, and they come in two
+   * values: the angle between the line axes, and its supplement. For a
+   * 35-degree pair the four sectors read 35, 145, 35, 145.
+   *
+   * WHICH ONE IS DIMENSIONED IS THE STUDENT'S CHOICE, made by where they
+   * put the dimension - and that position is already stored, in world
+   * units, as `dimension.placement`. So the sector is DERIVED from the
+   * placement rather than stored beside it: there is one piece of state to
+   * keep in step with the geometry, not two, and it survives zoom, pan,
+   * save and reload for the same reason the placement does.
+   *
+   * A dimension with no placement yet - a probe built to measure - falls
+   * back to the geometric legs, which is the behaviour that existed before
+   * the cursor could choose.
+   */
+  const legs = angleSectorLegs(
+    vertex,
+    firstSpan,
+    secondSpan,
+    dimension.placement
+  );
+
+  const a = legs ? legs.a : vertex
     ? legDirection(vertex, firstSpan.start, firstSpan.end)
     : spanDirection(firstSpan);
 
-  const b = vertex
+  const b = legs ? legs.b : vertex
     ? legDirection(vertex, secondSpan.start, secondSpan.end)
     : spanDirection(secondSpan);
 
@@ -1915,8 +1942,29 @@ function angularGraphics(
    */
   const vertex = nearestVertex(spanA, spanB);
 
-  const a = legDirection(vertex, spanA.start, spanA.end);
-  const b = legDirection(vertex, spanB.start, spanB.end);
+  /*
+   * THE SAME LEGS THE VALUE WAS MEASURED FROM.
+   *
+   * `angleSectorLegs` is the one place the angular sector is decided, so
+   * the arc drawn here and the number printed above it come from the same
+   * choice and cannot state different angles. When it cannot decide - no
+   * placement yet, or degenerate geometry - the geometric legs are used,
+   * which is the behaviour a dimension had before the cursor could choose.
+   */
+  const chosen = angleSectorLegs(
+    vertex,
+    spanA,
+    spanB,
+    dimension.placement
+  );
+
+  const a = chosen
+    ? chosen.a
+    : legDirection(vertex, spanA.start, spanA.end);
+
+  const b = chosen
+    ? chosen.b
+    : legDirection(vertex, spanB.start, spanB.end);
 
   if (!a || !b) {
     return null;
@@ -2050,8 +2098,194 @@ function nearestVertex(spanA, spanB) {
   return best || spanA.end || spanA.start || null;
 }
 
-function arcFrom(centre, from, to, radius) {
-  const startAngle = Math.atan2(from.y, from.x);
+/*
+ * ========================================================
+ * THE TWO LEGS THE CURSOR HAS CHOSEN
+ * ========================================================
+ *
+ * THE ONE PLACE the angular sector is decided, used by BOTH the measured
+ * value and the drawn arc. That is the whole point of putting it here: a
+ * label that says 35 degrees above an arc drawn through 145 degrees is the
+ * failure this design exists to prevent, and the two cannot disagree when
+ * there is one function and the arc is built from its own output.
+ *
+ * WHY THE CURSOR AND NOT THE ENDPOINT ORDER.
+ * A line has an AXIS, not an arrow. The same physical line stored
+ * start-to-end or end-to-start is the same line, so which of the four
+ * sectors is dimensioned may not depend on how it happened to be drawn -
+ * exactly as the earlier fix here established for the VALUE. The student
+ * says which sector they mean by putting the dimension in it, and the
+ * placement point is that statement.
+ *
+ * HOW IT IS DECIDED.
+ * One axis of the pair is taken as a reference; the other is at an angle
+ * `theta` from it, where 0 <= theta <= 180. The four sectors are bounded by
+ * the four directions: the reference's two ends, and the other axis's two
+ * ends. The cursor's direction from the vertex falls in exactly one of them,
+ * and the two legs bounding THAT sector are what is returned. The measured
+ * angle is then simply the angle between those two legs - 35 in the narrow
+ * sectors, 145 in the wide ones - with no separate branch deciding which.
+ *
+ * Null when the geometry cannot support a vertex and two axes; the caller
+ * falls back to the legs the geometry alone implies.
+ */
+function angleSectorLegs(vertex, spanA, spanB, placement) {
+  if (!vertex || !spanA || !spanB || !placement) {
+    return null;
+  }
+
+  if (
+    !Number.isFinite(placement.x) ||
+    !Number.isFinite(placement.y)
+  ) {
+    return null;
+  }
+
+  /*
+   * The two AXES, each as a unit direction. An axis has no sign, so the
+   * span is normalised and then treated as a line through the vertex in
+   * both directions.
+   */
+  const axisA = legDirection(vertex, spanA.start, spanA.end);
+  const axisB = legDirection(vertex, spanB.start, spanB.end);
+
+  if (!axisA || !axisB) {
+    return null;
+  }
+
+  /*
+   * The four boundary rays: each axis, in both directions.
+   */
+  const boundaryA0 = axisA;
+  const boundaryA1 = negate(axisA);
+  const boundaryB0 = axisB;
+  const boundaryB1 = negate(axisB);
+
+  /*
+   * The cursor's direction from the vertex. A cursor exactly ON the vertex
+   * has no direction, so there is no sector to choose and the geometry's
+   * own legs are used.
+   *
+   * THE ZERO CASE IS TESTED HERE rather than left to `normalise`, because
+   * `normalise` answers a zero vector with a fallback of the +X axis - a
+   * real direction, but one the student never pointed at. Left to that
+   * fallback, a placement on the vertex would silently pick whichever sector
+   * contains due east. Testing the distance first is what makes "no
+   * direction" mean no sector.
+   */
+  const toCursorRaw = {
+    x: placement.x - vertex.x,
+    y: placement.y - vertex.y,
+  };
+
+  if (Math.hypot(toCursorRaw.x, toCursorRaw.y) < 1e-9) {
+    return null;
+  }
+
+  const toCursor = normalise(toCursorRaw);
+
+  if (!toCursor) {
+    return null;
+  }
+
+  /*
+   * The four sectors, each as the pair of boundary rays that enclose it, in
+   * order around the circle. Walking the circle is what makes "which
+   * sector is the cursor in" a single unambiguous test rather than four
+   * separate comparisons that could all fail or overlap.
+   */
+  const sectors = [
+    { a: boundaryA0, b: boundaryB0 },
+    { a: boundaryB0, b: boundaryA1 },
+    { a: boundaryA1, b: boundaryB1 },
+    { a: boundaryB1, b: boundaryA0 },
+  ];
+
+  for (const sector of sectors) {
+    if (
+      directionBetween(
+        toCursor,
+        sector.a,
+        sector.b
+      )
+    ) {
+      /*
+       * The sector's own two boundaries, ordered from the first boundary
+       * toward the second, so the drawn arc sweeps THROUGH the region the
+       * cursor is in rather than around the wrong way.
+       */
+      return {
+        a: sector.a,
+        b: rotateToward(sector.b, sector.a),
+      };
+    }
+  }
+
+  return null;
+}
+
+/*
+ * Is `direction` inside the sector swept from `from` toward `to`?
+ *
+ * The sweep is the SHORT way round from `from` to `to` - at most half a
+ * turn - which is how the four sectors of two crossing lines are divided.
+ * A direction on a boundary counts as inside, so the test is total: every
+ * direction is in exactly one sector, and the cursor can never fall between
+ * two of them.
+ */
+function directionBetween(direction, from, to) {
+  const sweep = signedSweep(from, to);
+  const toDirection = signedSweep(from, direction);
+
+  const sameWay = Math.sign(sweep) || 1;
+
+  return (
+    toDirection * sameWay >= -1e-9 &&
+    Math.abs(toDirection) <= Math.abs(sweep) + 1e-9
+  );
+}
+
+/*
+ * The signed angle from `from` to `to`, in radians, taken the short way.
+ *
+ * Kept to (-PI, PI] so that a sector is always the smaller of the two ways
+ * round, which is the definition the sectors are built on.
+ */
+function signedSweep(from, to) {
+  const start = Math.atan2(from.y, from.x);
+  const end = Math.atan2(to.y, to.x);
+
+  let sweep = end - start;
+
+  while (sweep <= -Math.PI) sweep += 2 * Math.PI;
+  while (sweep > Math.PI) sweep -= 2 * Math.PI;
+
+  return sweep;
+}
+
+/*
+ * `vector`, flipped so it lies on the same side of `reference` as it does
+ * when taken the short way from `reference`.
+ *
+ * This is what makes the arc sweep through the chosen sector: the two
+ * boundaries are handed to arcFrom, which also takes the short way, so they
+ * must already be on the side that encloses the cursor.
+ */
+function rotateToward(vector, reference) {
+  const sweep = signedSweep(reference, vector);
+
+  if (sweep < 0) {
+    return negate(vector);
+  }
+
+  return vector;
+}
+
+function negate(vector) {
+  return { x: -vector.x, y: -vector.y };
+}
+
+function arcFrom(centre, from, to, radius) {  const startAngle = Math.atan2(from.y, from.x);
   const endAngle = Math.atan2(to.y, to.x);
 
   let sweep = endAngle - startAngle;

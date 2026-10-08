@@ -10,6 +10,7 @@ import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggNoteEditor from "../ui/editors/note-editor.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
+import { handleAnnotateClick, isAnnotateTool, isEditableAnnotate } from "./annotate-creation.js";
 import { commitAnalysisAxis } from "./analysis-tools.js";
 import { handleAnnotationClick, isAnnotationTool } from "./annotation-tool.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
@@ -166,6 +167,30 @@ export function handleCanvasClick(
         handleDimensionClick(
             resolution,
             event
+        );
+
+        return;
+    }
+
+    /*
+     * THE ANNOTATE TOOLS, BEFORE THE CONSTRUCTION PIPELINE.
+     *
+     * A note, a label, a leader, a callout, an arrow, a symbol, a
+     * tolerance and a table are their own small state machines - a point
+     * placement, or an anchor and an end - and they are NOT two-point
+     * construction geometry. Sending them through
+     * `beginOrCompleteGeometry` would consume the clicks and build nothing,
+     * which is exactly the failure the dimension tools had. So they are
+     * routed to their own handler, fed by the same snap resolution computed
+     * above.
+     */
+    if (
+        isAnnotateTool(
+            drawingState.activeTool
+        )
+    ) {
+        handleAnnotateClick(
+            resolution
         );
 
         return;
@@ -693,6 +718,49 @@ export function openDimensionEditorFor(object) {
  * kind is refused automatically rather than by remembering to list it.
  */
 export function openNoteEditorFor(object) {
+    /*
+     * AN ANNOTATE FEATURE'S TEXT IS ALSO THE STUDENT'S OWN.
+     *
+     * A note, a label, a leader and a callout are written, so they open
+     * this same editor - one write box for the whole application, so a note
+     * is edited the same way however it was made. `isEditableAnnotate`
+     * refuses a symbol, a tolerance and a table, whose content is not free
+     * text and is edited through their own panel rows instead.
+     */    if (object?.type === "annotate") {
+        if (!isEditableAnnotate(object)) {
+            return false;
+        }
+
+        enggNoteEditor?.open({
+            text: object.text || "",
+
+            onApply: (text) => {
+                const previousObjects =
+                    enggDrawingState.snapshotDrawing(drawingState);
+
+                object.text = text;
+
+                enggDrawingState.commitDrawingChange(
+                    drawingState,
+                    previousObjects
+                );
+
+                setToolMessage("Annotation updated");
+
+                renderProperties();
+                renderCurrentDrawing();
+            },
+
+            onCancel: () => {
+                setToolMessage("Annotation edit cancelled");
+
+                renderCurrentDrawing();
+            }
+        });
+
+        return true;
+    }
+
     if (
         object?.type !== "annotation" ||
         enggAnnotationModel.isGenerated(object.annotationKind)

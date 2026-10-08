@@ -4,8 +4,9 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isIdleForEditing } from "./annotation-tool.js";
-import { beginCreationDrag, finishCreationDrag } from "./creation-drag.js";
+import { beginCreationDrag, finishCreationDrag, moveCreationDrag } from "./creation-drag.js";
 import { handleCanvasClick, openDimensionEditorFor, openNoteEditorFor, syncSelectionInteraction } from "./canvas-click.js";
+import { isEditableAnnotate } from "./annotate-creation.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
 import { isConstructionTool } from "./construction-tools.js";
@@ -109,7 +110,8 @@ export function installCanvasEvents() {
                      * opening a dialog nobody asked for.
                      */
                     if (
-                        pointed?.type === "annotation" &&
+                        (pointed?.type === "annotation" ||
+                            isEditableAnnotate(pointed)) &&
                         !drawingState.selection
                             .selectedObjectIds.includes(
                                 pointed.id
@@ -136,6 +138,27 @@ export function installCanvasEvents() {
                          * reinterpreted, which is the honest outcome for a
                          * thing that cannot be opened.
                          */
+                        openNoteEditorFor(pointed);
+
+                        return;
+                    }
+
+                    /*
+                     * AN ANNOTATE FEATURE'S TEXT OPENS THE SAME WAY.
+                     *
+                     * A note, a label, a leader and a callout hold text the
+                     * student wrote, so double-clicking one opens the write
+                     * box - the same gesture and the same editor a legacy
+                     * annotation uses. A symbol, a tolerance and a table
+                     * render from fields of their own rather than from free
+                     * text, so they are left to the panel and the double-click
+                     * falls through rather than opening an editor for
+                     * something that is not text.
+                     */
+                    if (isEditableAnnotate(pointed)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+
                         openNoteEditorFor(pointed);
 
                         return;
@@ -283,6 +306,13 @@ export function installCanvasEvents() {
                  * path calls, so the two cannot describe different geometry.
                  */
                 if (editorState.creationDrag) {
+                    /*
+                     * TOLD HOW FAR THE POINTER HAS TRAVELLED, so the gesture can
+                     * be classified as a click or a drag on release. The preview
+                     * itself is updated by the same call below, unchanged.
+                     */
+                    moveCreationDrag(event);
+
                     updateDrawingCoordinates(
                         event
                     );
@@ -345,6 +375,26 @@ export function installCanvasEvents() {
                 finishSelectionDrag(
                     event
                 );
+            }
+        );
+
+        /*
+         * A CANCELLED POINTER GESTURE RELEASES THE CREATION PRESS.
+         *
+         * The browser cancels a pointer when the system takes it away - a
+         * touch that becomes a scroll, a pen leaving range, a window losing
+         * focus. Without this the session stayed armed, and the NEXT pointerup
+         * anywhere would be read as the release of a gesture that had already
+         * been abandoned: a stray click would complete a half-drawn feature.
+         *
+         * Nothing is committed. The construction itself is left as the press
+         * left it, so the student can carry on with a second click or press
+         * Escape to cancel - which is the same state a click leaves.
+         */
+        drawingCanvas.addEventListener(
+            "pointercancel",
+            () => {
+                editorState.creationDrag = null;
             }
         );
 

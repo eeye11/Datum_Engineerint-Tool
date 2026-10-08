@@ -3,9 +3,90 @@
  */
 
 import { renderCurrentDrawing } from "./canvas-render.js";
-import { drawingFeaturesPanelToggle, drawingToolPanelToggle, drawingZoomIn, drawingZoomValue } from "./dom.js";
+import { drawingFeaturesPanelToggle, drawingToolPanelToggle, drawingTopBarShow, drawingZoomIn, drawingZoomValue, headerHideButton } from "./dom.js";
 import { editorState } from "./editor-state.js";
 import { updateDrawingZoom } from "./viewport.js";
+
+/*
+ * ========================================================
+ * THE DRAWING'S TOP BARS: HIDE AND SHOW
+ * ========================================================
+ *
+ * The drawing has two rows of chrome above the canvas - the global tool bar
+ * and the tool-type bar - and they take vertical space the drawing could use.
+ * This folds them away so the canvas grows into the room they gave up.
+ *
+ * WHAT IT IS NOT.
+ *
+ * It does not hide the Datum header, the document name, or the Written
+ * Solution / Engineering Drawing tabs. Those identify the application and
+ * choose which page is open; they are not the drawing's chrome, and hiding
+ * them would take away the things a student uses to know where they are and
+ * to reach the other half of the application. Only the two DRAWING bars go.
+ *
+ * A THIRD VISIBILITY CONTROL, INDEPENDENT OF THE OTHER TWO.
+ *
+ * Tools and Features each have their own Hide button and their own collapsed
+ * state; this is neither of them. Hiding the bars hides NOTHING else - the
+ * two panels keep whatever state they were in - so "bars hidden, Tools
+ * visible, Features visible" is a perfectly ordinary state, and so is its
+ * opposite. Three controls, three independent states.
+ *
+ * HOW IT IS IMPLEMENTED, AND WHY IT IS NOT A WIDTH.
+ *
+ * Collapsing a side panel is a WIDTH change, because the panel sits in a grid
+ * column. Collapsing these bars is a HEIGHT change: the two rows they occupy
+ * are given up so the flexible canvas row takes them. The state is a single
+ * class on `<body>` - `datum-topbar-hidden` - and the stylesheet redefines the
+ * layout for it. One class, one place that decides what "hidden" means, and
+ * the canvas's own row is unchanged (`minmax(0, 1fr)`), so it simply absorbs
+ * the height that was freed.
+ *
+ * THE DRAWING IS NOT RE-FITTED, for the same reason collapsing a panel does
+ * not re-zoom: the student's zoom and pan are theirs. A taller canvas shows
+ * more of the drawing at the same scale, which is the whole point.
+ *
+ * THE STATE IS REMEMBERED FOR THE SESSION, not written to the document - it
+ * is a property of how someone is working, not of the drawing they are
+ * working on, so it does not belong in a saved file. It is held on the
+ * running editor state, which survives ordinary redraws, tool changes and
+ * resizes; only a page reload resets it.
+ */
+function setTopBarHidden(hidden) {
+    document.body.classList.toggle(
+        "datum-topbar-hidden",
+        hidden
+    );
+
+    /*
+     * THE TWO CONTROLS ARE ONE STATE. While the bar is shown, Hide is
+     * present and Show is not; while it is hidden, the reverse. The Show
+     * control is on the canvas, so it is reachable exactly when the bar it
+     * restores is gone - which is the only time it is needed.
+     */
+    if (headerHideButton) {
+        headerHideButton.setAttribute(
+            "aria-expanded",
+            hidden ? "false" : "true"
+        );
+    }
+
+    if (drawingTopBarShow) {
+        drawingTopBarShow.hidden = !hidden;
+    }
+
+    editorState.topBarHidden = hidden;
+
+    /*
+     * Redraw only. The zoom, the pan and the document are all untouched -
+     * the canvas is simply taller, so more of the same drawing is visible.
+     */
+    renderCurrentDrawing();
+}
+
+function toggleTopBar() {
+    setTopBarHidden(!editorState.topBarHidden);
+}
 
 /*
  * The zoom percentage FIELD accepts a typed value.
@@ -330,4 +411,21 @@ export function installWorkspaceLayout() {
                 )
         );
     }
+
+    /*
+     * THE TOP BAR'S TWO CONTROLS, WIRED TO THE ONE STATE.
+     *
+     * The Hide button is in the bar and collapses it; the Show button is on
+     * the canvas and brings it back. Both call the same function, so there is
+     * one definition of "hidden" and the two can never disagree about it.
+     */
+    headerHideButton?.addEventListener(
+        "click",
+        () => setTopBarHidden(true)
+    );
+
+    drawingTopBarShow?.addEventListener(
+        "click",
+        () => setTopBarHidden(false)
+    );
 }

@@ -6,6 +6,7 @@ import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import { appearanceMarkup } from "./appearance-panel.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
@@ -1837,6 +1838,180 @@ export function featurePropertyMarkup(object) {
         rows.push(section("AXIS LABELS"));
         rows.push(textField("X Label", "xLabel", geometry.xLabel ?? ""));
         rows.push(textField("Y Label", "yLabel", geometry.yLabel ?? ""));
+    } else if (object.type === "annotate") {
+        /*
+         * ========================================================
+         * AN ANNOTATE FEATURE
+         * ========================================================
+         *
+         * Every annotate kind shares the same panel SKELETON - text,
+         * placement, appearance - and adds only the rows its own kind
+         * actually has. A note has text and a position; a leader adds its
+         * two ends and an arrowhead; a tolerance adds its mode and values; a
+         * table adds its grid. NO kind shows a row it has no meaning for,
+         * which is the same rule every other panel follows.
+         *
+         * The order is the application's normal one (spec 60): the feature
+         * name and label come from the shared header ABOVE this block, then
+         * the primary content, then placement and relationship, then the
+         * kind's own settings, and finally Appearance.
+         */
+        const kind = object.annotateKind;
+        const annotate = enggAnnotate;
+
+        /*
+         * THE CONTENT.
+         *
+         * A note, a label, a leader and a callout are written text, so each
+         * gets a free-text field. A SYMBOL and a TOLERANCE render from fields
+         * of their own rather than from free text, so their content is not a
+         * writable field - editing the glyph of a position symbol would let
+         * the drawing claim a symbol the library does not contain.
+         */
+        if (
+            kind === "note" ||
+            kind === "label" ||
+            kind === "leader" ||
+            kind === "callout"
+        ) {
+            rows.push(section("TEXT"));
+            rows.push(
+                textField(
+                    "Text",
+                    "text",
+                    object.text ?? ""
+                )
+            );
+        }
+
+        if (kind === "label" && annotate) {
+            /*
+             * WHAT THE LABEL IS ABOUT.
+             *
+             * A label may read a feature's own Label, so changing that one
+             * place updates the drawing - the student never keeps two copies.
+             * The row states the target so the association is visible rather
+             * than implied.
+             */
+            rows.push(section("TARGET"));
+            rows.push(
+                textField(
+                    "Linked Feature",
+                    "targetFeatureId",
+                    object.targetFeatureId ?? ""
+                )
+            );
+        }
+
+        if (kind === "symbol" && annotate) {
+            rows.push(section("SYMBOL"));
+            rows.push(symbolPickerRow(object));
+        }
+
+        if (kind === "tolerance" && annotate) {
+            rows.push(section("TOLERANCE"));
+            rows.push(toleranceRows(object));
+        }
+
+        if (kind === "table" && annotate) {
+            rows.push(section("TABLE"));
+            rows.push(
+                scalar(
+                    "Rows",
+                    "rows",
+                    Number(geometry.rows) || 1,
+                    "",
+                    true
+                )
+            );
+            rows.push(
+                scalar(
+                    "Columns",
+                    "columns",
+                    Number(geometry.columns) || 1,
+                    "",
+                    true
+                )
+            );
+
+            /*
+             * THE CELLS, one row per cell, in reading order.
+             *
+             * Rendered from the stored grid so the panel and the drawn
+             * table cannot disagree, and so editing a cell writes the cell
+             * the student is looking at.
+             */
+            rows.push(section("CELLS"));
+
+            const columns = Number(geometry.columns) || 1;
+            const totalRows = Number(geometry.rows) || 1;
+            const cells = Array.isArray(geometry.cells)
+                ? geometry.cells
+                : [];
+
+            for (let row = 0; row < totalRows; row += 1) {
+                for (let column = 0; column < columns; column += 1) {
+                    const index = row * columns + column;
+
+                    rows.push(
+                        textField(
+                            `${columnLetter(column)}${row + 1}`,
+                            `cell.${index}`,
+                            cells[index] ?? ""
+                        )
+                    );
+                }
+            }
+        }
+
+        /*
+         * PLACEMENT.
+         *
+         * A point-placed kind shows its position; a geometric kind shows
+         * both of its ends, because both are the student's to place and both
+         * are stored in drawing units (spec 65).
+         */
+        rows.push(section("PLACEMENT"));
+
+        if (geometry.position) {
+            rows.push(
+                coordinate(
+                    "Position",
+                    "position",
+                    geometry.position,
+                    "mm",
+                    true
+                )
+            );
+        }
+
+        if (geometry.start) {
+            rows.push(
+                coordinate(
+                    kind === "arrow" ? "Start" : "Target",
+                    "start",
+                    geometry.start,
+                    "mm",
+                    true
+                )
+            );
+        }
+
+        if (geometry.end) {
+            rows.push(
+                coordinate(
+                    kind === "arrow" ? "End" : "Text Position",
+                    "end",
+                    geometry.end,
+                    "mm",
+                    true
+                )
+            );
+        }
+
+        if (kind === "leader" || kind === "callout" || kind === "arrow") {
+            rows.push(leaderStyleRows(object));
+        }
     } else if (object.type === "variable-dimension") {
         /*
          * A VARIABLE DIMENSION.
@@ -1873,6 +2048,215 @@ export function featurePropertyMarkup(object) {
     return `<div class="drawing-properties-block">
         ${finaliseRows(rows)}
     </div>`;
+}
+
+/*
+ * A spreadsheet-style column name: 0 -> A, 25 -> Z, 26 -> AA.
+ *
+ * Cells are identified to the student by their grid position, not by a
+ * numeric index, because "B2" is how a table is read.
+ */
+function columnLetter(index) {
+    let letter = "";
+    let n = index;
+
+    do {
+        letter =
+            String.fromCharCode(65 + (n % 26)) + letter;
+        n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+
+    return letter;
+}
+
+/*
+ * The Symbol tool's picker: the library, grouped.
+ *
+ * A single `<select>` with `<optgroup>`s, written through the same
+ * `data-property` mechanism every other panel control uses - so choosing a
+ * symbol writes `symbolId` onto the feature through the ONE property
+ * setter, and the drawn glyph follows from the model rather than from a
+ * second copy here.
+ */
+function symbolPickerRow(object) {
+    const library =
+        enggAnnotate?.SYMBOL_LIBRARY || [];
+
+    const current =
+        object.geometry?.symbolId || "datum";
+
+    const groups = library
+        .map(
+            (group) => `
+                <optgroup label="${group.label}">
+                    ${group.symbols
+                        .map(
+                            (symbol) => `
+                                <option value="${symbol.id}"${
+                                    symbol.id === current
+                                        ? " selected"
+                                        : ""
+                                }>${symbol.text}  ${symbol.label}</option>
+                            `
+                        )
+                        .join("")}
+                </optgroup>
+            `
+        )
+        .join("");
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Symbol</span>
+            <select data-property="symbolId" aria-label="Symbol">
+                ${groups}
+            </select>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * A tolerance's mode and the values that mode makes meaningful.
+ *
+ * ONLY THE FIELDS THE MODE USES ARE SHOWN. A symmetric tolerance has one
+ * ± value; a deviation or a limit tolerance has an upper and a lower; a
+ * basic tolerance has none, because its whole meaning is that it is
+ * theoretical. Showing all three rows whatever the mode would invite a
+ * student to type a lower limit into a symmetric tolerance and have it
+ * silently ignored.
+ */
+function toleranceRows(object) {
+    const modes =
+        enggAnnotate?.TOLERANCE_MODES || {};
+
+    const mode = object.geometry?.toleranceMode || "symmetric";
+    const values = object.geometry?.toleranceValues || {};
+    const definition = modes[mode] || modes.symmetric;
+    const fields = definition?.fields || [];
+
+    const modeOptions = Object.entries(modes)
+        .map(
+            ([id, entry]) =>
+                `<option value="${id}"${
+                    id === mode ? " selected" : ""
+                }>${entry.label}</option>`
+        )
+        .join("");
+
+    const escapeAttr = (value) =>
+        String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;");
+
+    const numberRow = (label, key, value) => `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">${label}</span>
+            <input type="number" step="0.01"
+                data-property="${key}"
+                aria-label="${label}"
+                value="${escapeAttr(value)}">
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+
+    let rows = `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Tolerance Type</span>
+            <select data-property="toleranceMode" aria-label="Tolerance Type">
+                ${modeOptions}
+            </select>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+
+    if (fields.includes("value")) {
+        rows += numberRow(
+            "Value (±)",
+            "toleranceValue",
+            values.value ?? 0.1
+        );
+    }
+
+    if (fields.includes("upper")) {
+        rows += numberRow(
+            "Upper",
+            "toleranceUpper",
+            values.upper ?? 0.1
+        );
+    }
+
+    if (fields.includes("lower")) {
+        rows += numberRow(
+            "Lower",
+            "toleranceLower",
+            values.lower ?? -0.1
+        );
+    }
+
+    /*
+     * WHAT IT READS AS ON THE DRAWING, so the student can see the effect of
+     * a mode change without looking away from the panel.
+     */
+    rows += `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Shows</span>
+            <span class="drawing-property-derived">${definition?.text(
+                values
+            ) ?? ""}</span>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+
+    return rows;
+}
+
+/*
+ * A leader's or an arrow's line and head, as two compact choices.
+ *
+ * These belong to the FEATURE, not to a family of tools: a bent leader and
+ * a straight one are the same thing drawn differently, so they are options
+ * here rather than separate toolbar buttons (spec 34, 35).
+ */
+function leaderStyleRows(object) {
+    const arrowhead =
+        object.style?.arrowhead || "closed";
+
+    const style =
+        object.style?.leaderStyle || "straight";
+
+    const option = (value, label, selected) =>
+        `<option value="${value}"${
+            selected ? " selected" : ""
+        }>${label}</option>`;
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Line</span>
+            <select data-style="leaderStyle" aria-label="Leader line style">
+                ${option("straight", "Straight", style === "straight")}
+                ${option("elbow", "Bent / Elbow", style === "elbow")}
+            </select>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Arrowhead</span>
+            <select data-style="arrowhead" aria-label="Arrowhead">
+                ${option("none", "None", arrowhead === "none")}
+                ${option("open", "Open", arrowhead === "open")}
+                ${option("closed", "Closed", arrowhead === "closed")}
+            </select>
+            <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
 }
 
 /*

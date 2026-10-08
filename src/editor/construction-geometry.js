@@ -4,15 +4,17 @@
 
 import { normalizeAngle } from "./truss-optimizer.js";
 
-export function distance(
-    first,
-    second
-) {
-    return Math.hypot(
-        second.x - first.x,
-        second.y - first.y
-    );
-}
+/*
+ * THE POINT PRIMITIVES LIVE IN core/geometry/points.js.
+ *
+ * `distance` was defined here as well as in hit-testing, object-snap and the
+ * sketch editor - four copies of one subtraction and a hypotenuse, each free
+ * to drift from the others. It is re-exported from the shared module so every
+ * existing importer of THIS file keeps working unchanged, while there is now
+ * exactly one implementation.
+ */
+export { distance } from "../core/geometry/points.js";
+import { distance } from "../core/geometry/points.js";
 
 export function rectangleGeometry(
     first,

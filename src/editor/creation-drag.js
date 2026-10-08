@@ -72,11 +72,12 @@
  * mark exactly once.
  */
 import { isAnnotationTool } from "./annotation-tool.js";
+import { beginAnnotateDragAnchor, completeAnnotateAt, isGeometricAnnotateTool } from "./annotate-creation.js";
 import { isDimensionTool } from "./dimension-tool.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { beginOrCompleteGeometry } from "./geometry-creation.js";
 import { canvasPointFromEvent } from "./tool-activation.js";
-import { objectAtPoint } from "./hit-testing.js";
+import { objectAtPoint, hitTestAnnotateTarget } from "./hit-testing.js";
 import { resolvePointerEvent } from "./pointer.js";
 import { STATICS_PLACEMENT_TOOLS, STATICS_SPAN_TOOLS } from "./statics-tools.js";
 
@@ -87,6 +88,17 @@ import { STATICS_PLACEMENT_TOOLS, STATICS_SPAN_TOOLS } from "./statics-tools.js"
  * drag supplies their FIRST span and the tool's own remaining steps
  * carry the rest - the multi-point workflow is preserved, one gesture at
  * a time.
+ *
+ * THE REFERENCE ARC IS THE ARC TOOL BY ANOTHER NAME.
+ *
+ * It draws through the same phases - centre, sweep, or three points on the
+ * curve - and every one of them is a point under the cursor. It was missing
+ * here because it is a separate tool ID, so a student who dragged a
+ * reference arc got no preview and no completion: the release had nothing to
+ * finish, because this list said the tool was not a drag tool at all.
+ *
+ * The pair are listed ADJACENT, so the arc and its reference twin are read
+ * together and can never drift apart.
  */
 const DRAG_GEOMETRY_TOOLS = [
     "line",
@@ -94,7 +106,8 @@ const DRAG_GEOMETRY_TOOLS = [
     "circle",
     "triangle",
     "polygon",
-    "arc"
+    "arc",
+    "reference-arc"
 ];
 
 /*
@@ -187,6 +200,17 @@ export function isDragCreationTool(
 ) {
     if (!toolId) {
         return false;
+    }
+
+    /*
+     * A geometric ANNOTATE tool - a leader, a callout, an arrow - IS a
+     * start and an end, so it takes both workflows just like a Line does.
+     * Its press begins its anchor and its release commits it, through the
+     * creation layer's own functions (see below), not through the geometry
+     * construction pipeline - because an annotation is not geometry.
+     */
+    if (isGeometricAnnotateTool(toolId)) {
+        return true;
     }
 
     /*
@@ -325,6 +349,53 @@ export function beginCreationDrag(
         DRAG_PRESS_POINT_PHASES.includes(phase);
 
     /*
+     * A GEOMETRIC ANNOTATE TOOL ARMS ITS ANCHOR AND LETS THE RELEASE COMMIT IT.
+     *
+     * A leader, a callout and an arrow are the annotation world's two-point
+     * constructs. They do not use `phase` or the geometry construction
+     * pipeline at all - they are marks, not geometry - so they are handled
+     * HERE, ahead of the phase logic below, and the WORK is handed to the
+     * creation layer so there is exactly one implementation of "place a
+     * leader", shared with the click-move-click path.
+     *
+     * The press does not build anything yet for the same reason the geometry
+     * tools do not: a plain click must fall through to the click handler,
+     * which is the FIRST click of click-move-click. Only once the pointer has
+     * travelled (see moveCreationDrag) is the anchor actually begun.
+     */
+    if (isGeometricAnnotateTool(drawingState.activeTool)) {
+        /*
+         * On a CONTINUE - the anchor is already held, so this press is the
+         * second end and the release will commit it. Nothing to start here.
+         */
+        const annotateArmed =
+            drawingState.interaction.annotateStage === "anchor";
+
+        if (
+            !annotateArmed &&
+            pressSelectsExistingObject(event)
+        ) {
+            return false;
+        }
+
+        editorState.creationDrag = {
+            pointerId: event.pointerId,
+            annotateTool: drawingState.activeTool,
+            annotateArmed,
+            pressResolution: annotateArmed
+                ? null
+                : resolvePointerEvent(event),
+            startScreen: {
+                x: event.clientX,
+                y: event.clientY
+            },
+            moved: false
+        };
+
+        return true;
+    }
+
+    /*
      * A press that is neither the start of a feature nor the next point of
      * one belongs to whatever else is running - a load being built, a
      * truss, a dimension - and is left to that.
@@ -352,47 +423,207 @@ export function beginCreationDrag(
     }
 
     /*
-     * START, or take this span's first end. Both are "the press is a point",
-     * so both run the existing construction entry point and then arm a
-     * session for the release to finish.
+     * ========================================================
+     * THE PRESS IS ARMED, BUT THE CONSTRUCTION IS NOT STARTED
+     * ========================================================
+     *     * Starting the feature on the press LOOKED right and was the source of the
+     * worst defect in this module. A browser fires a `click` on a plain press
+     * and release, so the sequence for one click was:
+     *
+     *     pointerdown   beginOrCompleteGeometry  -> the first point
+     *     pointerup     (no travel, left waiting)
+     *     click         beginOrCompleteGeometry  -> the SAME point again
+     *
+     * and the second call completed the feature AT ITS OWN START POINT - a
+     * zero-length line that opened its size popup before the student had moved.
+     * Click-move-click was impossible: every first click created something.
+     *
+     * So the press no longer builds anything by itself. It ARMS this session,
+     * keeping the resolved point the press would have used, and the
+     * construction is started only when the pointer has actually travelled far
+     * enough to be a DRAG (see moveCreationDrag). A press that never travels is
+     * left completely alone, and the browser's own `click` starts the feature
+     * through the ordinary click pipeline - which is exactly the first click of
+     * click-move-click.
+     *
+     * A "CONTINUE" PHASE is different and unchanged: the construction already
+     * holds its anchor, so the release supplies the next point. Nothing needs
+     * deferring because nothing was started here in the first place.
      */
-    if (idle || takesPoint) {
-        beginOrCompleteGeometry(
-            resolvePointerEvent(event)
-        );
-
-        /*
-         * The construction is only a DRAG if the press actually started
-         * one. A tool that routed itself elsewhere - or whose first point
-         * could not be resolved - leaves nothing in a phase this drag can
-         * complete, and arming a session for it would make the release
-         * swallow a click for no reason.
-         */
-        if (
-            !DRAG_CONTINUE_PHASES.includes(
-                drawingState.interaction.phase
-            )
-        ) {
-            return false;
-        }
-    }
+    const startsHere =
+        idle || takesPoint;
 
     editorState.creationDrag = {
-        pointerId: event.pointerId
+        pointerId: event.pointerId,
+
+        /*
+         * THE POINT THE PRESS WOULD START FROM, RESOLVED AGAINST THE MODEL.
+         *
+         * Held here rather than applied, so the construction is begun with the
+         * geometry of the press itself - through the same resolver a click uses
+         * - and never with a coordinate re-read from a later move, which could
+         * have snapped to something else.
+         */
+        pressResolution: startsHere
+            ? resolvePointerEvent(event)
+            : null,
+
+        /*
+         * WHERE THE PRESS LANDED, IN SCREEN PIXELS.
+         *
+         * The gesture is classified on RELEASE, by how far the pointer
+         * actually travelled - see finishCreationDrag. Screen pixels are the
+         * right measure for that and only for that: whether a hand moved is a
+         * fact about the pointer, while the feature being built is measured in
+         * world coordinates and always has been.
+         */
+        startScreen: {
+            x: event.clientX,
+            y: event.clientY
+        },
+
+        moved: false
     };
 
     return true;
 }
 
 /*
+ * How far the pointer must travel before a press is a DRAG rather than a click.
+ *
+ * A few pixels: enough that hand tremor, a touch tap that slides slightly, or a
+ * trackpad's small drift are all still CLICKS, and far less than the distance
+ * anyone moves a cursor while deliberately drawing something. Getting this wrong
+ * in the small direction turns a click into an accidental zero-length feature;
+ * getting it wrong in the large direction makes a short drag need a second
+ * click.
+ */
+const DRAG_THRESHOLD_PX = 4;
+
+/*
+ * Track how far the pointer has travelled during a creation press - and, the
+ * moment it has travelled far enough to be a DRAG, actually start the feature.
+ *
+ * THIS IS WHERE THE DEFERRED START HAPPENS. beginCreationDrag deliberately does
+ * not build anything on the press; it arms this session and keeps the press's
+ * own resolved point. The first movement past the threshold is what turns the
+ * armed press into a running construction:
+ *
+ *     pointerdown            arm, no construction
+ *     pointermove (>= 4px)   beginOrCompleteGeometry(press point)  -> first point
+ *     pointerup              beginOrCompleteGeometry(release point)-> commit
+ *
+ * The construction is begun with the PRESS'S point, not this move's - the
+ * member must start exactly where the student pressed, however far the cursor
+ * has already travelled by the time the threshold is crossed.
+ */
+export function moveCreationDrag(event) {
+    const session = editorState.creationDrag;
+
+    if (!session) {
+        return;
+    }
+
+    if (!session.moved) {
+        const dx = event.clientX - session.startScreen.x;
+        const dy = event.clientY - session.startScreen.y;
+
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) {
+            return;
+        }
+
+        session.moved = true;
+
+        /*
+         * A GEOMETRIC ANNOTATE TOOL BEGINS ITS ANCHOR HERE.
+         *
+         * The press armed the session; the first real movement is what
+         * commits to a drag, so the anchor is begun now - from the PRESS's
+         * point, through the creation layer's own function, so a dragged
+         * leader and a two-clicked leader share one implementation.
+         */
+        if (
+            session.annotateTool &&
+            !session.annotateArmed &&
+            session.pressResolution
+        ) {
+            const resolution = session.pressResolution;
+
+            const target = hitTestAnnotateTarget(
+                resolution.effectiveConstructionPoint ||
+                    resolution.rawPointerPoint
+            );
+
+            beginAnnotateDragAnchor(
+                resolution.effectiveConstructionPoint ||
+                    resolution.rawPointerPoint,
+                target ? target.id : null
+            );
+
+            session.pressResolution = null;
+
+            return;
+        }
+
+        /*
+         * START THE FEATURE NOW. A press that is really a drag has been
+         * recognised, so the deferred first point is applied through the same
+         * construction entry point a click would use - and the live preview
+         * follows from here on, exactly as it does for click-move-click.
+         */
+        if (session.pressResolution) {
+            beginOrCompleteGeometry(
+                session.pressResolution
+            );
+
+            session.pressResolution = null;
+
+            /*
+             * If nothing started - the tool routed itself elsewhere, or the
+             * point could not be resolved - the release has nothing to finish,
+             * so the session is dropped and the release is left to whatever else
+             * is running.
+             */
+            if (
+                !DRAG_CONTINUE_PHASES.includes(
+                    drawingState.interaction.phase
+                )
+            ) {
+                editorState.creationDrag = null;
+            }
+        }
+    }
+}
+
+/*
  * Complete a creation on release.
+ *
+ * TWO GESTURES ARRIVE HERE, AND THEY ARE NOT THE SAME THING.
+ *
+ *   THE POINTER MOVED   the student pressed, dragged, and let go - one
+ *                       gesture that says both ends, so the feature is
+ *                       committed at the released point.
+ *
+ *   THE POINTER DID NOT  the student simply CLICKED. That is the FIRST CLICK
+ *                       of a click-move-click construction, and it must NOT
+ *                       commit anything: the feature is left waiting, its
+ *                       preview already following the cursor, and the next
+ *                       click supplies the second point.
+ *
+ * WITHOUT THE DISTINCTION the two workflows cannot both exist. The press
+ * started the feature and armed this session, so a plain click was completed on
+ * release at its own start point - a zero-length line, committed, before the
+ * student had even moved. Click-move-click was therefore impossible: every first
+ * click created something.
  *
  * The final cursor position is the second point, resolved through the
  * same snapping pipeline a click would have used - so a snap to an
  * endpoint is committed exactly as it was previewed.
  *
- * Returns true when this release ends a creation this drag owned, so the
- * trailing click is swallowed rather than read as a new first point.
+ * Returns true when this release owned the gesture, so the trailing
+ * click is swallowed rather than read as a new first point. A CLICK that
+ * did not move is NOT swallowed: it is the first point, and the browser's
+ * own click for it must reach the construction pipeline untouched.
  */
 export function finishCreationDrag(
     event
@@ -407,15 +638,38 @@ export function finishCreationDrag(
     editorState.creationDrag = null;
 
     /*
-     * THE FINAL POINT AT THE RELEASE.
+     * A CLICK, NOT A DRAG.
      *
-     * The pointer has been moving, so the interaction already holds the
-     * latest previewed point - but that point was resolved on the last
-     * move event, and the release itself is the frame the student aimed
-     * at. So it is resolved again, from this event, exactly as the click
-     * handler resolves a click, and for the same reason: the second point
-     * must never be a stale snap.
+     * The construction is left exactly as the press left it - holding its
+     * first point and waiting for the next one - and the trailing click is
+     * NOT consumed, because that click IS the second point of the
+     * click-move-click workflow.
      */
+    if (!session.moved) {
+        return false;
+    }
+
+    /*
+     * A GEOMETRIC ANNOTATE TOOL COMMITS AT THE RELEASE.
+     *
+     * The anchor was begun when the drag was recognised (moveCreationDrag);
+     * the release supplies the second end and the creation layer commits the
+     * mark - through the SAME function the second click reaches, so the two
+     * workflows cannot produce different features.
+     */
+    if (session.annotateTool) {
+        const resolution = resolvePointerEvent(event);
+        const point =
+            resolution.effectiveConstructionPoint ||
+            resolution.rawPointerPoint;
+
+        if (point) {
+            completeAnnotateAt(point);
+        }
+
+        return true;
+    }
+
     if (
         DRAG_CONTINUE_PHASES.includes(
             drawingState.interaction.phase

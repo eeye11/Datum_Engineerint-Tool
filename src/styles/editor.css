@@ -44,6 +44,19 @@
     color: var(--cad-ink);
     display: grid;
     flex: 1 1 auto;
+
+    /*
+     * THE PAGE DOES NOT SCROLL SIDEWAYS BECAUSE A PANEL IS OPEN.
+     *
+     * Only the toolbar and the section bar scroll horizontally, and they
+     * do it INSIDE their own row. The workspace itself is clamped to its
+     * container: `overflow: hidden` keeps the scrollable rows from
+     * pushing the document wider, and `max-width: 100%` keeps the grid
+     * from ever exceeding the viewport it was laid out into. The canvas
+     * column is the flexible one, so it absorbs whatever the rails give
+     * up rather than the page growing.
+     */
+    max-width: 100%;
     /*
      * The Features rail is 236px, not 168px.
      *
@@ -64,16 +77,229 @@
      * Rows: the global toolbar, the toolset nav, the style strip, the
      * three panels, then the sheet bar and the status bar.
      *
+     * THE STYLE STRIP'S ROW IS `auto`, NOT A FIXED 28px.
+     *
+     * A fixed height clips: the row of style controls (Thickness, Color,
+     * Line Type and the display toggles) is the one row that must be able
+     * to REFLOW onto a second line when the panel is narrow, and a fixed
+     * track would cut that second line off rather than accommodate it. Left
+     * at 28px, the controls also had no option but to shrink into one
+     * another, which is the overlap this row is being fixed for. `auto`
+     * lets the row be exactly as tall as its contents need, whether that is
+     * one line or two.
+     *
      * The sheet bar gets its own row beneath the canvas rather than
      * sharing the status bar's, so that the two never have to
      * negotiate the width: tabs scroll horizontally within the canvas
      * column while the coordinates and the zoom stay where they are.
      */
-    grid-template-rows: auto auto 28px minmax(0, 1fr) 24px 22px;
+    grid-template-rows: auto auto auto minmax(0, 1fr) 24px 22px;
     height: auto;
     min-height: 0;
     overflow: hidden;
     width: 100%;
+}
+
+/*
+ * =========================================================
+ * THE DRAWING'S TOP BARS, FOLDED AWAY
+ * =========================================================
+ *
+ * `body.datum-topbar-hidden` is the ONE place this is defined. It is set by
+ * the Hide control in the global tool bar and cleared by the Show control on
+ * the canvas.
+ *
+ * WHAT GOES, AND WHAT DOES NOT.
+ *
+ * The bars hidden are the DRAWING's own two top rows:
+ *
+ *   .drawing-app-toolbar   the global tool bar (File, History, Modify, ...)
+ *   .drawing-toolbar       the tool-type bar (Geometry/Statics/Annotate/...)
+ *
+ * They are the chrome that stands between the top of the page and the
+ * drawing, and they are what this control is for. Hiding them lets the canvas
+ * rise into the two rows they occupied.
+ *
+ * WHAT STAYS: the Datum header and the document name, the Written Solution /
+ * Engineering Drawing tabs, the style strip, the sheet bar, the status bar
+ * and the two side panels. The header and the tabs identify the application
+ * and choose which page is open - they are not the drawing's chrome, and
+ * hiding them would take away the things a student uses to know where they
+ * are and to get to the other half of the application. The side panels are
+ * independent controls and keep whatever state they were in.
+ *
+ * They are removed with `display: none` rather than collapsed to zero
+ * height: a zero-height row still occupies its track and still contributes
+ * its borders and padding, so the drawing would not actually gain the room.
+ *
+ * THE WORKSPACE'S ROW TRACKS ARE KEPT, AND TWO OF THEM ARE ZEROED.
+ *
+ * This is the part that has to be exactly right. The workspace is a grid with
+ * SIX rows - the global toolbar, the tool-type bar, the style strip, the
+ * panels, the sheet bar and the status bar - and the rows are matched to
+ * their children by POSITION. Re-stating a SHORTER list while two children
+ * are hidden does not remove those rows: it re-assigns every remaining row to
+ * the wrong child, and the canvas ends up in a 24px track. That is the defect
+ * this replaces - the drawing did not grow, it shrank.
+ *
+ * So the list keeps its SIX entries and the first two - the two rows that
+ * have been emptied - become `0`. The tracks are still there, still matched
+ * to the same children, and simply contribute no height. The canvas row is
+ * untouched as `minmax(0, 1fr)`, so it absorbs exactly what the two empty
+ * rows gave up.
+ */
+body.datum-topbar-hidden .drawing-app-toolbar,
+body.datum-topbar-hidden .drawing-toolbar {
+    display: none;
+}
+
+body.datum-topbar-hidden .drawing-workspace {
+    /*
+     * SIX TRACKS, as above: the first two rows are the hidden bars and are
+     * now empty, then the style strip, the flexible panel row, the sheet bar
+     * and the status bar - the same children, in the same order.
+     */
+    grid-template-rows: 0 0 auto minmax(0, 1fr) 24px 22px;
+}
+
+/*
+ * THE HIDE CONTROL, ON THE STYLE STRIP.
+ *
+ * It lives on the Thickness row rather than on either of the bars it hides,
+ * and that placement is the point:
+ *
+ *   - a control on a bar it collapses would be removed BY its own action,
+ *     so the way to hide and the way to show would both have to live
+ *     somewhere else;
+ *   - the STYLE STRIP does not hide and does not scroll sideways, so a
+ *     control on it is present and reachable at EVERY width - including the
+ *     compact and icon-only layouts, where the two bars above it are the
+ *     only rows that can spare the space.
+ *
+ * `margin-left: auto` pushes it to the trailing edge of the row however many
+ * controls precede it, and `flex: 0 0 auto` stops it being squeezed into a
+ * neighbour; when the row reflows, it simply travels with the last line.
+ *
+ * Touch target: the button carries padding and a `min-height` rather than
+ * relying on the size of its arrow, so it stays comfortably tappable on
+ * touch screens at the same time as it stays visually small.
+ */
+.drawing-topbar-hide {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--cad-muted);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 10px;
+    gap: 4px;
+    margin-left: auto;
+    min-height: 20px;
+    padding: 2px 7px;
+    white-space: nowrap;
+}
+
+.drawing-topbar-hide:hover {
+    background: #e2ebee;
+    border-color: #d5dfe2;
+    color: var(--cad-ink);
+}
+
+.drawing-topbar-hide:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: -2px;
+}
+
+.drawing-topbar-hide svg {
+    flex: 0 0 auto;
+    height: 13px;
+    width: 13px;
+}
+
+/*
+ * THE SHOW CONTROL, ON THE CANVAS.
+ *
+ * A slim strip along the canvas's top edge, present only while the top bar is
+ * hidden. It is NOT an overlay that covers the drawing: it takes its own row
+ * above the canvas, so the writing surface is never covered - which is the
+ * whole point of having hidden the bar.
+ */
+.drawing-topbar-show {
+    align-items: center;
+    background: #eef3f4;
+    border: 0;
+    border-bottom: 1px solid var(--cad-border);
+    color: var(--cad-muted);
+    cursor: pointer;
+    display: flex;
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 10px;
+    gap: 4px;
+    letter-spacing: .02em;
+    padding: 2px 8px;
+    text-align: left;
+    width: 100%;
+}
+
+.drawing-topbar-show:hover {
+    background: #e2ebee;
+    color: var(--cad-ink);
+}
+
+.drawing-topbar-show:focus-visible {
+    outline: 2px solid var(--datum-green);
+    outline-offset: -2px;
+}
+
+.drawing-topbar-show svg {
+    height: 12px;
+    width: 12px;
+}
+
+.drawing-topbar-show[hidden] {
+    display: none;
+}
+
+/*
+ * The canvas area holds the optional Show strip ABOVE the canvas.
+ *
+ * IT IS A GRID, NOT A FLEX COLUMN, and that is a deliberate choice. Both
+ * layouts put the strip above the canvas with the canvas taking the rest,
+ * but a grid does it without the child being able to grow its own track: a
+ * `flex: 1` canvas inside a flex column will push its container taller when
+ * the container's height is `auto`, which is what made the whole workspace
+ * grow past the window once the top bar was hidden. Two grid rows - `auto`
+ * for the strip, `minmax(0, 1fr)` for the canvas - are bounded by the track
+ * they sit in, so the canvas is exactly the height the row gives it.
+ */
+.drawing-canvas-area {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+/*
+ * THE ROWS ARE PINNED BY NAME, NOT BY ORDER.
+ *
+ * The Show strip is `display: none` while the top bar is shown, and a hidden
+ * grid item is REMOVED - so whatever came next would slide up into its
+ * track. Left to order, the canvas would fall into the `auto` row the strip
+ * had given up and collapse to nothing, which is exactly what happened.
+ *
+ * Placing each on the row it belongs to means the canvas is always in the
+ * flexible row and the strip is always in the row above it, whether the
+ * strip is showing or not.
+ */
+.drawing-topbar-show {
+    grid-row: 1;
+}
+
+.drawing-canvas-area .drawing-canvas {
+    grid-row: 2;
+    min-height: 0;
 }
 
 .drawing-app-toolbar {
@@ -81,34 +307,41 @@
     background: #eef3f4;
     border-bottom: 1px solid var(--cad-border);
     display: flex;
-    flex-wrap: wrap;
+
+    /*
+     * ONE ROW, ALWAYS - AND IT SCROLLS SIDEWAYS WHEN IT MUST.
+     *
+     * This row used to WRAP. Wrapping is not wrong in itself, but on a
+     * narrow screen it is: every group that folds onto a second line
+     * makes the toolbar taller, and the toolbar's height comes straight
+     * out of the drawing below it. The drawing is the work; the toolbar
+     * is how you get to the tools. When the two compete for vertical
+     * space the toolbar must lose.
+     *
+     * So the row never wraps (`flex-wrap: nowrap`) and its groups never
+     * shrink (`flex: 0 0 auto` on each), which keeps every button its
+     * real size and its label legible. When the width runs out the row
+     * scrolls horizontally instead - the swipe/trackpad gesture the
+     * student already uses on the canvas - and the toolbar stays exactly
+     * one row high.
+     *
+     * `overflow-x: auto` alone is not enough: a flex container refuses to
+     * overflow while its items may still shrink, so `nowrap` plus the
+     * non-shrinking groups are what actually produce the overflow that
+     * the scrollbar then reveals. `overscroll-behavior-x: contain` stops
+     * a swipe that reaches the end of the toolbar from scrolling the page
+     * underneath it.
+     */
+    flex-wrap: nowrap;
     gap: 5px;
     grid-column: 1 / -1;
     min-width: 0;
-
-    /*
-     * NO SIDEWAYS SCROLLING, AT ANY SCREEN SIZE.
-     *
-     * This row used to scroll horizontally, which meant that on a
-     * laptop or a split screen the tools on the right were simply
-     * not there: they were off the end of the row, reachable only
-     * by scrolling, and a horizontal scrollbar in a toolbar is very
-     * easily missed. A tool the student cannot see is a tool they
-     * do not know exists.
-     *
-     * Wrapping is the honest answer. A toolbar of this many tools
-     * cannot be guaranteed to fit an arbitrary width without either
-     * wrapping, shrinking its text below legibility, or dropping
-     * tools - and only one of those keeps every tool present and
-     * readable. So the groups flow onto a second line when they run
-     * out of room, and the toolbar's row grows to hold them.
-     *
-     * The row height in the workspace grid is therefore `auto` and
-     * not the fixed 30px it was; a fixed height would clip the
-     * wrapped second line rather than accommodating it.
-     */
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
     padding: 2px 5px;
-    row-gap: 2px;
+    scrollbar-width: thin;
+    white-space: nowrap;
 }
 
 .drawing-app-toolbar-group,
@@ -116,8 +349,10 @@
     align-items: center;
     display: flex;
     flex: 0 0 auto;
+    flex-wrap: nowrap;
     gap: 2px;
     min-width: 0;
+    white-space: nowrap;
 }
 
 .drawing-app-toolbar-group {
@@ -227,30 +462,36 @@
     background: #f9fbfb;
     border-bottom: 1px solid var(--cad-border);
     display: flex;
-    flex-wrap: wrap;
+
+    /*
+     * THE SECTION BAR KEEPS ITS HEIGHT, WHATEVER THE WIDTH.
+     *
+     * These discipline tabs used to WRAP, so on a narrow screen the last
+     * few - Controls, Maths, and the long names like Solid Mechanics -
+     * slid onto a second line. That does make every tab visible, but it
+     * does it by making the bar taller, and the bar's height is taken out
+     * of the drawing below it.
+     *
+     * One row that scrolls is the better trade: the bar is always the
+     * same height, the drawing never loses a line to it, and every tab is
+     * still reachable by a horizontal swipe. `nowrap` plus non-shrinking
+     * tabs is what produces the overflow the scrollbar then reveals.
+     *
+     * The title is the one item here that carries no function - every tab
+     * is named, and the product name is in the tab title - so it is the
+     * first thing allowed to fall out of the flow at truly tiny widths
+     * (see the small-screen block below); the tabs themselves never do.
+     */
+    flex-wrap: nowrap;
     gap: 0;
     grid-column: 1 / -1;
     min-width: 0;
-
-    /*
-     * NO SIDEWAYS SCROLLING, AT ANY SCREEN SIZE.
-     *
-     * This row of discipline tabs scrolled horizontally, so on a
-     * narrow screen the last few - Controls, Maths, and the long names
-     * like Solid Mechanics - sat off the right edge with no
-     * indication that they were there. A tab you cannot see is a
-     * section you do not know you have.
-     *
-     * They wrap instead. The row's grid track is `auto`, so a second
-     * line is accommodated rather than clipped.
-     *
-     * The title is allowed to drop out of the flow entirely at narrow
-     * widths, because it is the one item here that carries no
-     * function: every tab is named, and the product name is in the
-     * tab title. It goes before the tabs need the space.
-     */
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
     padding: 3px 4px;
-    row-gap: 2px;
+    scrollbar-width: thin;
+    white-space: nowrap;
 }
 
 .drawing-style-strip {
@@ -258,34 +499,111 @@
     background: #f7faf9;
     border-bottom: 1px solid var(--cad-border);
     display: flex;
-    gap: 12px;
+
+    /*
+     * ========================================================
+     * EACH CONTROL GETS ITS OWN SPACE, AND NOTHING OVERLAPS
+     * ========================================================
+     *
+     * This row holds Thickness, Color, Line Type and the display toggles -
+     * four controls of different kinds on one line. It used to be a single
+     * non-wrapping line of `flex` items with no minimum widths, which is
+     * exactly the arrangement that lets flex items shrink INTO one another:
+     * when the panel narrowed, the selects and the colour swatch were
+     * squeezed below their own content width and drew over their
+     * neighbours, so "Thickness [ 0.50 mm ]" ran into the next control.
+     *
+     * Three things fix it, and all three are needed:
+     *
+     *   WRAP       - `flex-wrap: wrap` lets a control that no longer fits
+     *                move to a second line instead of being crushed. That is
+     *                the reflow the specification asks for, and it is why
+     *                the grid row above is `auto` rather than a fixed 28px.
+     *                A gap in BOTH directions keeps the second line clear of
+     *                the first.
+     *
+     *   NO SHRINK  - each child is `flex: 0 0 auto`, so it keeps the width
+     *                its own content needs. A control that may not shrink
+     *                cannot be squeezed under a neighbour; when it cannot
+     *                fit, the wrap above moves it down instead.
+     *
+     *   A FLOOR    - each child also carries a small `min-width`, so even a
+     *                natively tiny control (a colour swatch) reserves a
+     *                consistent column and the row keeps a steady rhythm.
+     *
+     * The font is untouched. Shrinking type to force one line is the other
+     * way this row could have been "made to fit", and it trades an overlap
+     * for an unreadable label - neither is acceptable.
+     */
+    column-gap: 12px;
+    flex-wrap: wrap;
     grid-column: 1 / -1;
-    padding: 0 7px;
+    padding: 3px 7px;
+    row-gap: 4px;
 }
 
-.drawing-style-strip label {
+/*
+ * A control PAIR - the label and the input it names - is one flex item.
+ *
+ * It never shrinks, so its label can never be squeezed into the control
+ * beside it, and its own two parts stay together: the label always sits
+ * immediately beside the value it names.
+ */
+.drawing-style-strip > label {
     align-items: center;
     color: var(--cad-muted);
     display: inline-flex;
+    flex: 0 0 auto;
     font-size: 9px;
     gap: 4px;
+    min-width: 0;
     white-space: nowrap;
 }
+
+/*
+ * The style strip's direct children hold no absolute widths, so the
+ * `flex: 0 0 auto` above is what decides each one's width - from its own
+ * content. `min-width` on the interactive control itself, below, is the
+ * floor that keeps a select from collapsing to its scrollbar.
+ */
 
 .drawing-style-strip select {
     background: #ffffff;
     border: 1px solid #cbd8dc;
     color: var(--cad-ink);
+    flex: 0 0 auto;
     font: inherit;
     height: 20px;
+
+    /*
+     * A FLOOR WIDE ENOUGH FOR THE LONGEST OPTION. "0.25 mm" and
+     * "Construction" must both be fully readable; a select that shrinks
+     * below its own widest option shows a truncated value, which is the
+     * same class of defect as an overlapping one. It never shrinks, so it
+     * cannot push into its neighbour either - the row wraps instead.
+     */
+    min-width: 72px;
     padding: 0 3px;
 }
 
 .drawing-style-strip input[type="color"] {
     border: 1px solid #cbd8dc;
+    flex: 0 0 auto;
     height: 20px;
     padding: 1px;
     width: 28px;
+}
+
+/*
+ * The display toggles are children of the strip in their own right, not
+ * wrapped in a label, so they carry the same "own space, never shrink" rule
+ * as the label pairs above - which keeps every control on this row in the
+ * same layout system rather than mixing two.
+ */
+.drawing-style-strip .drawing-status-toggle,
+.drawing-style-strip button {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .drawing-style-strip .drawing-status-toggle {
@@ -542,32 +860,19 @@
 }
 
 /*
- * ONCE THE SCREEN IS TOO NARROW FOR THE TOOL PANEL, IT IS FOLDED
- * AWAY.
+ * THE TOOL PANEL IS NEVER HIDDEN BY WIDTH.
  *
- * The panel is sized to fit its longest tool name's longest word, and
- * that is a fixed cost - about 100px, which is a fair deal on a normal
- * screen and a third of a 320px-wide one. Below the point where a tool
- * name would have to be split mid-word to fit, the arrow strip is kept
- * and the panel is not.
+ * There used to be an `@media (max-width: 720px)` rule here that set
+ * `.drawing-tool-panel { display: none }`, which is exactly what the
+ * responsive rules now forbid: a narrow screen simply LOST the Tools
+ * panel, and with it every tool the student might need. The panel is
+ * compressed and, at the narrowest widths, reduced to icons - never
+ * removed. Its Hide button lives in the rail, which keeps its width at
+ * every breakpoint, so the panel is always reachable.
  *
- * THIS BLOCK AND THE LATER 720px BLOCK ARE ONE DECISION.
- *
- * They were two, and they disagreed: this one set the workspace to
- * `22px 1fr 22px` - both rails folded to their arrows - while the later
- * one set `82px 1fr 236px`, which is both rails OPEN. A later rule wins,
- * so the folded layout never applied and a narrow screen kept a full
- * tool panel and a full Features panel, leaving the drawing a strip.
- *
- * The folded columns therefore live in the later block, which also
- * carries the small-screen type sizes, and this one keeps only the
- * panel's `display`, which does not conflict with anything.
+ * The responsive progression lives further down this file, in one place,
+ * so the column templates cannot disagree with each other again.
  */
-@media (max-width: 720px) {
-    .drawing-workspace .drawing-tool-panel {
-        display: none;
-    }
-}
 
 /*
  * Both panels collapsed.
@@ -2231,6 +2536,35 @@
     width: 1px;
 }
 
+/*
+ * =========================================================
+ * RESPONSIVE PANELS: FULL -> COMPACT -> ICON-ONLY
+ * =========================================================
+ *
+ * The drawing is the work and the panels are navigation, so as the
+ * viewport narrows the panels give up width BEFORE the drawing does -
+ * but they never disappear. The Tools and Features panels and their
+ * Hide buttons stay present at every width; what changes is how much
+ * of each panel is shown.
+ *
+ * The progression, driven by the viewport width (so it holds for a
+ * resized desktop window, a tablet, a phone and split screen alike):
+ *
+ *   > 900px   full labels + icons, 202px / 236px rails
+ *   <= 900px  full labels, narrower Tools rail (the property grid needs
+ *             its four columns more than a tool button needs room)
+ *   <= 760px  COMPACT: smaller type, tighter padding, narrower rails
+ *   <= 620px  ICON-FOCUSED: the Tools rail drops to icons; Features
+ *             keeps its property rows but scrolls internally
+ *   <= 460px  MINIMUM VIABLE: both rails at their narrowest, drawing
+ *             still given every remaining pixel
+ *
+ * `grid-template-columns` on `.drawing-workspace` is what actually
+ * sizes the rails (the elements inside only fill their track), and the
+ * flexible canvas column is `minmax(0, 1fr)` so it absorbs every pixel
+ * the rails give up. Collapsed-state classes from the Hide buttons are
+ * re-asserted at each breakpoint so a collapsed rail stays 22px.
+ */
 @media (max-width: 900px) {
     /*
      * The tools rail gives up width before the Features rail does: the
@@ -2238,7 +2572,19 @@
      * needs its label, so the narrow layouts take it from the left.
      */
     .drawing-workspace {
-        grid-template-columns: 96px minmax(0, 1fr) 236px;
+        grid-template-columns: 168px minmax(0, 1fr) 220px;
+    }
+
+    .drawing-workspace-tools-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 220px;
+    }
+
+    .drawing-workspace-features-collapsed {
+        grid-template-columns: 168px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-workspace-tools-collapsed.drawing-workspace-features-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 22px;
     }
 
     .drawing-tool {
@@ -2258,14 +2604,25 @@
     }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
     /*
-     * BOTH RAILS FOLD TO THEIR ARROWS, and the drawing takes the width.
-     * The tool panel is `display: none` in the block above; the Features
-     * rail keeps its own collapsed width so the drawing is not squeezed
-     * by a panel that is mostly empty on a screen this narrow.
+     * COMPACT. The rails narrow further and the type comes down a step,
+     * but both panels are still fully labelled - this is the width at
+     * which a tablet in portrait or a half-screen window sits.
      */
     .drawing-workspace {
+        grid-template-columns: 140px minmax(0, 1fr) 196px;
+    }
+
+    .drawing-workspace-tools-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 196px;
+    }
+
+    .drawing-workspace-features-collapsed {
+        grid-template-columns: 140px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-workspace-tools-collapsed.drawing-workspace-features-collapsed {
         grid-template-columns: 22px minmax(0, 1fr) 22px;
     }
 
@@ -2276,19 +2633,201 @@
     }
 
     .drawing-tool {
-        font-size: 9px;
-        min-height: 27px;
-        padding: 3px;
+        font-size: 10px;
+        min-height: 26px;
+        padding: 3px 4px;
+    }
+
+    .drawing-tool-panel,
+    .drawing-inspector {
+        padding-left: 6px;
+        padding-right: 6px;
     }
 
     .drawing-panel-heading {
         font-size: 9px;
     }
+
+    .drawing-panel-toggle-text {
+        font-size: 8px;
+    }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 620px) {
+    /*
+     * ICON-FOCUSED TOOLS. The Tools rail is now too narrow to hold a tool
+     * name beside its icon without the two competing for the same few
+     * pixels, so the LABEL is dropped and the ICON carries the tool. The
+     * name is not lost: every tool button already carries a `title` and an
+     * `aria-label`, so the name is on hover, on long-press, and to a
+     * screen reader - it is simply not painted permanently.
+     *
+     * The rail is sized for the ICON and a usable touch target, not for a
+     * word. The buttons keep their full hit area (see the min-height
+     * below), so a 24px icon is still comfortably tappable.
+     *
+     * The Features rail keeps its property rows - a value and its unit are
+     * the point of the panel and cannot be iconified - but it is narrower
+     * and scrolls internally, so it never pushes the page sideways.
+     */
     .drawing-workspace {
-        grid-template-columns: 74px minmax(0, 1fr) 236px;
+        grid-template-columns: 58px minmax(0, 1fr) 172px;
+    }
+
+    .drawing-workspace-tools-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 172px;
+    }
+
+    .drawing-workspace-features-collapsed {
+        grid-template-columns: 58px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-workspace-tools-collapsed.drawing-workspace-features-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 22px;
+    }
+
+    /*
+     * ICON-ONLY: the panel heading, the category names and the tool names
+     * all come out of the flow. The buttons become a centred column of icons.
+     *
+     * THE CATEGORY STRUCTURE SURVIVES THE NAMES. A short rule is drawn
+     * between the categories, so a student still sees WHERE one group ends
+     * and the next begins - the grouping is not lost just because its
+     * heading is. The order is untouched, because the groups are still the
+     * groups; only their labels are hidden.
+     */
+    .drawing-panel-heading {
+        display: none;
+    }
+
+    .drawing-tool-group-label {
+        display: none;
+    }
+
+    .drawing-tool-group {
+        border-bottom: 1px solid #cbd8dc;
+        margin: 3px 0;
+        padding: 8px 0;
+    }
+
+    .drawing-tool-group:first-child {
+        padding-top: 0;
+    }
+
+    .drawing-tool-group:last-child {
+        border-bottom: 0;
+    }
+
+    .drawing-tool {
+        align-items: center;
+        justify-content: center;
+        min-height: 30px;
+        padding: 3px;
+    }
+
+    .drawing-tool-label,
+    .drawing-tool-caret {
+        display: none;
+    }
+
+    .drawing-tool-icon,
+    .drawing-tool-icon svg {
+        flex-basis: 20px;
+        height: 20px;
+        width: 20px;
+    }
+
+    /*
+     * The Features panel keeps its rows but the panel is narrower, so the
+     * property grid's tracks are rebalanced to give the value the room and
+     * let the label wrap.
+     */
+    .drawing-property-grid {
+        grid-template-columns:
+            minmax(0, 1fr)
+            minmax(0, 1.1fr)
+            minmax(0, 18px)
+            minmax(0, 14px);
+    }
+
+    .drawing-toolbar {
+        padding-left: 3px;
+        padding-right: 3px;
+    }
+
+    .drawing-category {
+        font-size: 8px;
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+}
+
+@media (max-width: 460px) {
+    /*
+     * MINIMUM VIABLE. Both rails are as narrow as they can be while
+     * keeping the icon buttons tappable and the Features rows readable.
+     * The drawing still gets everything else.
+     *
+     * The panels are NOT removed at this width - the whole point of the
+     * progression is that they survive - so the rails keep a real width
+     * and the icon buttons keep a real hit area.
+     *
+     * THE HIDE CONTROL SHRINKS TO ITS ICON, AND STAYS.
+     *
+     * At this width the style strip is reflowing onto several lines, and the
+     * word "Hide" beside an arrow is the one part of that control that is not
+     * load-bearing - the arrow says it. Dropping the label keeps the button
+     * small enough to sit on the strip's last line without pushing anything
+     * off, while its hit area stays full size (the padding and min-height
+     * above are untouched), so it is still comfortably tappable on a phone.
+     *
+     * It is never hidden and never removed: the control that folds the top
+     * bars away must itself be present at every width.
+     */
+    .drawing-topbar-hide {
+        font-size: 0;
+        gap: 0;
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+
+    .drawing-topbar-hide svg {
+        height: 15px;
+        width: 15px;
+    }
+
+    .drawing-workspace {
+        grid-template-columns: 46px minmax(0, 1fr) 148px;
+    }
+
+    .drawing-workspace-tools-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 148px;
+    }
+
+    .drawing-workspace-features-collapsed {
+        grid-template-columns: 46px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-workspace-tools-collapsed.drawing-workspace-features-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 22px;
+    }
+
+    .drawing-tool-panel,
+    .drawing-inspector {
+        padding-left: 3px;
+        padding-right: 3px;
+    }
+
+    .drawing-tool {
+        min-height: 32px;
+        padding: 2px;
+    }
+
+    .drawing-tool-icon,
+    .drawing-tool-icon svg {
+        flex-basis: 20px;
+        height: 20px;
+        width: 20px;
     }
 
     .drawing-toolbar {
@@ -2299,14 +2838,27 @@
     .drawing-category {
         font-size: 7px;
         letter-spacing: 0;
-        padding-left: 2px;
-        padding-right: 2px;
+        padding-left: 3px;
+        padding-right: 3px;
     }
 
-    .drawing-tool-panel,
-    .drawing-inspector {
-        padding-left: 4px;
-        padding-right: 4px;
+    /*
+     * A PROPERTY ROW STACKS ITS VALUE UNDER ITS LABEL.
+     *
+     * At this width a four-track row (label, value, unit, fix) cannot
+     * hold a readable label beside a readable number. Stacking the label
+     * above its own value keeps BOTH readable, and it is confined to the
+     * Features panel - it does not change the property model, only how
+     * the row is laid out.
+     */
+    .drawing-property-grid,
+    .drawing-property-grid-value,
+    .drawing-property-grid-pair {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .drawing-property-grid-label {
+        grid-column: 1 / -1;
     }
 
     .drawing-status-meta {
