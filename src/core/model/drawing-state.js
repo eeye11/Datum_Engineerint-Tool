@@ -2808,62 +2808,31 @@ function screenToEngineering(
 }
 
 /*
- * A feature as it is written to a file: a faithful deep copy of everything the
- * feature carries, not a hand-picked list of fields.
+ * A feature as it is written to a file.
  *
- * The whole object is spread first, so any property a feature has - a
- * dimension's source references, an annotation's placement and its
- * placement mode, a load's intensity and direction, a support's body link,
- * a feature's parent id and its own id - survives without this function
- * having to name it. Fields left unnamed are exactly the fields that were
- * silently dropped when this was a fixed list, so nothing here is picked out
- * field by field.
+ * EVERY FIELD IS DEEP-COPIED, DERIVED FROM THE OBJECT'S OWN KEYS.
  *
- * `geometry` is DEEP-copied, because it is the one field whose sub-objects
- * are edited in place elsewhere and must not be shared with the live model
- * across a serialise. It is copied only when it exists: an annotation or a
- * dimension has no `geometry` at all, and the previous version of this code
- * called JSON.parse(JSON.stringify(undefined)), which throws. That made
- * SAVING A DRAWING THAT CONTAINED ANY ANNOTATION fail outright, and it is the
- * reason an annotated sheet could not be saved and reopened.
+ * This is where the file format decides what a feature IS, and it used to be a
+ * shallow spread plus a HAND-WRITTEN LIST of sub-objects - `placement`,
+ * `sourceRefs`, `leader` and seven more. The list worked, and it was a trap: a
+ * field added to a feature tomorrow would be spread as a LIVE REFERENCE, save
+ * and load would both appear to work, and the defect would only show as two
+ * features quietly sharing one sub-object.
+ *
+ * Derived from the keys, a new field is serialised BY CONSTRUCTION - there is no
+ * list to remember to extend, so the file cannot fall behind the model.
+ *
+ * `deepClone` ANSWERS `undefined` WITH `undefined`, which is what lets this be
+ * unconditional: the `if (x !== undefined)` guards this used to carry existed
+ * because `JSON.parse(JSON.stringify(undefined))` THROWS, and one site that
+ * forgot made SAVING A DRAWING THAT CONTAINED ANY ANNOTATION fail outright. A
+ * field that was absent stays absent, so a reopened feature has the shape it
+ * was saved with.
  */
 function cloneFeatureForSave(object) {
-    const copy = { ...object };
+    const copy = {};
 
-    /*
-     * THE FIELDS THAT MUST NOT BE SHARED WITH THE LIVE MODEL.
-     *
-     * Each is copied through `deepClone`, which ANSWERS `undefined` WITH
-     * `undefined` - so the `if (x !== undefined)` guards this used to carry
-     * are gone. They were there because `JSON.parse(JSON.stringify(undefined))`
-     * throws, and writing the idiom out meant every site had to remember
-     * that: one that did not made SAVING A DRAWING CONTAINING ANY ANNOTATION
-     * fail outright, because an annotation has no `geometry` to copy. The
-     * guard is now in one place, in the helper, where it cannot be forgotten.
-     *
-     * A field that was absent stays absent - never materialised as an empty
-     * object - so a reopened feature has the shape it was saved with.
-     */
-    copy.geometry = deepClone(object.geometry);
-    copy.style = deepClone(object.style);
-    copy.metadata = deepClone(object.metadata);
-
-    /*
-     * The remaining plain sub-objects a feature may carry: a dimension's
-     * placement, an annotation's placement, a load's profile, a moment's
-     * direction. Copied the same way, for the same reason - so the file is a
-     * snapshot at the moment of saving rather than a live reference.
-     */
-    [
-        "placement",
-        "sourceRefs",
-        "anchorRef",
-        "leader",
-        "engineering",
-        "constraints",
-        "load",
-        "profile"
-    ].forEach((key) => {
+    Object.keys(object).forEach((key) => {
         copy[key] = deepClone(object[key]);
     });
 

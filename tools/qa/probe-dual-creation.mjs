@@ -27,11 +27,9 @@ export default async function run(page) {
 
   page.on("pageerror", (e) => errors.push(String((e && e.message) || e)));
 
-  await page.waitForFunction(
-    () => typeof window.datum === "object",
-    null,
-    { timeout: 60000 },
-  );
+  await page.waitForFunction(() => typeof window.datum === "object", null, {
+    timeout: 60000,
+  });
 
   await page.evaluate(async () => {
     if (typeof window.enggDrawing !== "object") {

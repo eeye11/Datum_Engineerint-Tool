@@ -66,6 +66,26 @@ const WIDTH = 900;
 const HEIGHT = 320;
 const PAD = 18;
 
+/*
+ * THE BAND AT THE BOTTOM OF THE FRAME FOR THE X LABELS AND TICKS.
+ *
+ * Reserved rather than overlapped: the graph's geometry is scaled into the
+ * frame MINUS this band, so a diagram sitting on the axis never lands on top
+ * of the numbers that say what the axis means. It is a layout constant, the
+ * same way PAD is, rather than a nudge applied when something happens to
+ * collide.
+ */
+const LABEL_BAND = 26;
+
+/*
+ * THE MARGIN LEFT FOR THE Y LABELS, to the left of the y-axis.
+ *
+ * The y-axis is drawn just inside the frame's left edge, and its values are
+ * right-aligned against it in this margin - so they are always outside the
+ * plotting area and can never sit on the diagram.
+ */
+const Y_LABEL_MARGIN = 34;
+
 const TOOLS = [
   { id: "select", label: "Select", hint: "Click an element to select it" },
   {
@@ -113,30 +133,99 @@ function numberText(value) {
 }
 
 /*
- * ENGINEERING <-> SCREEN.
+ * ENGINEERING <-> SCREEN, AND WHY IT IS FIXED FOR THE SESSION.
  *
- * One function, used by everything that draws and everything that reads
- * a click, so the two can never disagree. The y scale is the SAME
- * `unitHeight` the Plot editor uses, which is the peak of the diagram:
- * a sketch of a shear diagram therefore sits in the same box a plotted
- * one would, and switching modes does not make the drawing jump.
+ * One function, used by everything that draws and everything that reads a
+ * click, so the two can never disagree.
+ *
+ * THE Y SCALE IS CHOSEN ONCE AND DOES NOT CHANGE while the sketch is open.
+ *
+ * That is the whole of the "the geometry runs away from the mouse" defect.
+ * The scale used to be derived from the CURRENT elements' height on every
+ * redraw - so the moment a point was dragged upward, the peak grew, the
+ * scale changed, and every point on the graph MOVED. The point under the
+ * cursor was therefore never where the cursor was: the student aimed at a
+ * spot, the graph rescaled beneath them, and the shape shot off. It is also
+ * why the axes appeared to jump and why a sketch with nothing in it had an
+ * arbitrary height.
+ *
+ * So the vertical extent comes from `chooseScale` below, which is called ONCE
+ * for the session and then used unchanged. Adding, moving or deleting an
+ * element cannot move the graph, and the mapping
+ *
+ *     mouse position -> graph coordinate -> drawn geometry
+ *
+ * is stable for as long as the editor is open.
  */
-function makeScale(range, elements) {
+function makeScale(range, elements, options) {
   const from = Number(range?.from) || 0;
   const to = Number(range?.to) || 1;
   const span = to - from || 1;
 
-  const plotWidth = WIDTH - PAD * 2;
-  const plotHeight = HEIGHT - PAD * 2 - 14;
+  const plotLeft = PAD + Y_LABEL_MARGIN;
+  const plotWidth = WIDTH - PAD - Y_LABEL_MARGIN;
+  const plotHeight = HEIGHT - PAD * 2 - LABEL_BAND;
   const centre = PAD + plotHeight / 2;
 
-  /*
-   * The vertical scale follows the CONTENT, not the user's zoom, and it
-   * is padded to a whole number of units either side so a diagram that
-   * touches the top does not touch the frame. A sketch that has not been
-   * started gets the Plot editor's default rather than a range of zero,
-   * because a y-axis with no extent cannot be drawn against.
-   */
+  const unitHeight = chooseUnitHeight(range, elements, options);
+
+  const halfHeight = (plotHeight / 2) * 0.92;
+
+  return {
+    toScreen(point) {
+      return {
+        x: plotLeft + ((point.x - from) / span) * plotWidth,
+        y: centre - (point.y / unitHeight) * halfHeight,
+      };
+    },
+    fromScreen(screen) {
+      return {
+        x: from + ((screen.x - plotLeft) / plotWidth) * span,
+        y: ((centre - screen.y) / halfHeight) * unitHeight,
+      };
+    },
+    unitHeight,
+
+    /*
+     * THE GEOMETRY OF THE FRAME, exposed so the axes and the snap helpers do
+     * not each re-derive the same numbers. The right-hand margin and the label
+     * band are part of the frame, not private arithmetic.
+     */
+    plot: {
+      left: plotLeft,
+      right: plotLeft + plotWidth,
+      top: PAD,
+      bottom: PAD + plotHeight,
+      width: plotWidth,
+      height: plotHeight,
+      centre,
+    },
+    range: { from, to, span },
+  };
+}
+
+/*
+ * HOW TALL THE GRAPH IS, IN THE DIAGRAM'S OWN UNITS.
+ *
+ * The vertical extent is the largest of:
+ *
+ *   - the tallest thing already drawn, with headroom, so an existing sketch
+ *     opens showing all of itself;
+ *   - the range the ANALYSIS LAYER reports, which is what the diagram's axis
+ *     is scaled to and therefore what the plotted mode would show;
+ *   - a sane default, so an EMPTY sketch still has a real y-axis to draw
+ *     against rather than a degenerate one.
+ *
+ * Headroom is generous - `peak * 1.35` rather than the old `1.2` - because
+ * the point of fixing the scale is that a student can drag a point ABOVE the
+ * current peak without the graph rescaling, and 20% is not enough room to
+ * place the next step of a diagram.
+ */
+function chooseUnitHeight(range, elements, options) {
+  const span = (Number(range?.to) || 1) - (Number(range?.from) || 0) || 1;
+
+  const declared = Number(options?.yRange);
+
   let peak = 0;
 
   elements.forEach((element) => {
@@ -147,28 +236,20 @@ function makeScale(range, elements) {
     });
   });
 
-  const unitHeight =
-    peak > 0
-      ? peak * 1.2
-      : Math.max(span * 0.16, 1);
+  if (Number.isFinite(declared) && declared > 0) {
+    peak = Math.max(peak, declared);
+  }
 
-  const halfHeight = (plotHeight / 2) * 0.92;
+  if (peak > 0) {
+    return peak * 1.35;
+  }
 
-  return {
-    toScreen(point) {
-      return {
-        x: PAD + ((point.x - from) / span) * plotWidth,
-        y: centre - (point.y / unitHeight) * halfHeight,
-      };
-    },
-    fromScreen(screen) {
-      return {
-        x: from + ((screen.x - PAD) / plotWidth) * span,
-        y: ((centre - screen.y) / halfHeight) * unitHeight,
-      };
-    },
-    unitHeight,
-  };
+  /*
+   * NOTHING YET. A real extent either side of the axis, so the y-axis, its
+   * ticks and its labels exist before the first element is drawn - an empty
+   * sketch is still a graph.
+   */
+  return Math.max(span * 0.25, 1);
 }
 
 /*
@@ -244,37 +325,67 @@ function drawGraph(svg, elements, range, options) {
   }
 
   const selectedId = options?.selectedId || null;
-  const scale = makeScale(range, elements);
-  const zeroY = scale.toScreen({ x: 0, y: 0 }).y;
 
-  const parts = [`
-      <line class="sketch-editor-axis"
-        x1="${PAD}" y1="${zeroY}" x2="${WIDTH - PAD}" y2="${zeroY}"/>
-    `];
+  /*
+   * THE SCALE IS HANDED IN, not derived here.
+   *
+   * It used to be built inside this function, from the elements it was about
+   * to draw - which is what made the graph rescale itself the moment a point
+   * moved. The editor now chooses it ONCE and passes the same one every time,
+   * so nothing a gesture does can change the mapping between the cursor and
+   * the drawing. `makeScale` is still the fallback for a caller that has no
+   * scale to give (a test, or a one-off render).
+   */
+  const scale = options?.scale || makeScale(range, elements, options);
+  const plot = scale.plot;
+
+  const axisY = scale.toScreen({ x: 0, y: 0 }).y;
+
+  const parts = [];
 
   /*
    * ========================================================
-   * THE TICKS ARE THE BODY'S OWN ELEMENT LOCATIONS
+   * THE AXES ARE DRAWN FIRST, AND ALWAYS
    * ========================================================
    *
-   * A diagram changes shape where something happens on the body - under a
-   * point force, at a support, where a load starts. Those places are the
-   * structural positions of the diagram, so the ticks along the graph are the
-   * BODY'S ELEMENT LOCATIONS, not evenly spaced graph-paper marks.
+   * BOTH of them, whether or not the sketch has anything in it. An empty
+   * sketch is still a graph, and an empty graph with no axes tells the student
+   * nothing about where to draw - which is exactly when they need the axes
+   * most.
    *
-   * They are derived, not stored: the caller passes the same station list the
-   * analysis layer already computes from the source body every pass, so a
-   * force that moves slides its tick with it, a deleted support takes its
-   * tick away, and a new load grows one - with nothing to rebuild and no
-   * second list to fall out of step.
+   * The X axis sits at y = 0 in the graph's own units (so it moves when the
+   * diagram grows downward, which is correct - a sagging diagram is below its
+   * axis), and the Y axis is pinned to the plot's left edge. The y-axis is a
+   * REFERENCE, not a line at x = 0: for a diagram whose range starts at a
+   * support, x = 0 would sit on top of the left margin.
+   */
+  parts.push(`
+      <line class="sketch-editor-axis"
+        x1="${plot.left}" y1="${axisY}"
+        x2="${plot.right}" y2="${axisY}"/>
+
+      <line class="sketch-editor-axis"
+        x1="${plot.left}" y1="${plot.top}"
+        x2="${plot.left}" y2="${plot.bottom}"/>
+    `);
+
+  /*
+   * ========================================================
+   * THE X TICKS AND THEIR VALUES
+   * ========================================================
    *
-   * Each tick is drawn the full height of the plot so the vertical line reads
-   * as "something is at this station", and the horizontal axis keeps the same
-   * relationship to the body axis the diagram itself uses.
+   * Every tick gets a short mark ACROSS the axis and a NUMBER BENEATH IT, in
+   * the reserved label band. The numbers are why the band exists: they are the
+   * only thing that says what a station is, and a diagram you cannot read the
+   * scale of is not a diagram.
+   *
+   * They are drawn after the axis so they sit on top of it, and their text is
+   * ANCHORED to the middle of their own tick - so two adjacent stations label
+   * themselves where they are rather than drifting apart.
    */
   const stations = Array.isArray(options?.stations) ? options.stations : [];
 
-  stations.forEach(station => {
+  stations.forEach((station) => {
     const x = Number(station?.position?.x);
 
     if (!Number.isFinite(x)) {
@@ -285,8 +396,51 @@ function drawGraph(svg, elements, range, options) {
 
     parts.push(`
         <line class="sketch-editor-tick"
-          x1="${screenX}" y1="${PAD}"
-          x2="${screenX}" y2="${HEIGHT - PAD - 14}"/>
+          x1="${screenX}" y1="${plot.top}"
+          x2="${screenX}" y2="${plot.bottom}"/>
+
+        <line class="sketch-editor-axis-mark"
+          x1="${screenX}" y1="${axisY - 4}"
+          x2="${screenX}" y2="${axisY + 4}"/>
+
+        <text class="sketch-editor-tick-label"
+          x="${screenX}" y="${plot.bottom + 14}"
+          text-anchor="middle">${escapeHtml(
+            numberText(x),
+          )}</text>
+      `);
+  });
+
+  /*
+   * ========================================================
+   * THE Y TICKS AND THEIR VALUES
+   * ========================================================
+   *
+   * Scaled from the same fixed extent the geometry uses, so a value on the
+   * axis is the value a point at that height actually has. Five marks - the
+   * two extremes, zero, and the halfway points - which is enough to read a
+   * diagram against without turning the margin into a ruler.
+   *
+   * THEY LIVE IN THE LEFT MARGIN, right-aligned against the y-axis, so they
+   * can never overlap the drawing however tall it gets.
+   */
+  const yStep = scale.unitHeight;
+
+  [yStep, yStep / 2, 0, -yStep / 2, -yStep].forEach((value) => {
+    const screenY = scale.toScreen({ x: 0, y: value }).y;
+
+    if (screenY < plot.top - 2 || screenY > plot.bottom + 2) {
+      return;
+    }
+
+    parts.push(`
+        <line class="sketch-editor-axis-mark"
+          x1="${plot.left - 4}" y1="${screenY}"
+          x2="${plot.left}" y2="${screenY}"/>
+
+        <text class="sketch-editor-axis-label"
+          x="${plot.left - 7}" y="${screenY + 3}"
+          text-anchor="end">${escapeHtml(numberText(value))}</text>
       `);
   });
 
@@ -340,17 +494,10 @@ function drawGraph(svg, elements, range, options) {
         `);
 
       /*
-       * THE BEND HANDLE, SHOWN ONLY WHILE SELECTED. It is a control point, so
-       * it is an editing aid rather than part of the diagram - the finished
-       * result is the smooth curve alone.
+       * THE CONTROL POINTS ARE DRAWN ONCE, by the handle pass below - so the
+       * Start, the Bend and the End all behave the same way and there is no
+       * second place that decides where a point is.
        */
-      if (selected) {
-        parts.push(`
-            <circle class="sketch-editor-bend-handle"
-              cx="${b.x}" cy="${b.y}" r="3.5"/>
-          `);
-      }
-
       return;
     }
 
@@ -410,11 +557,40 @@ function drawGraph(svg, elements, range, options) {
     }
   }
 
+  /*
+   * THE ELEMENT'S OWN CONTROL POINTS, while it is selected.
+   *
+   * Every point an element is defined by is draggable directly, so the student
+   * edits the SHAPE rather than typing at it. They are drawn only for the
+   * selection, because they are an editing aid and not part of the diagram.
+   */
+  const selectedElement =
+    elements.find((element) => element.id === selectedId) || null;
+
+  if (selectedElement) {
+    selectedElementPoints(selectedElement).forEach((entry) => {
+      const screen = scale.toScreen(entry.point);
+
+      parts.push(`
+          <circle class="sketch-editor-handle"
+            data-handle-kind="${escapeHtml(entry.kind)}"
+            data-handle-index="${entry.index}"
+            cx="${screen.x}" cy="${screen.y}" r="4.5"/>
+        `);
+    });
+  }
+
+  /*
+   * THE FRAME'S OWN LABELS: what the two ends of the x range are, ONCE, at the
+   * bottom of the graph. The per-station numbers above say where each tick is;
+   * these say what the axis as a whole spans, which is the thing a reader
+   * looks for when the ticks are dense.
+   */
   parts.push(`
-      <text x="${PAD}" y="${HEIGHT - 5}" class="sketch-editor-label">
+      <text x="${plot.left}" y="${HEIGHT - 4}" class="sketch-editor-label">
         ${escapeHtml(numberText(Number(range?.from) || 0))}
       </text>
-      <text x="${WIDTH - PAD}" y="${HEIGHT - 5}"
+      <text x="${plot.right}" y="${HEIGHT - 4}"
         class="sketch-editor-label" text-anchor="end">
         ${escapeHtml(numberText(Number(range?.to) || 0))}
       </text>
@@ -423,6 +599,47 @@ function drawGraph(svg, elements, range, options) {
   svg.innerHTML = parts.join("");
 
   return scale;
+}
+
+/*
+ * ========================================================
+ * THE POINTS AN ELEMENT CAN BE EDITED BY
+ * ========================================================
+ *
+ * One list, in one order, used by the HANDLES the student sees and by the HIT
+ * TEST that decides which one they grabbed - so a handle can never be drawn
+ * somewhere the drag does not look for it.
+ *
+ * A line has its two ends. A three-point curve has its Start, its Bend and its
+ * End - all three, because the Bend is the whole point of the tool and dragging
+ * it is how a curve is shaped. A legacy many-point curve exposes every point it
+ * was drawn through.
+ */
+function selectedElementPoints(element) {
+  if (!element) {
+    return [];
+  }
+
+  if (element.kind === "line") {
+    return [
+      { kind: "start", index: 0, point: element.start },
+      { kind: "end", index: 1, point: element.end },
+    ].filter((entry) => entry.point);
+  }
+
+  if (element.kind === "curve3") {
+    return [
+      { kind: "start", index: 0, point: element.start },
+      { kind: "bend", index: 1, point: element.bend },
+      { kind: "end", index: 2, point: element.end },
+    ].filter((entry) => entry.point);
+  }
+
+  return (element.points || []).map((point, index) => ({
+    kind: "point",
+    index,
+    point,
+  }));
 }
 
 /*
@@ -499,89 +716,20 @@ function elementAt(screen, elements, scale) {
 
 /*
  * ========================================================
- * ASK FOR THE EXACT Y VALUE OF A PLACED POINT
+ * WHERE THE POINTER IS, IN THE GRAPH'S OWN COORDINATES
  * ========================================================
  *
- * The cursor decides WHERE on the sheet the point sits - which station along
- * the body, and roughly how high - but the ordinate is an ENGINEERING VALUE,
- * and asking the student to hit 250 kN by eye is asking them to aim at a
- * number. So the placement gives the position and this gives the number.
+ * ONE conversion, used by every gesture: the press that arms a stroke, the
+ * move that drags its end, the click that places the second point, and the
+ * drag of a handle. Because they all read the pointer through here, they cannot
+ * disagree about where the cursor is - which is what "the geometry follows the
+ * mouse" reduces to.
  *
- * The unit is the graph's own: a shear diagram is kN, a moment diagram kN·m.
- * It is passed in, because it belongs to the QUANTITY rather than to the
- * editor.
- *
- * Returning the number, or null when the student cancels, keeps the caller in
- * charge of the model: this only asks a question.
+ * The conversion is `scale.fromScreen`, the exact inverse of the `toScreen`
+ * the axes and every element are drawn with. There is NO offset applied here
+ * and none anywhere else: an offset would have to be tuned per zoom and would
+ * be wrong the moment the frame changed size.
  */
-function askForYValue({ label, value, unit, onCommit, onCancel }) {
-  const host = document.createElement("div");
-
-  host.className = "drawing-creation-dimension sketch-editor-y-popup";
-  host.setAttribute("role", "dialog");
-  host.setAttribute("aria-label", label);
-
-  host.innerHTML = `
-      <div class="drawing-creation-dimension-title">${escapeHtml(label)}</div>
-      <div class="drawing-creation-dimension-body">
-        <span class="drawing-creation-dimension-label">Y Value</span>
-        <span class="drawing-creation-dimension-input-wrap">
-          <input type="text" class="drawing-creation-dimension-input"
-              data-y-input inputmode="decimal" autocomplete="off"
-              aria-label="Y value">
-          <span class="drawing-creation-dimension-unit">${escapeHtml(
-            unit || "",
-          )}</span>
-        </span>
-      </div>
-    `;
-
-  document.body.appendChild(host);
-
-  const input = host.querySelector("[data-y-input]");
-
-  input.value = Number.isFinite(Number(value)) ? String(value) : "";
-
-  input.focus();
-  input.select();
-
-  const close = () => host.remove();
-
-  const confirm = () => {
-    const parsed = Number(input.value);
-
-    if (!Number.isFinite(parsed)) {
-      input.focus();
-      return;
-    }
-
-    close();
-    onCommit(parsed);
-  };
-
-  /*
-   * ENTER CONFIRMS FROM ANYWHERE IN THE POPUP, and Escape abandons it - the
-   * same two keys every other value popup in the application uses.
-   */
-  host.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      confirm();
-      return;
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-      onCancel();
-    }
-  });
-
-  return host;
-}
-
 function pointFromEvent(event, svg, scale) {
   const rect = svg.getBoundingClientRect
     ? svg.getBoundingClientRect()
@@ -595,59 +743,132 @@ function pointFromEvent(event, svg, scale) {
 
 /*
  * ========================================================
- * SNAP THE X ONTO A BODY-ELEMENT TICK
+ * SNAPPING
  * ========================================================
  *
- * A diagram changes shape where something happens on the body - under a point
- * force, at a support, where a load starts - so those are the positions worth
- * landing on, and the graph's ticks mark them.
+ * Three things worth landing on, and one rule for all of them:
  *
- * The snap is a MAGNET, NOT A WALL: only a point within a few pixels of a
- * tick is pulled onto it, so the student can still place an element anywhere
- * BETWEEN two events. A snap that captured the whole gap would make the middle
- * of every span unreachable, which is the opposite of what a diagram needs -
- * the interesting part of a curve is usually between the ticks.
+ *   1. THE BODY'S X TICKS - a diagram changes shape under a force, at a
+ *      support, where a load starts, and those stations are what a diagram is
+ *      read against.
  *
- * The tolerance is in SCREEN pixels, so the magnet feels the same at any zoom,
- * and it is converted to the graph's own units through the scale.
+ *   2. VERTICAL ALIGNMENT WITH A TICK - the x alone is pulled, so a point
+ *      ABOVE a station lines up with it while keeping whatever height the
+ *      cursor is at. Snapping the y too would drag the point onto the axis,
+ *      which is a different thing and not what "line it up with that station"
+ *      means.
+ *
+ *   3. ANOTHER ELEMENT'S ENDPOINTS - so a diagram can be drawn station by
+ *      station, each segment starting exactly where the last one finished,
+ *      which is what makes a stepped or sloped profile come out closed.
+ *
+ * THE SNAP IS A MAGNET WITHIN A FEW PIXELS, never a wall: the tolerance is in
+ * SCREEN pixels so it feels identical at any scale, and outside it the cursor
+ * is free. A snap that captured the whole gap would make the middle of every
+ * span unreachable, and the interesting part of a curve is usually between the
+ * ticks.
  */
 const SNAP_TOLERANCE_PX = 8;
 
-function snapXToStations(x, stations, scale, range) {
-  if (!Array.isArray(stations) || !stations.length) {
-    return x;
-  }
+/*
+ * One screen pixel, in each graph unit. The two axes have different scales, so
+ * they get different factors - using one for both would make the snap twice as
+ * sticky vertically as horizontally, or the reverse.
+ */
+function snapTolerances(scale) {
+  return {
+    x: (scale.range.span / scale.plot.width) * SNAP_TOLERANCE_PX,
+    y: (scale.unitHeight / (scale.plot.height * 0.92)) * SNAP_TOLERANCE_PX,
+  };
+}
 
-  const span = (Number(range?.to) || 1) - (Number(range?.from) || 0) || 1;
+/*
+ * Snap a graph point, and say WHAT it snapped to.
+ *
+ * Returning the kind is what lets the editor show the DAETUM snap indication -
+ * the same "endpoint"/"station" feedback the canvas gives - so a student can
+ * tell a snapped placement from a free one instead of having to guess.
+ */
+function snapPoint(point, context) {
+  const { scale, stations, elements, excludeId } = context;
 
-  const plotWidth = WIDTH - PAD * 2;
+  const tolerance = snapTolerances(scale);
 
-  /* One screen pixel, in the graph's x units. */
-  const unitsPerPixel = span / plotWidth;
+  let best = null;
 
-  const tolerance = SNAP_TOLERANCE_PX * unitsPerPixel;
-
-  let best = x;
-  let bestDistance = tolerance;
-
-  stations.forEach(station => {
-    const sx = Number(station?.position?.x);
-
-    if (!Number.isFinite(sx)) {
+  /*
+   * AN ENDPOINT FIRST, because it is an EXACT point in both axes and the most
+   * specific thing a student can aim at. A station only fixes the x, so an
+   * endpoint wins wherever the two are close.
+   */
+  elements.forEach((element) => {
+    if (excludeId && element.id === excludeId) {
       return;
     }
 
-    const distance = Math.abs(sx - x);
+    pointsOf(element).forEach((candidate) => {
+      const dx = Math.abs(candidate.x - point.x);
+      const dy = Math.abs(candidate.y - point.y);
 
-    if (distance <= bestDistance) {
-      bestDistance = distance;
-      best = sx;
+      if (dx > tolerance.x || dy > tolerance.y) {
+        return;
+      }
+
+      const distance = Math.hypot(dx, dy);
+
+      if (!best || distance < best.distance) {
+        best = { point: { x: candidate.x, y: candidate.y }, kind: "endpoint", distance };
+      }
+    });
+  });
+
+  if (best) {
+    return best;
+  }
+
+  /*
+   * THEN A STATION, WHICH SETS THE X ONLY. The y stays the cursor's, which is
+   * the vertical-alignment behaviour: the point is above the tick, not on it.
+   */
+  (stations || []).forEach((station) => {
+    const stationX = Number(station?.position?.x);
+
+    if (!Number.isFinite(stationX)) {
+      return;
+    }
+
+    const dx = Math.abs(stationX - point.x);
+
+    if (dx > tolerance.x) {
+      return;
+    }
+
+    if (!best || dx < best.distance) {
+      best = {
+        point: { x: stationX, y: point.y },
+        kind: "station",
+        distance: dx,
+      };
     }
   });
 
-  void scale;
-
   return best;
+}
+
+/*
+ * The x of a graph point, snapped to a station. Kept as a thin wrapper because
+ * the tests and the older call sites use it directly.
+ */
+function snapXToStations(x, stations, scale, range) {
+  const context = {
+    scale: scale || makeScale(range || { from: 0, to: 1 }, [], {}),
+    stations,
+    elements: [],
+  };
+
+  const snapped = snapPoint({ x, y: 0 }, context);
+
+  return snapped ? snapped.point.x : x;
 }
 
 function elementRowHtml(element, selectedId) {
@@ -835,14 +1056,48 @@ function open(options = {}) {
   const tools = dialog.querySelector("[data-sketch-tools]");
   const hint = dialog.querySelector("[data-sketch-hint]");
 
-  let scale = makeScale(range, elements);
-
   function selected() {
     return elements.find((entry) => entry.id === selectedId) || null;
   }
 
+  /*
+   * THE SCALE IS CHOSEN ONCE, AND THEN IT IS THE SESSION'S.
+   *
+   * This is the fix for the graph that used to move under the cursor. The
+   * extent is worked out from what is already there when the editor OPENS - so
+   * an existing sketch is shown whole - and it is then REUSED for every redraw.
+   * Adding a point, dragging one, or deleting an element cannot change the
+   * mapping, so the graph stays put and the geometry stays under the mouse.
+   *
+   * `drawGraph` is described the scale it should use rather than being left to
+   * derive one, so there is no second place that could choose a different one.
+   */
+  let scale = makeScale(range, elements, { yRange: options.yRange });
+
+  /*
+   * WHAT THE HINT SAYS WHILE A STROKE IS OPEN.
+   *
+   * A LINE needs one more point; a CURVE needs enough to reach three. It names
+   * the NEXT ACT, not the state, so the student is never left working out what
+   * to do next from a count.
+   */
+  function pendingMessage() {
+    if (pending.kind === "curve3") {
+      const remaining = 3 - pending.points.length;
+
+      if (remaining >= 2) {
+        return "Click the bend point";
+      }
+
+      return "Click the end point";
+    }
+
+    return "Click the end point";
+  }
+
   function redraw() {
-    scale = drawGraph(svg, elements, range, {
+    drawGraph(svg, elements, range, {
+      scale,
       selectedId,
       pending,
 
@@ -876,7 +1131,7 @@ function open(options = {}) {
     let message = def?.hint || "";
 
     if (pending?.points.length) {
-      message = `${pending.points.length} point(s) placed - press Enter to finish`;
+      message = pendingMessage();
     }
 
     hint.textContent = message;
@@ -922,60 +1177,243 @@ function open(options = {}) {
    * popup decides the exact ORDINATE, so a peak is entered as 250 kN rather
    * than aimed at.
    */
-  let dragging = null;
+  let gesture = null;
+  let justFinished = false;
 
-  const worldPoint = (event) => {
+  /*
+   * The graph point under the pointer, SNAPPED, with what it snapped to - so
+   * the caller can place from it AND show the indication.
+   */
+  const snapAt = (event, excludeId) => {
     const raw = pointFromEvent(event, svg, scale);
 
-    /*
-     * SNAP THE X TO A TICK, keep the Y the student is pointing at. The snap
-     * is horizontal only: the ordinate is the value being chosen, and pulling
-     * it would change the diagram's shape rather than its station.
-     */
+    const snapped = snapPoint(raw, {
+      scale,
+      stations,
+      elements,
+      excludeId,
+    });
+
     return {
-      x: snapXToStations(raw.x, stations, scale, range),
-      y: raw.y,
+      point: snapped ? snapped.point : raw,
+      kind: snapped ? snapped.kind : null,
     };
   };
 
+  const screenFromEvent = (event) => {
+    const rect = svg.getBoundingClientRect
+      ? svg.getBoundingClientRect()
+      : { left: 0, top: 0 };
+
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  /* Which handle of the selected element is under this screen point, if any. */
+  const handleAt = (screen) => {
+    const element = selected();
+
+    if (!element) {
+      return null;
+    }
+
+    let best = null;
+    let bestDistance = Infinity;
+
+    selectedElementPoints(element).forEach((entry) => {
+      const at = scale.toScreen(entry.point);
+      const distance = Math.hypot(screen.x - at.x, screen.y - at.y);
+
+      if (distance <= 9 && distance < bestDistance) {
+        bestDistance = distance;
+        best = entry;
+      }
+    });
+
+    return best;
+  };
+
+  /*
+   * A HANDLE WINS THE PRESS; then an ELEMENT IS MOVED; then EMPTY SPACE DRAWS.
+   *
+   * Deciding at the press is what makes the states predictable - a student
+   * cannot start drawing through a feature they meant to grab, and a press on
+   * empty space can never move something that is not there.
+   */
   svg.addEventListener("pointerdown", (event) => {
-    if (tool !== "line" && tool !== "curve") {
+    if (tool === "erase" || tool === "select") {
       return;
     }
 
     event.preventDefault();
 
-    const point = worldPoint(event);
+    const screen = screenFromEvent(event);
 
-    /*
-     * A LINE BEGINS A NEW STROKE; A CURVE CONTINUES ONE.
-     *
-     * A line is a single gesture - press, drag, release - so each press starts
-     * fresh. A curve is THREE gestures: the press commits the point that was
-     * being dragged (the Start, then the Bend), and the new cursor becomes the
-     * point now under the cursor. The third release has three committed points
-     * and the curve is built.
-     */
-    if (tool === "curve") {
-      if (!pending || pending.kind !== "curve3") {
-        pending = { kind: "curve3", points: [point], live: 1 };
-      } else {
-        pending.points = [...pending.points, point];
-        pending.live = pending.points.length;
-      }
-    } else {
-      pending = { kind: "line", points: [point, point] };
+    const handle = handleAt(screen);
+
+    if (handle) {
+      const element = selected();
+
+      gesture = {
+        type: "point",
+        pointerId: event.pointerId,
+        elementId: element.id,
+        handle,
+        original: JSON.parse(JSON.stringify(element)),
+        moved: false,
+      };
+
+      svg.setPointerCapture?.(event.pointerId);
+      return;
     }
 
-    dragging = { pointerId: event.pointerId };
+    const hit = elementAt(screen, elements, scale);
 
+    if (hit) {
+      selectedId = hit.id;
+
+      gesture = {
+        type: "move",
+        pointerId: event.pointerId,
+        elementId: hit.id,
+        origin: JSON.parse(JSON.stringify(hit)),
+        from: scale.fromScreen(screen),
+        moved: false,
+      };
+
+      redraw();
+      svg.setPointerCapture?.(event.pointerId);
+      return;
+    }
+
+    /*
+     * EMPTY SPACE: DRAW. Whether the RELEASE finishes the stroke (a drag) or
+     * leaves it waiting for a second click is decided by how far the pointer
+     * travels - see `pointerup`.
+     */
+    const snapped = snapAt(event);
+
+    if (tool === "curve") {
+      if (!pending || pending.kind !== "curve3") {
+        pending = { kind: "curve3", points: [snapped.point] };
+      } else {
+        pending.points = [...pending.points, snapped.point];
+      }
+
+      if (pending.points.length >= 3) {
+        commitCurve();
+
+        gesture = null;
+        redraw();
+        return;
+      }
+    } else {
+      pending = { kind: "line", points: [snapped.point] };
+    }
+
+    gesture = {
+      type: "draw",
+      pointerId: event.pointerId,
+      startScreen: screen,
+      moved: false,
+    };
+
+    redraw();
     svg.setPointerCapture?.(event.pointerId);
+  });
+
+  svg.addEventListener("pointermove", (event) => {
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const screen = screenFromEvent(event);
+
+    if (gesture.type === "point") {
+      const snapped = snapAt(event, gesture.elementId);
+
+      applyPointMove(gesture, snapped.point);
+
+      gesture.moved = true;
+
+      redraw();
+      return;
+    }
+
+    if (gesture.type === "move") {
+      const now = scale.fromScreen(screen);
+
+      applyWholeMove(gesture, {
+        x: now.x - gesture.from.x,
+        y: now.y - gesture.from.y,
+      });
+
+      gesture.moved = true;
+
+      redraw();
+      return;
+    }
+
+    /*
+     * DRAWING. The newest point follows the cursor, snapped.
+     *
+     * THE ARRAY GROWS ONCE, THEN THE LIVE END IS REPLACED. A stroke is armed
+     * with its FIRST point; the first move APPENDS the point under the cursor,
+     * and each later move replaces that one. A stroke that has only its anchor
+     * therefore gains an end on the first move - which is what a drag needs -
+     * and a stroke that already has one keeps following the cursor.
+     *
+     * A CURVE works the same way: its already-committed points stand and only
+     * the newest follows the cursor.
+     */
+    const moved = snapAt(event).point;
+
+    if (Math.hypot(
+      screen.x - gesture.startScreen.x,
+      screen.y - gesture.startScreen.y,
+    ) >= 4) {
+      gesture.moved = true;
+    }
+
+    /*
+     * THE LIVE END IS REPLACED ONLY IF ONE IS ALREADY THERE. A stroke armed
+     * with its anchor alone - which is every press - GAINS an end here; a
+     * stroke that already has one has it moved. Testing the count rather than
+     * `gesture.moved` is what makes the first move append even though the same
+     * event is the one that decides the gesture was a drag.
+     */
+    const hasLiveEnd = gesture.liveEnd === true;
+
+    const committed = hasLiveEnd
+      ? pending.points.slice(0, pending.points.length - 1)
+      : pending.points;
+
+    pending.points = [...committed, moved];
+
+    gesture.liveEnd = true;
 
     redraw();
   });
 
-  svg.addEventListener("pointermove", (event) => {
-    if (!dragging || dragging.pointerId !== event.pointerId) {
+  svg.addEventListener("pointerup", (event) => {
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const finished = gesture;
+
+    gesture = null;
+
+    /*
+     * A POINT OR A WHOLE ELEMENT that moved is one finished edit; one that did
+     * not stays a plain selection, so a click on a feature selects it rather
+     * than nudging it.
+     */
+    if (finished.type === "point" || finished.type === "move") {
+      if (!finished.moved) {
+        restoreOriginal(finished);
+      }
+
+      redraw();
       return;
     }
 
@@ -983,142 +1421,204 @@ function open(options = {}) {
       return;
     }
 
-    const point = worldPoint(event);
-
     /*
-     * THE POINT UNDER THE CURSOR IS THE LAST ONE, and it is still MOVING.
-     *
-     * A line's start was fixed by the press, so the cursor is its end. A
-     * curve's already-committed points (the Start, then the Bend) stand; only
-     * the newest point follows the cursor until the next press fixes it.
+     * A DRAG COMPLETES THE STROKE ON RELEASE. A press that never travelled is
+     * a CLICK, and the stroke is left open for the next click - so the student
+     * gets whichever idiom they used without saying which they meant.
      */
-    if (tool === "line") {
-      pending.points = [pending.points[0], point];
-    } else {
-      pending.points = [
-        ...pending.points.slice(0, pending.live - 1),
-        point,
-      ];
+    if (finished.moved) {
+      if (tool === "curve") {
+        if (pending.points.length >= 3) {
+          commitCurve();
+        }
+      } else {
+        commitLine();
+      }
+
+      redraw();
+    }
+  });
+
+  svg.addEventListener("pointercancel", () => {
+    gesture = null;
+  });
+
+  /*
+   * THE SECOND CLICK OF A CLICK-MOVE-CLICK STROKE.
+   *
+   * A press arms the first point; a press-and-release that did NOT travel
+   * leaves the stroke open, and the browser's own `click` for it is the first
+   * point's click. A SECOND click anywhere on the graph then supplies the next
+   * point - which is the end of a line, or the curve's Bend and then its End.
+   *
+   * A CLICK THAT BELONGED TO A GESTURE IS NOT A SECOND CLICK: a drag has
+   * already committed its stroke, and a press on a handle or an element was an
+   * edit. `justFinished` is what tells that trailing click apart, so a drag
+   * cannot also be read as the start of a new stroke.
+   */
+  svg.addEventListener("click", (event) => {
+    if (tool !== "line" && tool !== "curve") {
+      return;
+    }
+
+    if (justFinished) {
+      justFinished = false;
+      return;
+    }
+
+    if (!pending || !pending.points.length) {
+      return;
+    }
+
+    const snapped = snapAt(event);
+
+    pending.points = [...pending.points, snapped.point];
+
+    if (tool === "line" && pending.points.length >= 2) {
+      commitLine();
+    } else if (tool === "curve" && pending.points.length >= 3) {
+      commitCurve();
     }
 
     redraw();
   });
 
-  svg.addEventListener("pointerup", (event) => {
-    if (!dragging || dragging.pointerId !== event.pointerId) {
-      return;
-    }
-
-    dragging = null;
-
-    if (tool === "line") {
-      finishLineStroke();
-      return;
-    }
-
-    if (tool === "curve") {
-      finishCurveStroke();
-    }
-  });
-
   /*
-   * A LINE IS DONE AT THE RELEASE. Its two points are the shape, so the
-   * element is committed, the end's ordinate is asked for, and the tool is
-   * ready for the next one.
+   * COMMIT A LINE. Both points came from the cursor, so there is no dialog to
+   * answer and nothing to ask for.
    */
-  function finishLineStroke() {
-    if (!pending || pending.points.length < 2) {
-      pending = null;
-      redraw();
-      return;
-    }
-
+  function commitLine() {
     const [start, end] = pending.points;
 
-    const element = {
+    if (!start || !end) {
+      pending = null;
+      return;
+    }
+
+    elements.push({
       id: newId(++sequence),
       kind: "line",
       start: { x: start.x, y: start.y },
       end: { x: end.x, y: end.y },
-    };
-
-    pending = null;
-
-    elements.push(element);
-
-    selectedId = element.id;
-
-    redraw();
-
-    askForY({
-      element,
-      pointKey: "end",
-      label: "Sketch Element",
     });
+
+    selectedId = elements[elements.length - 1].id;
+    pending = null;
+    justFinished = true;
+  }
+
+  /* COMMIT A THREE-POINT CURVE. Start, Bend and End, all from the cursor. */
+  function commitCurve() {
+    const [start, bend, end] = pending.points;
+
+    elements.push(
+      buildThreePointCurve(newId(++sequence), start, bend, end),
+    );
+
+    selectedId = elements[elements.length - 1].id;
+    pending = null;
+    justFinished = true;
   }
 
   /*
-   * A CURVE NEEDS THREE POINTS. The first two gestures place Start and Bend;
-   * the third places End and builds the curve, then asks for its ordinate.
+   * MOVE ONE DEFINING POINT, from the ORIGINAL element rather than the live
+   * one - so a long drag cannot accumulate rounding, and the point lands
+   * exactly where the cursor is rather than a little off it.
    */
-  function finishCurveStroke() {
-    if (!pending || pending.points.length < 3) {
-      redraw();
+  function applyPointMove(active, point) {
+    const element = elements.find((entry) => entry.id === active.elementId);
+
+    if (!element) {
       return;
     }
 
-    const [start, bend, end] = pending.points;
+    const handle = active.handle;
 
-    const element = buildThreePointCurve(
-      newId(++sequence),
-      start,
-      bend,
-      end,
-    );
+    if (element.kind === "line") {
+      element[handle.kind === "start" ? "start" : "end"] = {
+        x: point.x,
+        y: point.y,
+      };
 
-    pending = null;
+      return;
+    }
 
-    elements.push(element);
+    if (element.kind === "curve3") {
+      const key =
+        handle.kind === "bend"
+          ? "bend"
+          : handle.kind === "end"
+            ? "end"
+            : "start";
 
-    selectedId = element.id;
+      element[key] = { x: point.x, y: point.y };
 
-    redraw();
+      return;
+    }
 
-    askForY({
-      element,
-      pointKey: "end",
-      label: "Curve",
-    });
+    /*
+     * A LEGACY MANY-POINT CURVE: the dragged point is put back where it was
+     * and set anew, so the rest of the curve is untouched.
+     */
+    const points = (active.original.points || []).map((entry) => ({
+      ...entry,
+    }));
+
+    points[handle.index] = { x: point.x, y: point.y };
+
+    element.points = points;
   }
 
   /*
-   * ASK FOR THE EXACT Y OF A JUST-PLACED POINT, then redraw at that value.
-   *
-   * The popup is opened with the ordinate the cursor gave as the suggestion,
-   * so a student who is happy with it presses Enter and one who wants a round
-   * number types it. The element is already on the sheet - the popup edits it
-   * - so cancelling simply leaves the placed value in place.
+   * MOVE THE WHOLE ELEMENT by a graph-space delta, from the ORIGINAL - so the
+   * shape and length are preserved exactly and the feature translates rather
+   * than being rebuilt from where the cursor happens to be.
    */
-  function askForY({ element, pointKey, label }) {
-    askForYValue({
-      label,
-      value: element[pointKey]?.y ?? 0,
-      unit: options.yUnit || "",
-      onCommit: (value) => {
-        element[pointKey] = { ...element[pointKey], y: value };
+  function applyWholeMove(active, delta) {
+    const element = elements.find((entry) => entry.id === active.elementId);
 
-        redraw();
-      },
-      onCancel: () => {},
-    });
+    if (!element) {
+      return;
+    }
+
+    const original = active.original;
+
+    const shifted = (point) =>
+      point ? { x: point.x + delta.x, y: point.y + delta.y } : point;
+
+    if (element.kind === "line") {
+      element.start = shifted(original.start);
+      element.end = shifted(original.end);
+      return;
+    }
+
+    if (element.kind === "curve3") {
+      element.start = shifted(original.start);
+      element.bend = shifted(original.bend);
+      element.end = shifted(original.end);
+      return;
+    }
+
+    element.points = (original.points || []).map(shifted);
+  }
+
+  /* Put an element back as it was, for a press that turned out to be a click. */
+  function restoreOriginal(active) {
+    const index = elements.findIndex((entry) => entry.id === active.elementId);
+
+    if (index >= 0) {
+      elements[index] = active.original;
+    }
   }
 
   /*
-   * DRAWING ON THE GRAPH.
+   * DRAWING ON THE GRAPH: SELECT AND ERASE.
    *
-   * The pointer position is converted through the SAME scale the axes
-   * were drawn with, so what is stored is engineering geometry and not a
-   * pixel that happens to look right at the current zoom.
+   * Creation is NOT handled here. A Line and a Curve are drawn by the
+   * press/drag/release and the second click above, so the browser's `click`
+   * that follows a gesture is already accounted for. Select and Erase still act
+   * on a click, because they are a single act on an existing element rather
+   * than a gesture.
    */
   svg.addEventListener("click", (event) => {
     if (tool === "select") {
@@ -1369,15 +1869,17 @@ function handleEscape() {
 const enggSketchEditor = {
   TOOLS,
   SNAP_TOLERANCE_PX,
-  askForYValue,
   buildThreePointCurve,
   close,
   distanceToElement,
   handleEscape,
   isOpen,
   makeScale,
+  chooseUnitHeight,
   open,
   pointsOf,
+  selectedElementPoints,
+  snapPoint,
   snapXToStations,
 };
 

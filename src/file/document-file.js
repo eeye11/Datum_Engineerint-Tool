@@ -304,6 +304,23 @@ MIGRATIONS[1] = function (document) {
 function migrate(document, fromVersion) {
   let current = document;
 
+  /*
+   * A VERSION BUMP MUST BRING A STEP WITH IT.
+   *
+   * The loop below already refuses a file whose step is missing, which is the
+   * safe answer at load time - but it only fires when somebody happens to open
+   * an old file. THIS catches the mistake at the moment the mistake is made: if
+   * CURRENT_VERSION has been raised and the step for the version below it was
+   * not written, the first load of ANYTHING returns the "cannot open" failure
+   * and the reason is right here.
+   *
+   * It is a check on the CODE, not on the file, so it is deliberately cheap and
+   * runs before the loop rather than inside it.
+   */
+  if (!MIGRATIONS[CURRENT_VERSION - 1] && MINIMUM_SUPPORTED_VERSION < CURRENT_VERSION) {
+    return null;
+  }
+
   for (
     let version = fromVersion;
     version < CURRENT_VERSION;

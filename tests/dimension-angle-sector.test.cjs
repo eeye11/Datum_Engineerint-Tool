@@ -47,10 +47,7 @@ const check = (name, ok, detail) => {
  */
 const fs = require("fs");
 
-const source = fs.readFileSync(
-  modulePath("dimension-model.js"),
-  "utf8",
-);
+const source = fs.readFileSync(modulePath("dimension-model.js"), "utf8");
 
 function extract(name) {
   const start = source.indexOf(`function ${name}(`);
@@ -81,9 +78,8 @@ const pieces = [
   "normalise",
   "legDirection",
   "negate",
-  "signedSweep",
-  "directionBetween",
-  "rotateToward",
+  "atan2Angle",
+  "anglesOf",
   "angleSectorLegs",
 ]
   .map(extract)
@@ -91,8 +87,8 @@ const pieces = [
 
 check(
   "the sector function and its helpers were recovered",
-  pieces.length === 7,
-  `recovered ${pieces.length} of 7`,
+  pieces.length === 6,
+  `recovered ${pieces.length} of 6`,
 );
 
 const vm = require("vm");
@@ -176,9 +172,7 @@ console.log("\n  a 90-degree pair reads 90 in every sector\n");
   const rightValue = (placement) => {
     const legs = angleSectorLegs(vertex, spanA, rightSpan, placement);
 
-    return legs
-      ? Math.round(angleBetween(legs.a, legs.b) * 10) / 10
-      : null;
+    return legs ? Math.round(angleBetween(legs.a, legs.b) * 10) / 10 : null;
   };
 
   check(
@@ -217,9 +211,7 @@ console.log("\n  REVERSING A LINE DOES NOT CHANGE THE ANSWER\n");
 
   check(
     "every sector reads the same with the second line reversed",
-    placements.every(
-      (p) => valueAt(p, reversedSpanB) === valueAt(p),
-    ),
+    placements.every((p) => valueAt(p, reversedSpanB) === valueAt(p)),
     placements
       .map((p) => `${valueAt(p)} -> ${valueAt(p, reversedSpanB)}`)
       .join(", "),
@@ -233,12 +225,7 @@ console.log("\n  REVERSING A LINE DOES NOT CHANGE THE ANSWER\n");
   check(
     "and with the FIRST line reversed as well",
     placements.every((p) => {
-      const legs = angleSectorLegs(
-        vertex,
-        reversedSpanA,
-        reversedSpanB,
-        p,
-      );
+      const legs = angleSectorLegs(vertex, reversedSpanA, reversedSpanB, p);
 
       const value = legs
         ? Math.round(angleBetween(legs.a, legs.b) * 10) / 10

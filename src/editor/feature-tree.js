@@ -873,6 +873,16 @@ function openSketchEditorFor(object, geometry) {
         elements: geometry.sketchElements || [],
 
         /*
+         * THE DIAGRAM'S OWN VERTICAL EXTENT.
+         *
+         * The sketch's y-scale is fixed when the editor opens, and this is the
+         * value it is fixed against: the same extent the PLOTTED mode draws to,
+         * so switching between drawing and plotting a diagram shows it at one
+         * size, and a sketch that is empty still has a real y-axis.
+         */
+        yRange: Number(geometry.yRange) || Number(geometry.unitHeight) || 0,
+
+        /*
          * THE ORDINATE'S UNIT, from the diagram's own axis definition - kN
          * for a shear or axial diagram, kN·m for a bending moment. The Y-value
          * popup states the number in it, so the student sees "250 kN" rather

@@ -34,10 +34,7 @@ const check = (name, ok, detail) => {
   }
 };
 
-const placement = fs.readFileSync(
-  modulePath("dimension-placement.js"),
-  "utf8",
-);
+const placement = fs.readFileSync(modulePath("dimension-placement.js"), "utf8");
 
 console.log("\n  a first line is armed, not placed\n");
 

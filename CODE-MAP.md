@@ -211,20 +211,70 @@ not passed through). The same element gives increasing, decreasing, peak,
 trough, concave-up and concave-down shapes — there is deliberately no
 per-shape tool. Built by `buildThreePointCurve(id, start, bend, end)`.
 
-**Drawing is press-drag-release.** `pointerdown` fixes the point, `pointermove`
-puts the cursor's point under the pointer (a line keeps its start; a curve
-keeps its already-committed Start/Bend), `pointerup` commits. On commit the
-**Y-value popup** (`askForYValue` / `askForY`) asks for the exact ordinate in
-the diagram's unit (`options.yUnit`). Enter confirms from any control; Escape
-abandons.
+**COORDINATES: `toScreen` / `fromScreen`, AND THE SCALE IS FIXED FOR THE SESSION.**
 
-**Body-element ticks and snapping.** `drawGraph(..., { stations })` draws a
-tick per body-element station; `snapXToStations` pulls a nearby x onto a tick
-within `SNAP_TOLERANCE_PX` (a magnet, **not** a wall — points between ticks
-stay placeable). Stations come from `analysis-dependencies.sourceStations(body)`
-via the diagram's live `referencePositions`, passed in by `openSketchEditorFor`
-(along with `yUnit` from `renderer.ANALYSIS_DIAGRAM_AXES`). They are
-**derived**, so they follow the body — nothing to rebuild.
+`makeScale(range, elements, options)` is the ONE projection, used by every
+axis, every element and every gesture — so what is drawn and what is read
+cannot disagree. Its vertical extent comes from `chooseUnitHeight` and is
+**chosen once, when the editor opens** (`let scale = makeScale(...)` in `open`),
+then REUSED for every `redraw`. It used to be re-derived from the current
+elements each frame, so dragging a point upward rescaled the graph beneath the
+cursor and the geometry appeared to run away from the mouse. `options.yRange`
+(the diagram's own extent, from `openSketchEditorFor`) anchors it; an empty
+sketch still gets a real y-axis.
+
+**Axes and ticks.** `drawGraph` always draws BOTH axes — x at y = 0, y pinned to
+the plot's left edge — plus a mark and a VALUE at every body station (in the
+reserved `LABEL_BAND`) and five y values in the left `Y_LABEL_MARGIN`. An empty
+sketch is still a graph.
+
+**TWO CREATION IDIOMS, ONE GESTURE MODEL.** `pointerdown` decides ONCE what the
+gesture is, from what is under the pointer:
+
+```
+a handle of the selected element   -> move that point
+an element                         -> move the whole element
+empty space, with a draw tool      -> draw
+```
+
+Drawing then takes either idiom, told apart by travel past 4px:
+
+```
+press / drag / release                  the drag gave the second point
+press / release, move, click            the second click gives it
+```
+
+`commitLine` / `commitCurve` are the only commit paths, so both idioms produce
+identical geometry. `justFinished` swallows the browser's trailing click after a
+drag, so one gesture cannot become two elements.
+
+**THERE IS NO Y-VALUE POPUP.** The cursor is the ordinate in both axes;
+`askForYValue` and its fallback are **deleted**, and two tests assert the
+absence. Exact values are still editable, through the handles and the panel.
+
+**Snapping** is `snapPoint(point, { scale, stations, elements, excludeId })`,
+which returns the snapped point **and what it snapped to**, in priority order:
+
+1. another element's **endpoint** (both axes exact — `endpoint`),
+2. a **body station's x** with the cursor's y (vertical alignment — `station`).
+
+The tolerance is a few SCREEN pixels, converted per axis (`snapTolerances`), so
+the magnet feels the same at any scale and is never a wall. `snapXToStations` is
+kept as a thin wrapper for the older call sites.
+
+**Direct manipulation.** `selectedElementPoints(element)` is the ONE list of an
+element's editable points, used by both the handles drawn and the hit test that
+finds them: a line's two ends; a `curve3`'s Start, **Bend** and End; a legacy
+curve's every point. A whole-feature drag and a point drag both apply their
+delta from the **ORIGINAL** element stashed at the press (`applyWholeMove` /
+`applyPointMove`), so a long drag cannot accumulate rounding and the shape is
+preserved exactly.
+
+**Body-element ticks.** `drawGraph(..., { stations })` draws a tick per
+body-element station; stations come from `analysis-dependencies.sourceStations`
+via the diagram's live `referencePositions`, so they are **derived** and follow
+the body. The three diagrams share ALL of this — only `diagramType`, the axis
+unit and the title differ.
 
 **Layout.** Graph area first and full width (`.sketch-editor-graph-area`),
 tools lower-left, elements/properties lower-right (`.sketch-editor-lower`).
@@ -280,7 +330,9 @@ is. See the `const highlighted = false` in `renderer.js`.
 - **Change how an angle is measured or drawn**
   `features/dimensions/dimension-model.js → angleSectorLegs` is the ONE place
   the sector is chosen; both the value and the arc are built from it, so they
-  cannot disagree. See §11.
+  cannot disagree. The SPAN each reference measures is `spanOfReference`, which
+  resolves a reference's own edge anchors — needed for two sides of one
+  triangle. See §12 and §12a.
 
 ---
 
@@ -305,8 +357,11 @@ examples:
 | Test | Pins |
 |---|---|
 | `dimension-angle-sector.test.cjs` | the angular sector: cursor choice, right angle, reversed endpoints, rotation, the vertex case (§12) |
+| `dimension-subgeometry-angle.test.cjs` | two EDGES of one triangle: all three vertex angles, sum 180, reversed endpoints, a side's length, parallel edges of one rectangle (§12a) |
+| `dimension-same-feature-angle.test.cjs` | the same requirement through the committed dimension and the inference |
 | `annotate-toolset.test.cjs` | the Annotate categories and that no command hides behind a submenu (§11) |
 | `deep-clone.test.cjs` | `deepClone`, including the `undefined` case that broke saving (§14) |
+| `enggdraw-round-trip.test.cjs` | the whole `.enggdraw` format: every feature kind and relationship through save → text → load (§15) |
 | `dual-creation.test.cjs`, `statics-dual-creation.test.cjs` | click-move-click AND click-drag for every creation tool |
 | `responsive-layout.test.cjs` | the toolbar/section-bar one-row rule, panels never hidden, breakpoints descending (§13) |
 
@@ -377,6 +432,50 @@ in `annotation-model.js`; both file under the **Annotate** group in the tree.
 
 ## 12. Angular dimensioning, and why it works the way it does
 
+### The references may be EDGES of one feature
+
+**"Two lines" does not mean "two features".** A triangle is ONE feature with
+three edges, and any two of its edges are valid references for an angle — as
+are two sides of a rectangle or a polygon, or two independent lines.
+
+A reference therefore names a **sub-geometry**:
+
+```
+{ kind: "line", featureId: <triangle id>,
+  anchor: "segment0Start", endAnchor: "segment0End" }
+```
+
+`hit-testing → objectAtPoint` reports the FEATURE; the EDGE comes from
+`dimension-inference.js → compositeSegmentReference`, which finds the segment
+nearest the click and names its two ends (`segment{i}Start/End`). That is
+requirement §20 — a specific reference, not merely the parent feature.
+
+**TWO THINGS MUST BOTH HOLD for that to measure anything**, and both were
+broken:
+
+1. `normaliseReferences` (in `dimension-model.js`) **dropped `endAnchor`**, so
+a stored dimension could not name its edge. It preserves it now.
+2. `measureAngle` / `angularGraphics` resolved each reference through the
+FEATURE's span — `twoPointSpan(triangle)`, which describes the TRIANGLE, not
+the side clicked — so both sides resolved to the same span and the angle was
+zero or about the wrong lines. They now use **`spanOfReference`**, which
+resolves the reference's own anchors first and derives the partner anchor
+(`segment3Start` ⇄ `segment3End`) when only one is stored, for dimensions
+saved before the fix. The feature span remains the fallback for a whole-body
+reference (a Line, a Beam, a Cable, a Shaft).
+
+**Shared vertex wins; otherwise the mathematical intersection.** `nearestVertex`
+takes the closest pair of ends of the two resolved spans — so two sides of a
+triangle meet at the corner the student sees, not at the parent's centre or a
+bounding-box middle. Two edges that do not touch use their line intersection,
+as two independent lines do.
+
+**Parallel edges are a DISTANCE, not a zero angle.** `inferDimensionDescriptor`
+tests the cross product of the two unit directions and falls to a
+perpendicular distance, so two opposite sides of a rectangle never draw an arc.
+
+### The three decisions
+
 Two lines crossing make **four** angular regions, in two values. For a 35°
 pair: `35° 145° 35° 145°`. Three separate things decide the final dimension,
 and they are deliberately kept apart:
@@ -391,6 +490,13 @@ and they are deliberately kept apart:
 (`measureAngle`) and the drawn arc (`angularGraphics`) are built from its two
 legs, so a label reading 35° can never sit over an arc drawn through 145°.
 
+**The sector is chosen by SORTING the four boundary rays by angle**, then
+pairing each with the next — which divides the circle into exactly the four
+regions in order. The earlier version listed the pairs in a FIXED order, which
+is only the order around the circle for some arrangements of the two axes; when
+it was not, a dimension inside a triangle's 90° corner measured the 143° region
+outside it. Sorting removed every assumption about how the two axes relate.
+
 **The sector is derived from `dimension.placement`, not stored beside it.**
 Placement is already world-space and already survives zoom, pan, Fit, save and
 reload — so there is one piece of state to keep in step with the geometry, not
@@ -402,15 +508,71 @@ are built from the vertex outward (`legDirection`), never from a raw
 `end - start`, so reversing a line changes nothing — the cursor still chooses
 acute or obtuse.
 
-**Guarantees, each covered by `tests/dimension-angle-sector.test.cjs`:**
+### TWO EDGES OF ONE FEATURE (triangles, rectangles, polygons)
+
+**"Two lines" does not mean "two features".** A triangle is ONE feature with
+three EDGES, and any two of its sides must be valid angular references. A
+reference names the EDGE, not the feature:
+
+```
+Triangle  ->  { kind: "line", featureId: tri, anchor: "segment1Start",
+                endAnchor: "segment1End" }
+```
+
+The names come from `compositeSegmentReference` (`dimension-inference.js`) and
+`measurement-core.resolveAnchor` resolves each to its real world point. Three
+things have to hold, and each was a defect at some point:
+
+1. **`normaliseReferences` must KEEP `endAnchor`.** It dropped it, so a stored
+   dimension carried only the two `Start` anchors and could not find the second
+   end of either edge. **This is the one that broke the whole angle path.**
+2. **The measurement resolves the REFERENCE's span, not the feature's** —
+   `spanOfReference` in `dimension-model.js`. `twoPointSpan(triangle)` is the
+   triangle's overall extent (or null), so using it made two sides of ONE
+   triangle the SAME span. It also derives the partner anchor
+   (`segment1Start` → `segment1End`) so a dimension saved without one resolves.
+3. **The sector test must not assume how the two axes are oriented.**
+   `angleSectorLegs` sorts the four boundary rays by angle and takes
+   consecutive pairs; a fixed order matched the wrong sector for some pairs.
+
+Which measurement two references imply is the INFERENCE's decision
+(`inferDimensionDescriptor`): non-parallel lines → **angle**, parallel lines →
+**perpendicular distance**, two points → **distance**. It compares the
+references' ANCHORS (`sameLineReference`), never their feature ids, so two
+edges of one rectangle are correctly two different lines.
+
+### The click flow
+
+```
+click 1  -> armSingleMeasurement   LENGTH preview, still accepting a 2nd ref
+click 2  -> inferDimensionDescriptor:
+              non-parallel -> angular   (preview switches at once)
+              parallel     -> distance
+move     -> cursor picks the sector and the radius
+click    -> commit               (one undo entry)
+```
+
+No Enter, no popup, no mode: `dimension-placement.js → handleDimensionClick`.
+
+### Guarantees, and the tests that cover them
+
+`tests/dimension-angle-sector.test.cjs`:
 
 - acute / obtuse chosen by the cursor;
 - a right angle reads 90 in all four sectors;
 - reversing either line's endpoints changes no sector;
 - rotating the whole geometry changes no sector;
-- a placement ON the vertex chooses nothing (rather than a spurious sector);
-- **parallel lines produce no angular dimension at all** — the mode falls to a
-  point-line distance, so a misleading arc is never drawn.
+- a placement ON the vertex chooses nothing (rather than a spurious sector).
+
+`tests/dimension-subgeometry-angle.test.cjs` and
+`tests/dimension-same-feature-angle.test.cjs`:
+
+- two EDGES of one triangle are valid references (§4, §6);
+- the angle at **every** vertex, from the two edges meeting there (§5, §14, §15);
+- the three angles of a triangle sum to 180 (§14);
+- a side measured alone is that side's length, not the feature's extent;
+- reversed edge endpoints change nothing (§12);
+- parallel edges of one rectangle give a distance, not a zero angle (§19).
 
 ---
 
@@ -458,3 +620,45 @@ The point maths used to be written out in `hit-testing`, `construction-geometry`
 `object-snap` and the sketch editor — four copies of one clamp, and four
 chances for a hit test and a snap to disagree. Both modules are pure (no DOM,
 no model) and may be imported from anywhere, including tests.
+
+---
+
+## 15. The `.enggdraw` file format
+
+**Full audit:** `docs/ENGGDRAW-FORMAT-AUDIT.md` — schema, per-feature coverage,
+and the round-trip result.
+
+| Layer | Module | Owns |
+|---|---|---|
+| The envelope | `file/document-file.js` | `format`/`version`, `createDocument`, `readDocument`, `MIGRATIONS`, `normalize`, `withExtension` |
+| The body | `core/model/drawing-state.js → serializeDrawing` / `cloneFeatureForSave` | what a feature is when written |
+| The sheets | `sheets/sheets.js → serializeCollection` | the whole sheet, spread |
+| Atomic write | `file/file-save.js` | writes through a `FileSystemFileHandle` writable — a failed write cannot replace a good file |
+| Recents / previews | `file/recent-files.js`, `file/templates.js` | **`localStorage`, never inside the document** |
+
+**Three rules that keep it complete:**
+
+1. **A sheet is spread whole** (`{ ...deepClone(sheet) }`), so a new sheet field
+   is saved by construction.
+2. **A feature is cloned field-by-field from its own keys**
+   (`cloneFeatureForSave`), so a new feature field is saved by construction.
+   It used to be a hand-written allow-list of sub-objects — a list to forget.
+3. **References are stable string ids**, never array indexes: `parentId`,
+   `sourceRefs[].featureId` (+ `anchor`/`endAnchor` for a sub-edge),
+   `engineering.sourceFeatureId`, `targetFeatureId`. Sub-geometry uses NAMED
+   anchors (`segment0Start`), so a dimension across two edges of one triangle
+   reopens pointing at the same two edges.
+
+**A version bump must bring a migration.** `CURRENT_VERSION` and `MIGRATIONS`
+are paired; `migrate` refuses when the step for `CURRENT_VERSION - 1` is absent,
+so the mistake fails on the first load rather than silently discarding features.
+
+**Not in the file, by design:** cursor/hover/selection/snap/preview/drag state,
+open dialogs, DOM state, render caches, absolute filesystem paths, and the
+recent-files registry. A preview image is a cache in `localStorage`; the
+document model is always sufficient to redraw.
+
+**The test that proves it:** `tests/enggdraw-round-trip.test.cjs` builds a
+document with every feature kind and relationship shape, writes it to **text**,
+reads it back through the real reader and migration, and compares the models
+field by field — 29 checks, all passing.

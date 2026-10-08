@@ -42,7 +42,9 @@ export default async function run(page) {
   await page.mouse.up();
   await page.waitForTimeout(350);
 
-  out.popupAfterDrag = await page.locator(".drawing-creation-dimension").count();
+  out.popupAfterDrag = await page
+    .locator(".drawing-creation-dimension")
+    .count();
   out.msgAfterDrag = await h.msg();
 
   await page.keyboard.press("Enter");

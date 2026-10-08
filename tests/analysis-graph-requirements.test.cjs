@@ -144,11 +144,27 @@ const requirements = [
     note: "pointerdown/move/up, not click-move-click",
   },
   {
-    title: "a release asks for the exact Y value",
+    title: "a sketch element can ALSO be drawn by click, move, click",
     met:
-      /function askForYValue/.test(sketch) &&
-      /finishLineStroke[\s\S]{0,900}askForY\(/.test(sketch),
-    note: "the cursor places the point, the popup states the ordinate",
+      /svg\.addEventListener\("click"/.test(sketch) &&
+      /commitLine\(\)/.test(sketch) &&
+      /commitCurve\(\)/.test(sketch),
+    note: "both idioms, decided by how far the pointer travelled",
+  },
+  {
+    title: "NO Y-value popup: the cursor supplies the ordinate",
+    met:
+      !/askForYValue/.test(sketch) &&
+      !/data-y-input/.test(sketch) &&
+      !/sketch-editor-y-popup/.test(sketch),
+    note: "the popup is removed, not merely unused",
+  },
+  {
+    title: "the y-scale is fixed when the editor opens, not per redraw",
+    met:
+      /chooseUnitHeight/.test(sketch) &&
+      /\/\*[\s\S]{0,400}THE SCALE IS CHOSEN ONCE/.test(sketch),
+    note: "a graph that rescales under the cursor cannot follow the mouse",
   },
   {
     title: "the Y value is asked in the diagram's own unit",

@@ -64,7 +64,7 @@ export function deepCloneAll(values) {
 
 const enggClone = {
   deepClone,
-  deepCloneAll
+  deepCloneAll,
 };
 
 export default enggClone;

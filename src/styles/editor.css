@@ -5378,8 +5378,27 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .sketch-editor-axis {
-    stroke: #9aa7ad;
+    stroke: #87949b;
+    stroke-width: 1.2;
+}
+
+/*
+ * A TICK MARK ACROSS THE AXIS, and the value beneath it.
+ *
+ * The mark is short and crosses the axis, which is what makes a tick read as a
+ * graduation rather than as part of the diagram. The label sits in the reserved
+ * band below the plot, so it is always outside the drawing.
+ */
+.sketch-editor-axis-mark {
+    stroke: #87949b;
     stroke-width: 1;
+}
+
+.sketch-editor-tick-label,
+.sketch-editor-axis-label {
+    fill: #64747d;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
 }
 
 /*
@@ -5390,9 +5409,28 @@ body.datum-topbar-hidden .drawing-workspace {
  * behind the diagram, present enough to aim a new element at.
  */
 .sketch-editor-tick {
-    stroke: #c2ccd1;
+    stroke: #d6dee2;
     stroke-width: 1;
     stroke-dasharray: 3 3;
+}
+
+/*
+ * A CONTROL POINT OF THE SELECTED ELEMENT: an endpoint, or a curve's Bend.
+ *
+ * Drawn with a white fill and a coloured rim so it reads on top of the stroke
+ * it belongs to, and large enough to grab - it is the thing the student drags
+ * to change the shape, so it has to be findable.
+ */
+.sketch-editor-handle {
+    fill: #ffffff;
+    stroke: var(--datum-green);
+    stroke-width: 2;
+    cursor: grab;
+    pointer-events: all;
+}
+
+.sketch-editor-handle:hover {
+    fill: var(--datum-green-tint);
 }
 
 .sketch-editor-stroke {

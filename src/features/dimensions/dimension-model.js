@@ -219,6 +219,25 @@ function dimensionLabel(dimensionType) {
  * reads the same fields and none of them has to defend against a
  * half-built reference.
  */
+/*
+ * ========================================================
+ * A REFERENCE KEEPS BOTH OF ITS ENDS
+ * ========================================================
+ *
+ * A reference may name a WHOLE feature (a Line, a Beam) or ONE EDGE of a
+ * multi-edge one - `segment1Start` / `segment1End` for a triangle's second
+ * side. In the second case BOTH anchors are the reference: they are what say
+ * which edge, and dropping `endAnchor` left the dimension unable to resolve a
+ * span at all.
+ *
+ * THAT WAS THE WHOLE OF THE ANGLE DEFECT. A dimension between two edges of
+ * one triangle stored only the two `Start` anchors, so nothing could work out
+ * the second end of either edge; the measurement fell back to the FEATURE's
+ * span - which a triangle does not have - and returned nothing.
+ *
+ * An ABSENT `endAnchor` stays absent, so a whole-feature reference is
+ * unchanged and a point reference does not gain a second end it never had.
+ */
 function normaliseReferences(refs) {
   const list = Array.isArray(refs) ? refs : [refs];
 
@@ -233,12 +252,26 @@ function normaliseReferences(refs) {
         };
       }
 
-      return {
+      const normalised = {
         kind:
           reference.kind || REFERENCE_KINDS.between,
         featureId: reference.featureId,
         anchor: String(reference.anchor || ""),
       };
+
+      /*
+       * THE SECOND END, when the reference names one. A segment reference
+       * carries it; a whole-feature or point reference does not.
+       */
+      if (
+        reference.endAnchor !== undefined &&
+        reference.endAnchor !== null &&
+        reference.endAnchor !== ""
+      ) {
+        normalised.endAnchor = String(reference.endAnchor);
+      }
+
+      return normalised;
     });
 }
 
@@ -797,20 +830,17 @@ function measureAngle(
   const [firstRef, secondRef] =
     dimension.sourceRefs || [];
 
-  const separateFeatures =
-    Boolean(
-      firstRef &&
-      secondRef &&
-      firstRef.featureId !== secondRef.featureId
-    );
+  /*
+   * EACH REFERENCE RESOLVES ITS OWN SPAN.
+   *
+   * NOT the feature's span. A reference may name one EDGE of a multi-edge
+   * feature, and for two sides of a single triangle the feature's span is the
+   * same object for both - which made their angle zero or about the wrong
+   * lines. See `spanOfReference`.
+   */
+  const firstSpan = spanOfReference(state, firstRef);
 
-  const firstSpan = separateFeatures
-    ? spanOf(state, firstRef.featureId)
-    : spanOf(state, firstRef?.featureId);
-
-  const secondSpan = separateFeatures
-    ? spanOf(state, secondRef.featureId)
-    : spanOf(state, secondRef?.featureId);
+  const secondSpan = spanOfReference(state, secondRef);
 
   /*
    * ========================================================
@@ -957,12 +987,87 @@ function includedAngleDegrees(a, b) {
   return Math.abs(degrees);
 }
 
-function spanOf(state, featureId) {
+/*
+ * ========================================================
+ * THE SPAN A DIMENSION REFERENCE ACTUALLY NAMES
+ * ========================================================
+ *
+ * A reference is not always "a whole feature". It may name ONE EDGE of a
+ * feature - `segment1Start` / `segment1End` for a triangle's second side, a
+ * rectangle's top edge, one segment of a polyline - and the anchors are what
+ * say which.
+ *
+ * THE FEATURE'S OWN SPAN IS THE WRONG ANSWER FOR THOSE, and using it was the
+ * defect this fixes. `twoPointSpan(triangle)` describes the triangle as a
+ * whole (its first point to its last), not the side the student clicked, so
+ * TWO SIDES OF ONE TRIANGLE both resolved to the SAME span - and their
+ * "angle" was either zero or a number about the wrong lines entirely.
+ *
+ * THE OTHER END IS FOUND FROM THE ONE WE HAVE, when it is not stored.
+ *
+ * A segment reference names its edge by a matching PAIR of anchors, and a
+ * `segment{i}Start` implies `segment{i}End`. Refs written today carry both,
+ * but a dimension saved before that, or built directly by a caller, may carry
+ * only the first - and such a reference is still perfectly clear about which
+ * edge it means. Deriving the partner anchor keeps those working rather than
+ * silently falling back to the feature span.
+ *
+ * The feature's span is the last resort, for a reference that genuinely names
+ * a whole straight body: a Line, a Beam, a Cable, a Shaft. That is the common
+ * case and it is unchanged.
+ */
+function spanOfReference(state, reference) {
+  const featureId = reference?.featureId;
   const object = findObject(state, featureId);
 
-  return object
-    ? enggMeasurement.twoPointSpan(object)
-    : null;
+  if (!object) {
+    return null;
+  }
+
+  const anchor = reference?.anchor;
+
+  /*
+   * THE PARTNER ANCHOR: the one stored, or the matching `Start`/`End` of the
+   * same segment derived from the anchor we have.
+   */
+  let endAnchor = reference?.endAnchor;
+
+  if (!endAnchor && anchor) {
+    endAnchor = partnerSegmentAnchor(anchor);
+  }
+
+  if (anchor && endAnchor) {
+    const start = enggMeasurement.resolveAnchor(object, anchor);
+    const end = enggMeasurement.resolveAnchor(object, endAnchor);
+
+    if (start && end) {
+      return { start, end };
+    }
+  }
+
+  return enggMeasurement.twoPointSpan(object);
+}
+
+/*
+ * The other end of the same named segment.
+ *
+ *   `segment3Start` -> `segment3End`
+ *   `segment3End`   -> `segment3Start`
+ *   `segment3Mid`   -> null   (a single point names no span)
+ *
+ * Null for any anchor that is not a segment end, so a named point or a
+ * whole-feature reference is left alone.
+ */
+function partnerSegmentAnchor(anchor) {
+  const match = /^(segment\d+)(Start|End)$/.exec(String(anchor || ""));
+
+  if (!match) {
+    return null;
+  }
+
+  const [, segment, end] = match;
+
+  return end === "Start" ? `${segment}End` : `${segment}Start`;
 }
 
 function spanDirection(span) {
@@ -1913,21 +2018,15 @@ function angularGraphics(
     return null;
   }
 
-  const first = findObject(
-    state,
-    references[0].featureId
-  );
-  const second = findObject(
-    state,
-    references[1].featureId
-  );
-
-  if (!first || !second) {
-    return null;
-  }
-
-  const spanA = enggMeasurement.twoPointSpan(first);
-  const spanB = enggMeasurement.twoPointSpan(second);
+  /*
+   * EACH REFERENCE RESOLVES ITS OWN SPAN - the same helper `measureAngle`
+   * uses - so an arc drawn between two EDGES of one triangle is built from
+   * those two edges and not from the triangle's overall span. If this and the
+   * measurement disagreed, the arc and the number printed on it would state
+   * different angles.
+   */
+  const spanA = spanOfReference(state, references[0]);
+  const spanB = spanOfReference(state, references[1]);
 
   if (!spanA || !spanB) {
     return null;
@@ -2189,35 +2288,54 @@ function angleSectorLegs(vertex, spanA, spanB, placement) {
   }
 
   /*
-   * The four sectors, each as the pair of boundary rays that enclose it, in
-   * order around the circle. Walking the circle is what makes "which
-   * sector is the cursor in" a single unambiguous test rather than four
-   * separate comparisons that could all fail or overlap.
+   * THE FOUR SECTORS ARE THE FOUR CONSECUTIVE PAIRS AROUND THE CIRCLE.
+   *
+   * The four boundary rays are the two axes in both directions. SORTING them
+   * by angle and pairing each with the next divides the circle into exactly
+   * the four regions, in order - which is the part that has to be right.
+   *
+   * THIS WAS THE BUG. The sectors used to be listed in a FIXED order -
+   * (A0,B0), (B0,A1), (A1,B1), (B1,A0) - which is only the order around the
+   * circle when the two axes happen to lie in a particular arrangement. When
+   * they did not, the list was out of sequence and the "short way round" test
+   * matched the WRONG sector: a dimension inside the 90-degree corner of a
+   * triangle measured the 143-degree one outside it. Sorting removes every
+   * assumption about how the two axes relate, so the same code is correct for
+   * any pair of lines at any angle.
    */
-  const sectors = [
-    { a: boundaryA0, b: boundaryB0 },
-    { a: boundaryB0, b: boundaryA1 },
-    { a: boundaryA1, b: boundaryB1 },
-    { a: boundaryB1, b: boundaryA0 },
-  ];
+  const boundaries = anglesOf([boundaryA0, boundaryA1, boundaryB0, boundaryB1]);
+
+  const sectors = boundaries.map((entry, index) => {
+    const next = boundaries[(index + 1) % boundaries.length];
+
+    return {
+      a: entry.ray,
+      b: next.ray,
+      /*
+       * THE SWEEP IS ALWAYS FORWARD, between 0 and a full turn. Taken from
+       * the sorted order, the pair is a genuine slice of the circle and the
+       * cursor is inside it when its angle lies between the two.
+       */
+      from: entry.angle,
+      to: next.angle > entry.angle ? next.angle : next.angle + Math.PI * 2,
+    };
+  });
+
+  const cursorAngle = atan2Angle(toCursor);
 
   for (const sector of sectors) {
-    if (
-      directionBetween(
-        toCursor,
-        sector.a,
-        sector.b
-      )
-    ) {
-      /*
-       * The sector's own two boundaries, ordered from the first boundary
-       * toward the second, so the drawn arc sweeps THROUGH the region the
-       * cursor is in rather than around the wrong way.
-       */
-      return {
-        a: sector.a,
-        b: rotateToward(sector.b, sector.a),
-      };
+    /*
+     * The cursor's angle, brought into the sector's own turn when it lies
+     * before the sector's start.
+     */
+    let angle = cursorAngle;
+
+    while (angle < sector.from - 1e-9) {
+      angle += Math.PI * 2;
+    }
+
+    if (angle <= sector.to + 1e-9) {
+      return { a: sector.a, b: sector.b };
     }
   }
 
@@ -2225,60 +2343,29 @@ function angleSectorLegs(vertex, spanA, spanB, placement) {
 }
 
 /*
- * Is `direction` inside the sector swept from `from` toward `to`?
+ * The four rays with their angles, SORTED by angle.
  *
- * The sweep is the SHORT way round from `from` to `to` - at most half a
- * turn - which is how the four sectors of two crossing lines are divided.
- * A direction on a boundary counts as inside, so the test is total: every
- * direction is in exactly one sector, and the cursor can never fall between
- * two of them.
+ * The sort is what makes the sector list independent of how the two axes
+ * happen to be oriented, and ATAN2 OF THE RAY is the angle to sort by - a full
+ * turn from +X, so two rays that point the same way would sort together and
+ * the degenerate case never arises (two axes are never parallel here; parallel
+ * references are a distance, handled before this is reached).
  */
-function directionBetween(direction, from, to) {
-  const sweep = signedSweep(from, to);
-  const toDirection = signedSweep(from, direction);
-
-  const sameWay = Math.sign(sweep) || 1;
-
-  return (
-    toDirection * sameWay >= -1e-9 &&
-    Math.abs(toDirection) <= Math.abs(sweep) + 1e-9
-  );
+function anglesOf(rays) {
+  return rays
+    .map((ray) => ({ ray, angle: atan2Angle(ray) }))
+    .sort((first, second) => first.angle - second.angle);
 }
 
-/*
- * The signed angle from `from` to `to`, in radians, taken the short way.
- *
- * Kept to (-PI, PI] so that a sector is always the smaller of the two ways
- * round, which is the definition the sectors are built on.
- */
-function signedSweep(from, to) {
-  const start = Math.atan2(from.y, from.x);
-  const end = Math.atan2(to.y, to.x);
+/* The angle of a unit ray, in [0, 2*PI). */
+function atan2Angle(ray) {
+  let angle = Math.atan2(ray.y, ray.x);
 
-  let sweep = end - start;
-
-  while (sweep <= -Math.PI) sweep += 2 * Math.PI;
-  while (sweep > Math.PI) sweep -= 2 * Math.PI;
-
-  return sweep;
-}
-
-/*
- * `vector`, flipped so it lies on the same side of `reference` as it does
- * when taken the short way from `reference`.
- *
- * This is what makes the arc sweep through the chosen sector: the two
- * boundaries are handed to arcFrom, which also takes the short way, so they
- * must already be on the side that encloses the cursor.
- */
-function rotateToward(vector, reference) {
-  const sweep = signedSweep(reference, vector);
-
-  if (sweep < 0) {
-    return negate(vector);
+  if (angle < 0) {
+    angle += Math.PI * 2;
   }
 
-  return vector;
+  return angle;
 }
 
 function negate(vector) {

@@ -4,7 +4,9 @@
  */
 export default async function run(page) {
   const errs = [];
-  page.on("pageerror", (e) => errs.push("PAGEERROR: " + e.message.slice(0, 220)));
+  page.on("pageerror", (e) =>
+    errs.push("PAGEERROR: " + e.message.slice(0, 220)),
+  );
   page.on("console", (m) => {
     if (m.type() === "error") errs.push("CONSOLE: " + m.text().slice(0, 180));
   });
@@ -17,7 +19,9 @@ export default async function run(page) {
     { timeout: 15000 },
   );
 
-  const tab = page.locator("button", { hasText: "Engineering Drawing" }).first();
+  const tab = page
+    .locator("button", { hasText: "Engineering Drawing" })
+    .first();
   if (await tab.count()) await tab.click();
   await page.waitForTimeout(900);
 

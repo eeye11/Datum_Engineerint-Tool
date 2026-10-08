@@ -54,7 +54,7 @@ console.log("\n  only the final extension is removed\n");
     ["beam_test_01.enggdraw", "beam_test_01"],
     ["Statics.V2.Final.enggdraw", "Statics.V2.Final"],
     ["triangle", "triangle"],
-    ["", "drawing"]
+    ["", "drawing"],
   ];
 
   cases.slice(0, 5).forEach(([input, expected]) => {
@@ -77,7 +77,7 @@ console.log("\n  a template shows its name without the extension\n");
     ["statics.enggdraw", "statics"],
     ["Beam Setup.enggdraw", "Beam Setup"],
     ["Statics.V2.Final.enggdraw", "Statics.V2.Final"],
-    ["statics", "statics"]
+    ["statics", "statics"],
   ];
 
   cases.forEach(([input, expected]) => {
@@ -108,8 +108,8 @@ console.log("\n  a stored name with the extension is still shown clean\n");
     document: {
       units: "mm",
       sheets: [{ id: "s", name: "S", objects: [] }],
-      activeSheetId: "s"
-    }
+      activeSheetId: "s",
+    },
   });
 
   check("the template is stored", Boolean(id));

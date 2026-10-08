@@ -434,39 +434,23 @@ console.log("\n  a drag draws the element, then the Y is asked for\n");
   pointer("pointermove", 60, 40);
   pointer("pointerup", 60, 40);
 
-  const yPopup = global.document.querySelector(".sketch-editor-y-popup");
-
+  /*
+   * NO POPUP, AND THAT IS THE REQUIREMENT. The cursor supplies the ordinate, so
+   * drawing a point is one action with no dialog between the intention and the
+   * result. The old Y-value popup is GONE - not merely unused - and this is what
+   * says so.
+   */
   check(
-    "releasing a drawn element opens the Y-value popup",
-    Boolean(yPopup),
-    "no Y popup appeared after the release",
+    "releasing a drawn element opens NO Y-value popup",
+    !global.document.querySelector(".sketch-editor-y-popup"),
+    "the Y popup is still being opened",
   );
 
-  if (yPopup) {
-    check(
-      "and the popup states the graph's own unit",
-      yPopup.textContent.includes("kN"),
-      yPopup.textContent.replace(/\n+/g, " | "),
-    );
-
-    /* Type an exact ordinate and confirm with Enter. */
-    const input = yPopup.querySelector("[data-y-input]");
-
-    input.value = "250";
-
-    yPopup.dispatchEvent(
-      new global.window.KeyboardEvent("keydown", {
-        key: "Enter",
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-
-    check(
-      "and Enter closes it",
-      !global.document.querySelector(".sketch-editor-y-popup"),
-    );
-  }
+  check(
+    "and the editor no longer offers one at all",
+    typeof editor.askForYValue === "undefined",
+    "askForYValue is still exported",
+  );
 
   editor.close();
 }
@@ -641,78 +625,141 @@ console.log("\n  the x snaps to body-element ticks, but is not trapped by them\n
   );
 }
 
-console.log("\n  the placed point's exact Y is asked for\n");
+console.log("\n  the ordinate comes from the cursor, not a dialog\n");
 
 /*
  * ========================================================
- * THE Y-VALUE POPUP
+ * THERE IS NO Y-VALUE POPUP
  * ========================================================
  *
- * The cursor says WHERE a point sits; the popup says its exact ORDINATE. These
- * drive the real popup and check the two keys every value popup in the
- * application uses: Enter confirms, Escape abandons.
+ * The cursor IS the ordinate, in both axes. The popup that used to open after
+ * every placement is removed, so there is nothing to ask and nothing to answer
+ * - placing a point is one action. These checks pin that it cannot come back
+ * through another door: the module must not export one, and the source must not
+ * contain one.
  */
 {
-  const host = global.document.createElement("div");
-  global.document.body.appendChild(host);
-
-  /* The popup is exercised through the editor's own open path. */
-  let cancelled = false;
-  let committed = null;
-
-  const dialog2 = editor.askForYValue({
-    label: "SFD Sketch Element",
-    value: 12.5,
-    unit: "kN",
-    onCommit: (value) => {
-      committed = value;
-    },
-    onCancel: () => {
-      cancelled = true;
-    },
-  });
-
-  check(
-    "the Y popup opens with the suggested value and the diagram's unit",
-    Boolean(
-      dialog2 &&
-        dialog2.querySelector("[data-y-input]") &&
-        /kN/.test(dialog2.textContent),
-    ),
-    dialog2 ? dialog2.textContent : "no popup",
-  );
-
-  const input2 = dialog2.querySelector("[data-y-input]");
-
-  check(
-    "and it opens on the value the cursor gave",
-    input2.value === "12.5",
-    `got ${input2.value}`,
-  );
-
-  input2.value = "250";
-
-  dialog2.dispatchEvent(
-    new global.window.KeyboardEvent("keydown", {
-      key: "Enter",
-      bubbles: true,
-      cancelable: true,
-    }),
+  const source = require("fs").readFileSync(
+    require("./helpers/source-path.cjs").modulePath("sketch-editor.js"),
+    "utf8",
   );
 
   check(
-    "Enter confirms the exact ordinate",
-    committed === 250,
-    `committed ${committed}`,
+    "the module exports no Y-value popup",
+    typeof editor.askForYValue === "undefined",
+    "askForYValue is still exported",
   );
 
   check(
-    "and the popup closes",
-    !global.document.querySelector(".sketch-editor-y-popup"),
+    "and the source defines none",
+    !/askForYValue/.test(source) && !/sketch-editor-y-popup/.test(source),
+    "the popup is still defined somewhere in the editor",
   );
 
-  void cancelled;
-  void host;
+  check(
+    "no placement opens a popup of its own",
+    !/data-y-input/.test(source),
+    "a Y input is still built somewhere",
+  );
+}
+
+console.log("\n  BOTH creation idioms work on the same stroke\n");
+
+/*
+ * ========================================================
+ * CLICK -> CLICK AND PRESS -> DRAG -> RELEASE
+ * ========================================================
+ *
+ * The same LINE is made either way, and the student never says which they
+ * meant: a press that travels is a drag, and a press that stays put leaves the
+ * stroke open for a second click.
+ */
+{
+  const makeEditor = () => {
+    const dialog3 = editor.open({
+      title: "SFD Sketch",
+      range: { from: 0, to: 100 },
+      elements: [],
+      stations: [],
+    });
+
+    const svg3 = dialog3.querySelector("[data-sketch-graph]");
+
+    svg3.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 900,
+      height: 320,
+    });
+
+    const pointer3 = (type, x, y) => {
+      const event = new global.window.Event(type, {
+        bubbles: true,
+        cancelable: true,
+      });
+
+      event.clientX = x;
+      event.clientY = y;
+      event.pointerId = 1;
+
+      svg3.dispatchEvent(event);
+    };
+
+    const click3 = (x, y) => {
+      const event = new global.window.MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      });
+
+      event.clientX = x;
+      event.clientY = y;
+
+      svg3.dispatchEvent(event);
+    };
+
+    return { svg3, pointer3, click3 };
+  };
+
+  /* A drag: press, move, release. */
+  {
+    const { pointer3 } = makeEditor();
+
+    pointer3("pointerdown", 100, 100);
+    pointer3("pointermove", 300, 140);
+    pointer3("pointerup", 300, 140);
+
+    const strokes = global.document.querySelectorAll(".sketch-editor-stroke");
+
+    check(
+      "a press, drag and release makes one line",
+      strokes.length === 1,
+      `found ${strokes.length}`,
+    );
+
+    editor.close();
+  }
+
+  /* A click-move-click: press and release, then move, then click. */
+  {
+    const { pointer3, click3 } = makeEditor();
+
+    pointer3("pointerdown", 100, 100);
+    pointer3("pointerup", 100, 100);
+
+    pointer3("pointermove", 300, 140);
+
+    click3(300, 140);
+
+    const strokes = global.document.querySelectorAll(".sketch-editor-stroke");
+
+    check(
+      "a click, a move and a second click also makes one line",
+      strokes.length === 1,
+      `found ${strokes.length}`,
+    );
+
+    editor.close();
+  }
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

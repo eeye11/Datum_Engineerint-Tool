@@ -39,11 +39,7 @@
  * means "is this a point I can do arithmetic on" has a single answer.
  */
 export function isPoint(value) {
-  return Boolean(
-    value &&
-      Number.isFinite(value.x) &&
-      Number.isFinite(value.y)
-  );
+  return Boolean(value && Number.isFinite(value.x) && Number.isFinite(value.y));
 }
 
 /* The distance between two points. Infinity when either is not a point. */
@@ -52,10 +48,7 @@ export function distance(first, second) {
     return Infinity;
   }
 
-  return Math.hypot(
-    second.x - first.x,
-    second.y - first.y
-  );
+  return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
 /*
@@ -67,10 +60,7 @@ export function distance(first, second) {
  * caller that has not gets the safe answer.
  */
 export function distanceFast(first, second) {
-  return Math.hypot(
-    second.x - first.x,
-    second.y - first.y
-  );
+  return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
 /*
@@ -102,15 +92,13 @@ export function distanceToSegment(point, start, end) {
     0,
     Math.min(
       1,
-      ((point.x - start.x) * dx +
-        (point.y - start.y) * dy) /
-        lengthSquared
-    )
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    ),
   );
 
   return Math.hypot(
     point.x - (start.x + ratio * dx),
-    point.y - (start.y + ratio * dy)
+    point.y - (start.y + ratio * dy),
   );
 }
 
@@ -142,7 +130,7 @@ export function unitVector(vector) {
 
   return {
     x: vector.x / length,
-    y: vector.y / length
+    y: vector.y / length,
   };
 }
 
@@ -164,7 +152,7 @@ export function segmentDirection(start, end) {
 
   return unitVector({
     x: end.x - start.x,
-    y: end.y - start.y
+    y: end.y - start.y,
   });
 }
 
@@ -177,7 +165,7 @@ export function segmentDirection(start, end) {
 export function lerpPoint(start, end, t) {
   return {
     x: start.x + (end.x - start.x) * t,
-    y: start.y + (end.y - start.y) * t
+    y: start.y + (end.y - start.y) * t,
   };
 }
 
@@ -211,15 +199,13 @@ export function closestPointOnSegment(point, start, end) {
     0,
     Math.min(
       1,
-      ((point.x - start.x) * dx +
-        (point.y - start.y) * dy) /
-        lengthSquared
-    )
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    ),
   );
 
   return {
     x: start.x + ratio * dx,
-    y: start.y + ratio * dy
+    y: start.y + ratio * dy,
   };
 }
 
@@ -248,7 +234,7 @@ const enggPoints = {
   lerpPoint,
   midpoint,
   closestPointOnSegment,
-  crossProduct
+  crossProduct,
 };
 
 export default enggPoints;

@@ -43,7 +43,7 @@ const ANALYSIS_FRAME = {
 
   /* Padding around the frame, and the corner rounding. */
   paddingPx: 8,
-  radiusPx: 3
+  radiusPx: 3,
 };
 
 /*
@@ -58,13 +58,13 @@ function analysisFrameExtents() {
     bottom: ANALYSIS_FRAME.ordinateHeightPx,
     right: ANALYSIS_FRAME.axisExtensionPx,
     arrowHead: ANALYSIS_FRAME.arrowHeadPx,
-    labelGap: ANALYSIS_FRAME.labelGapPx
+    labelGap: ANALYSIS_FRAME.labelGapPx,
   };
 }
 
 const enggAnalysisFrame = {
   ANALYSIS_FRAME,
-  analysisFrameExtents
+  analysisFrameExtents,
 };
 
 export default enggAnalysisFrame;
