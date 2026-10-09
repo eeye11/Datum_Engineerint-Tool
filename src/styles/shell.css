@@ -111,9 +111,22 @@ body {
 }
 
 .header-document-name {
+    cursor: text;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 7px;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.header-document-name[contenteditable="true"]:focus {
+    outline: none;
+    border-color: var(--datum-green);
+    box-shadow: inset 0 0 0 1px var(--datum-green);
+    background: var(--datum-surface);
+    color: var(--datum-ink);
 }
 
 /*

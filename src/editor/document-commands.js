@@ -360,7 +360,41 @@ function refreshDocumentTitle() {
     const mark = document.getElementById("headerDocumentDirty");
 
     if (base) {
-        base.textContent = shown;
+        if (document.activeElement !== base) base.textContent = shown;
+        if (!base.dataset.renameReady) {
+            base.dataset.renameReady = "true";
+            base.contentEditable = "true";
+            base.setAttribute("role", "textbox");
+            base.setAttribute("aria-label", "Document title");
+            base.setAttribute("spellcheck", "false");
+            base.addEventListener("focus", () => {
+                base.dataset.originalName = displayNameFor(documentFileName);
+                const range = document.createRange();
+                range.selectNodeContents(base);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+            base.addEventListener("keydown", event => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    base.blur();
+                } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    base.textContent = base.dataset.originalName;
+                    base.blur();
+                }
+            });
+            base.addEventListener("blur", () => {
+                const wanted = base.textContent.trim().replace(/[\r\n]+/g, " ");
+                if (wanted && wanted !== displayNameFor(documentFileName)) {
+                    documentFileName = enggDocumentFile.withExtension(wanted);
+                    markDocumentDirty();
+                }
+                refreshDocumentTitle();
+            });
+        }
     }
 
     if (host) {
