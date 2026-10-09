@@ -1173,6 +1173,7 @@ export function zoomAtCanvasPoint(
     nextZoom,
     event
 ) {
+    clearFitButtonHighlight();
     const bounds =
         drawingCanvas.getBoundingClientRect();
 
@@ -1274,6 +1275,7 @@ export function updateDrawingZoom(
         return;
     }
 
+    clearFitButtonHighlight();
     enggDrawingState.setCameraZoom(
         drawingState,
         percent / 100
@@ -1304,6 +1306,33 @@ export function updateDrawingZoom(
  * "turning it off leaves text that cannot be turned back" fault this fixes.
  * The label lives in the tooltip now, and the icon is never touched.
  */
+let cameraBeforeFit = null;
+
+export function toggleFitDrawing() {
+    const button = document.getElementById("drawingFitView");
+    if (!button) return;
+
+    if (button.getAttribute("aria-pressed") === "true") {
+        if (cameraBeforeFit) {
+            Object.assign(drawingState.camera, cameraBeforeFit);
+            syncActiveSheetViewport();
+        }
+        clearFitButtonHighlight();
+        renderCurrentDrawing();
+        return;
+    }
+
+    cameraBeforeFit = { ...drawingState.camera };
+    fitDrawingToView();
+    setToggleLabel(button, "Fit", true);
+}
+
+function clearFitButtonHighlight() {
+    const button = document.getElementById("drawingFitView");
+    if (button) setToggleLabel(button, "Fit", false);
+    cameraBeforeFit = null;
+}
+
 export function toggleWorkspaceSetting(
     button,
     label
