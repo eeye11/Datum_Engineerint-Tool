@@ -263,7 +263,7 @@ function collapsedArrowTransform(
     toggle
 ) {
     return toggle.closest(
-        ".drawing-panel-rail-right, .drawing-panel-rail-statics"
+        ".drawing-panel-rail-right, .drawing-panel-rail-left"
     )
         ? "rotate(180)"
         : "rotate(0)";
