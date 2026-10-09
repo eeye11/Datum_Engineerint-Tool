@@ -51,26 +51,67 @@ function handleEscape() {
 function open(options = {}) {
   close();
 
+  /*
+   * ONE EDITOR, TWO SHAPES.
+   *
+   * A NOTE IS MULTI-LINE and a LABEL, CALLOUT or single-line text is not. Both
+   * are the same editor - place content, Enter confirms or Esc cancels, and the
+   * current content is shown when the box is reopened on an existing feature -
+   * so a student who has learned one has learned the other. Only the field and
+   * the key that commits differ:
+   *
+   *   multiline   Enter = new line, Ctrl+Enter = commit
+   *   single line  Enter = commit
+   *
+   * THE PLACEHOLDER IS SHOWN, NEVER STORED. It is passed to the field's own
+   * `placeholder` attribute when the content is empty, so the box says what to
+   * write ("Enter note", "Enter label") without that word ever reaching the
+   * feature's text.
+   */
+  const multiline = options.multiline !== false;
+
+  const placeholder =
+    options.placeholder || (multiline ? "Enter note" : "Enter text");
+
+  const title = options.title || (multiline ? "Edit Note" : "Edit Text");
+
   const dialog = document.createElement("div");
 
   dialog.className = "drawing-dimension-dialog drawing-note-dialog";
 
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
-  dialog.setAttribute("aria-label", "Edit Note");
+  dialog.setAttribute("aria-label", title);
+
+  /*
+   * A SINGLE-LINE BOX IS AN INPUT; A MULTI-LINE ONE IS A TEXTAREA. The field's
+   * own key handling is then the keyboard's standard behaviour plus the one
+   * commit key, which is what makes Enter "commit" here and "new line" there.
+   */
+  const field = multiline
+    ? `<textarea id="noteText"
+            class="drawing-property-input drawing-note-dialog-text"
+            rows="4"
+            placeholder="${escapeHtml(placeholder)}"
+            aria-label="${escapeHtml(placeholder)}">${escapeHtml(
+              options.text ?? "",
+            )}</textarea>`
+    : `<input id="noteText"
+            type="text"
+            class="drawing-property-input"
+            placeholder="${escapeHtml(placeholder)}"
+            aria-label="${escapeHtml(placeholder)}"
+            value="${escapeHtml(options.text ?? "")}">`;
 
   dialog.innerHTML = `
         <div class="drawing-dimension-dialog-title">
-            Edit Note
+            ${escapeHtml(title)}
         </div>
 
         <label class="drawing-dimension-dialog-label" for="noteText">
-            Note
+            ${escapeHtml(multiline ? "Note" : "Text")}
         </label>
-        <textarea id="noteText"
-            class="drawing-property-input drawing-note-dialog-text"
-            rows="4"
-            aria-label="Note text">${escapeHtml(options.text ?? "")}</textarea>
+        ${field}
 
         <div class="drawing-scale-dialog-actions">
             <button type="button"
@@ -98,21 +139,24 @@ function open(options = {}) {
     options.onApply?.(text);
   };
 
-  dialog.querySelector("[data-note-apply]").addEventListener("click", apply);
+  dialog.querySelector("[data-note-apply]")?.addEventListener("click", apply);
 
-  dialog.querySelector("[data-note-cancel]").addEventListener("click", closeIt);
+  dialog.querySelector("[data-note-cancel]")?.addEventListener("click", closeIt);
 
   /*
-   * ENTER INSERTS A LINE BREAK; CTRL+ENTER CONFIRMS.
+   * ENTER COMMITS A SINGLE LINE; CTRL+ENTER COMMITS A MULTI-LINE ONE.
    *
-   * A note is multi-line, so the plain Enter key has to keep meaning
-   * "new line" - an editor that closes on the key a student presses
-   * between sentences is an editor that cannot write sentences. The
-   * confirm is the one key that cannot be confused with prose: the
-   * combination, or the button.
+   * A note is multi-line, so plain Enter has to keep meaning "new line" - an
+   * editor that closes on the key a student presses between sentences cannot
+   * write sentences. A single-line field has no new line to make, so Enter is
+   * free to commit, which is the behaviour the student already expects from
+   * every other single-line input in the application.
    */
   dialog.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    if (
+      event.key === "Enter" &&
+      (multiline ? event.ctrlKey || event.metaKey : !event.shiftKey)
+    ) {
       event.preventDefault();
       apply();
     }
@@ -123,7 +167,16 @@ function open(options = {}) {
     }
   });
 
-  dialog.querySelector("#noteText")?.focus();
+  const input = dialog.querySelector("#noteText");
+
+  input?.focus();
+
+  /*
+   * THE CARET GOES AFTER THE EXISTING CONTENT, not in front of it: reopening a
+   * written annotation to add to it should not begin by typing over its first
+   * word.
+   */
+  input?.setSelectionRange?.(input.value.length, input.value.length);
 
   return dialog;
 }

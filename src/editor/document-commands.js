@@ -1211,7 +1211,7 @@ function suggestedFileName() {
  *
  * An alert was used before, and it is the wrong tool three times over. It
  * BLOCKS the page, so a file problem froze the workspace until dismissed. Its
- * wording cannot be styled, so a Datum message arrived looking like a browser
+ * wording cannot be styled, so a DAETUM message arrived looking like a browser
  * warning. And it can THROW - in a sandboxed iframe, or in any context where
  * dialogs are suppressed - which turns a handled error into an UNCAUGHT one,
  * so the failure being reported is replaced by a worse failure from the
@@ -1260,7 +1260,7 @@ export function loadDrawing(
          * The reason is shown rather than a generic failure, because the user's
          * next action depends entirely on which of these it is: a wrong file
          * needs choosing again, an old one needs a different tool, and a future
-         * one needs a newer Datum.
+         * one needs a newer DAETUM.
          */
         return reportFileProblem(result.detail, {
             fileName,
@@ -1444,7 +1444,7 @@ export function importDrawingFile() {
     /*
      * WHERE THE BROWSER CAN, OPEN THROUGH THE HANDLE PICKER.
      *
-     * `showOpenFilePicker` is the only route that gives Datum a handle it can
+     * `showOpenFilePicker` is the only route that gives DAETUM a handle it can
      * later WRITE BACK to, which is what makes Save update the file the user
      * opened instead of asking for a name again. Where it exists it is used
      * first; where it does not, the ordinary file input is the fallback and
@@ -1564,7 +1564,7 @@ function openChosenFile(file) {
             resolve(
                 reportFileProblem(
                     `"${file.name}" could not be read. It may have been moved, ` +
-                        "or Datum may not have permission to read it.",
+                        "or DAETUM may not have permission to read it.",
                     { fileName: file.name, failure: reader.error?.name || "read" }
                 )
             );
@@ -1794,7 +1794,7 @@ function openTemplate(templateId) {
  * Choose a .enggdraw and add it to the template library.
  *
  * The file is READ AND VALIDATED by the same loader an Open uses, so a template
- * can only ever be created from a document Datum could actually open - there is
+ * can only ever be created from a document DAETUM could actually open - there is
  * no second parser, and a corrupt file is refused with the same reason an Open
  * would give.
  *
@@ -2142,7 +2142,7 @@ export const FILE_ACTIONS = {
  * leaves the user guessing which button keeps the work. The application's own
  * dialog is used for the same reason the unsaved-changes prompt uses it: this
  * is a question about the user's own drawing, and it should look and behave
- * like the rest of Datum.
+ * like the rest of DAETUM.
  *
  * RECOVERED WORK IS UNSAVED WORK.
  *
@@ -2171,7 +2171,7 @@ export async function offerRecoveryIfAvailable() {
             : "";
 
     const choice = await enggUi.choiceDialog(
-        "Datum found unsaved work from a previous session " +
+        "DAETUM found unsaved work from a previous session " +
             `(${features}).\n\n${when}`.trim() +
             "\n\nRecover it?",
         {

@@ -5,11 +5,12 @@
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
+import enggLoadProfile from "../features/analysis/load-profile.js";
+import { distanceToSegment } from "../core/geometry/points.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { openAnalysisEditorFor } from "./feature-tree.js";
-import { momentDirectionOf } from "./statics-panel.js";
 import { setToolMessage } from "./toolbar-render.js";
 
 /*
@@ -200,29 +201,6 @@ function componentOf(
 }
 
 /*
- * Format a number for the status line, trimming pointless
- * decimals while keeping the sign readable.
- *
- * A NON-FINITE VALUE PRINTS A DASH, NOT "NaN".
- *
- * These figures are SUMS of the forces on the sheet, so one force with
- * a magnitude that never got a number - a half-built feature, a
- * malformed file - poisons the whole total. "Sum of moments: NaN N·m"
- * is worse than useless: it is an engineering claim, printed in the
- * same register as a real answer, that the student has no way to act
- * on. A dash says the same thing honestly.
- *
- * The same rule the rest of the panel layer uses - see the guarded
- * formatters in the feature-panel builder.
- */
-function formatAmount(
-    value
-) {
-    return Number.isFinite(Number(value))
-        ? Number(value).toFixed(2)
-        : "—";
-}
-
 /*
  * The name for the next diagram of a given kind.
  *
@@ -310,31 +288,26 @@ export function beginAnalysisDiagram(
      * drawing a Line - but it will not pretend to belong to a
      * member it was never given.
      */
+    /*
+     * ========================================================
+     * ALWAYS WAIT FOR THE CLICK THAT NAMES THE MEMBER
+     * ========================================================
+     *
+     * The tool used to adopt a body that happened to be selected when it was
+     * armed. A beam is very often still selected straight after being drawn, so
+     * the source was set before the student had said anything - and the FIRST
+     * click then committed the diagram instead of naming its body. Two steps
+     * silently became one, and the status line went on to say "Place analysis
+     * axis" over a diagram that already existed.
+     *
+     * So the source is deliberately NOT resolved here. Arming always asks the
+     * same question - which member? - and the answer is the click that lands on
+     * it. That is one rule for every route into the tool, it is the same
+     * two-stage shape a support or a load uses, and it removes the case where a
+     * leftover selection decided what the student got.
+     */
     const source =
-        analysisSourceBody(
-            /*
-             * ONLY WHAT THE STUDENT ACTUALLY SELECTED.
-             *
-             * `selectedStaticsFeatures()` returns EVERY Statics feature
-             * when the selection is empty, and that is right for the
-             * Resultant and Force Components: they read the sheet, so with
-             * nothing picked there is nothing excluded.
-             *
-             * It is wrong for a diagram, which measures ONE member. With
-             * an empty selection it handed back the only body on the
-             * sheet, so arming SFD Sketch silently adopted a beam nobody
-             * had chosen - and because the source was then already set,
-             * the FIRST click committed the diagram instead of choosing
-             * the body. Two clicks became one, and the diagram belonged to
-             * a member the student had never picked.
-             *
-             * So the empty case is made explicit: no selection means no
-             * source, and the tool waits for a click to name one.
-             */
-            drawingState.selection.selectedObjectIds.length
-                ? selectedStaticsFeatures()
-                : []
-        );
+        null;
 
     /*
      * The mode was chosen just before this was called, and is
@@ -398,8 +371,15 @@ export function beginAnalysisDiagram(
     );
 
     if (!source) {
+        /*
+         * WHY THE DIAGRAM CANNOT START, SAID SPECIFICALLY.
+         *
+         * `analysisDiagramIntroMessage` distinguishes an empty sheet from an
+         * empty selection, so a student who has drawn nothing is told to draw a
+         * Beam rather than to click one that is not there.
+         */
         setToolMessage(
-            "Click the Beam, Truss or member the diagram belongs to"
+            analysisDiagramIntroMessage(null)
         );
 
         renderCurrentDrawing();
@@ -417,7 +397,8 @@ export function beginAnalysisDiagram(
      */
     if (!span) {
         setToolMessage(
-            "That feature has no span to measure a diagram against"
+            "The selected feature is not a beam. Select the Beam, Truss, Cable or " +
+                "Shaft this diagram belongs to"
         );
 
         return;
@@ -431,7 +412,113 @@ export function beginAnalysisDiagram(
 }
 
 /*
- * THE AXIS THE CURRENT PLACEMENT WOULD PRODUCE.
+ * ========================================================
+ * WHY A DIAGRAM CANNOT BE MADE, SAID SPECIFICALLY
+ * ========================================================
+ *
+ * An SFD, a BMD and an AFD all measure a MEMBER. When there is no member to
+ * measure, the tool has to say which of three different situations the student
+ * is actually in, because the fix is different in each:
+ *
+ *   NO MEMBER ON THE SHEET AT ALL   they must draw one first
+ *   A MEMBER EXISTS, NONE SELECTED  they must pick one
+ *   THE SELECTION IS NOT A MEMBER   they picked the wrong thing
+ *
+ * One message covering all three - "Click the Beam, Truss or member the diagram
+ * belongs to" - is what the tool said before, and it is unhelpful in two of the
+ * three: a student with nothing drawn is told to click something that is not
+ * there, and a student who clicked a force is told to click a Beam without
+ * being told that the thing they clicked was the problem.
+ *
+ * THE CHECK IS A QUESTION ABOUT THE SHEET, asked once and answered by type, so
+ * the wording and the condition cannot drift apart.
+ */
+const DIAGRAM_MEMBER_TYPES = [
+    "beam",
+    "truss",
+    "shaft",
+    "cable",
+    "rigid-body"
+];
+
+/*
+ * Whether a feature is a member a diagram can be measured against.
+ *
+ * The same list `analysisSourceBody` accepts, kept beside it so a member added
+ * to one is added to the other - a diagram's idea of "a suitable beam" and the
+ * message's idea of it must be the same idea.
+ */
+export function isDiagramMember(object) {
+    return Boolean(
+        object &&
+            DIAGRAM_MEMBER_TYPES.includes(object.type)
+    );
+}
+
+/*
+ * The reason a diagram cannot start, phrased for the student - or null when it
+ * can.
+ *
+ * `source` is what the tool resolved from the selection (possibly null).
+ * `selectionWasEmpty` distinguishes "nothing picked" from "picked something
+ * unsuitable", which are the two cases the middle message exists for.
+ */
+export function diagramPrerequisiteMessage(
+    source,
+    selectionWasEmpty
+) {
+    if (source) {
+        /*
+         * A source with no span is a different failure again, and it is
+         * reported by the caller where the span is actually known.
+         */
+        return null;
+    }
+
+    const anyMember =
+        drawingState.objects.some(isDiagramMember);
+
+    if (!anyMember) {
+        return (
+            "No suitable beam found. Create a Beam (or a Truss, Cable or Shaft) " +
+            "first, then start this diagram."
+        );
+    }
+
+    if (selectionWasEmpty) {
+        return (
+            "Select the beam this diagram belongs to before creating it."
+        );
+    }
+
+    return (
+        "The selected feature is not a beam. Select the Beam, Truss, Cable or " +
+        "Shaft this diagram belongs to."
+    );
+}
+
+/*
+ * The instruction a NEWLY ARMED diagram tool shows before any click.
+ *
+ * It is the prerequisite message when the student is starting from nothing, and
+ * the placement hint once a source is known - so arming the tool with no beam
+ * on the sheet says what to draw rather than what to click.
+ */
+export function analysisDiagramIntroMessage(source) {
+    if (source) {
+        return (
+            "Move the pointer up or down to position the diagram, then click to place it"
+        );
+    }
+
+    return (
+        diagramPrerequisiteMessage(null, true) ||
+        "Select the beam this diagram belongs to"
+    );
+}
+
+/*
+ * The axis the current placement would produce.
  *
  * Asked for on every frame, by the preview and again on the click.
  * Deriving it in one place is what guarantees the committed axis
@@ -682,19 +769,64 @@ export function commitAnalysisAxis() {
         drawingState
     );
 
+    /*
+     * ========================================================
+     * THE PLACEMENT IS FINISHED, SO THE TOOL STANDS DOWN
+     * ========================================================
+     *
+     * Clearing the interaction removes the half-built placement, but the TOOL
+     * was still armed - so the very next pointer move re-entered the
+     * `analysis-axis` phase and rewrote the status line to "Place analysis
+     * axis" over a diagram that had already been committed. The student saw a
+     * finished diagram and an instruction to keep placing it.
+     *
+     * So the tool returns to Select, exactly as a completed Line or Beam does.
+     * The feature is already in the document and selected, so the Features
+     * panel shows it - and a second diagram is one click on the toolbar away
+     * rather than something the cursor is still half-committed to placing.
+     */
+    enggDrawingState.setActiveTool(
+        drawingState,
+        "select"
+    );
+
+    /*
+     * The placed feature becomes the selection, so its own Features panel is
+     * open and the Plot Editor (below) is editing the thing just created.
+     */
+    enggDrawingState.selectObject(
+        drawingState,
+        object.id
+    );
+
     enggDrawingState.commitDrawingChange(
         drawingState,
         previousObjects
     );
 
     renderProperties();
-        renderCurrentDrawing();
+    renderCurrentDrawing();
 
-        /*
-         * ========================================================
-         * AND THE EDITOR OPENS NOW, NOT AFTER ANOTHER CLICK
-         * ========================================================
-         *
+    /*
+     * THE PLACEMENT IS OVER, SO THE STATUS STOPS ASKING FOR ONE.
+     *
+     * While the axis was being positioned the bottom bar read "Place analysis
+     * axis" - which is right up to the moment it is placed. Leaving that text
+     * behind after the commit told the student to keep positioning a diagram
+     * that was already finished, while the tool had stood down at the same time.
+     * The message now says what actually happened.
+     */
+    setToolMessage(
+        mode === "plot"
+            ? "Diagram placed - enter its equation"
+            : "Diagram placed"
+    );
+
+    /*
+     * ========================================================
+     * AND THE EDITOR OPENS NOW, NOT AFTER ANOTHER CLICK
+     * ========================================================
+     *
          * Placing the axes is the last step of CREATION, not the first step
          * of a separate editing session. At this point everything the editor
          * needs is already known - the source body, the position, the bounds,
@@ -766,6 +898,28 @@ function analysisObjectOptions(
 export function runStaticsAnalysis(
     toolId
 ) {
+    /*
+     * RESULTANT AND FORCE COMPONENTS ASK FOR THEIR INPUT EXPLICITLY.
+     *
+     * These two are CHILD analysis features: they read one or more Force
+     * features and derive everything they show from those. They used to read
+     * whatever happened to be selected the instant the button was pressed,
+     * which meant a student who had just drawn a force and had it still
+     * selected got a Resultant of it without ever saying which force they
+     * meant - and, worse, a click on an existing Resultant could be taken as
+     * its parent Force by proximity.
+     *
+     * They now arm as a TOOL and enter an INPUT-SELECTION state. The student is
+     * asked to select the force(s) on the canvas, the selection is the explicit
+     * input, and Enter commits. Nothing is inferred from what was selected
+     * before, from what is under the cursor, or from the last force created.
+     */
+    if (isAnalysisInputTool(toolId)) {
+        beginAnalysisInput(toolId);
+
+        return;
+    }
+
     const features =
         selectedStaticsFeatures();
 
@@ -812,6 +966,28 @@ export function runStaticsAnalysis(
     if (
         toolId === "resultant"
     ) {
+        createResultant(forces);
+    }
+
+    if (
+        toolId === "force-components"
+    ) {
+        createForceComponents(forces[0]);
+    }
+}
+
+/*
+ * BUILD THE RESULTANT OF AN EXPLICIT SET OF FORCES.
+ *
+ * The forces arrive already chosen - by the input-selection workflow, not by
+ * reading whatever happened to be selected. This function only does the
+ * engineering and the bookkeeping; the decision of WHICH forces is made before
+ * it is called, which is what keeps the two concerns apart.
+ */
+function createResultant(
+    forces
+) {
+    {
         if (!forces.length) {
             setToolMessage(
                 "Resultant needs at least one force"
@@ -836,14 +1012,6 @@ export function runStaticsAnalysis(
                 },
                 { x: 0, y: 0 }
             );
-
-        const magnitude =
-            Math.hypot(sum.x, sum.y);
-
-        const angle =
-            Math.atan2(sum.y, sum.x) *
-            180 /
-            Math.PI;
 
         /*
          * The resultant is PLACED, not just reported.
@@ -950,20 +1118,27 @@ export function runStaticsAnalysis(
 
         );
     }
+}
 
-    if (
-        toolId === "force-components"
-    ) {
-        if (!forces.length) {
+/*
+ * BUILD THE FORCE COMPONENTS OF ONE FORCE.
+ *
+ * `force` is the force the student explicitly chose as the input, or undefined
+ * if they committed without choosing one - which is refused rather than
+ * guessed, so the components are never attached to a force the student did not
+ * name.
+ */
+function createForceComponents(
+    force
+) {
+    {
+        if (!force) {
             setToolMessage(
                 "Select a force to resolve"
             );
 
             return;
         }
-
-        const force =
-            forces[0];
 
         const part =
             componentOf(force);
@@ -1061,181 +1236,260 @@ export function runStaticsAnalysis(
             `${force.name} resolved into X and Y - add an annotation to label it`
         );
     }
-
-    if (
-        toolId === "moment-analysis"
-    ) {
-        /*
-         * Moments are summed about the first support the
-         * student has placed, which is the usual reference
-         * point for the calculation, falling back to the
-         * origin when there is none.
-         */
-        const pivotFeature =
-            features.find(
-                object =>
-                    object.type ===
-                        "pin-support" ||
-                    object.type ===
-                        "roller-support" ||
-                    object.type ===
-                        "fixed-support" ||
-                    object.type ===
-                        "smooth-support"
-            );
-
-        const pivot =
-            pivotFeature?.geometry.position || {
-                x: 0,
-                y: 0
-            };
-
-        const total =
-            features.reduce(
-                (
-                    sum,
-                    object
-                ) => {
-                    if (
-                        object.type === "moment"
-                    ) {
-                        const magnitude =
-                            Number(
-                                object.geometry
-                                    .magnitude
-                            ) || 0;
-
-                        /*
-                         * A clockwise moment counts NEGATIVE here,
-                         * because the two senses oppose each other
-                         * about the pivot and the whole point of the
-                         * sum is to find where they cancel.
-                         *
-                         * The sense is read through the one shared
-                         * reader rather than from the raw field, so
-                         * this cannot disagree with the direction the
-                         * drawing shows or with what the Features
-                         * panel calls it.
-                         */
-                        return (
-                            sum +
-                            (momentDirectionOf(
-                                object.geometry
-                            ) === "CW"
-                                ? -magnitude
-                                : magnitude)
-                        );
-                    }
-
-                    if (
-                        object.type === "force"
-                    ) {
-                        const part =
-                            componentOf(
-                                object
-                            );
-
-                        const dx =
-                            object.geometry
-                                .position.x -
-                            pivot.x;
-
-                        const dy =
-                            object.geometry
-                                .position.y -
-                            pivot.y;
-
-                        return (
-                            sum +
-                            dx * part.y -
-                            dy * part.x
-                        );
-                    }
-
-                    return sum;
-                },
-                0
-            );
-
-        setToolMessage(
-            `Sum of moments about ${pivotFeature?.name || "origin"}: ${formatAmount(total)} N·m`
-        );
-
-        return;
-    }
-
-    if (
-        toolId === "equilibrium"
-    ) {
-        /*
-         * Reports how far the current system is from
-         * balance. It deliberately does not adjust anything
-         * to achieve balance.
-         */
-        const sum =
-            forces.reduce(
-                (
-                    total,
-                    force
-                ) => {
-                    const part =
-                        componentOf(force);
-
-                    return {
-                        x: total.x + part.x,
-                        y: total.y + part.y
-                    };
-                },
-                { x: 0, y: 0 }
-            );
-
-        const balanced =
-            Math.abs(sum.x) < 1e-6 &&
-            Math.abs(sum.y) < 1e-6;
-
-        setToolMessage(
-            balanced
-                ? "Selected forces are in equilibrium"
-                : `Not balanced: ΣFx ${formatAmount(sum.x)} N, ΣFy ${formatAmount(sum.y)} N`
-        );
-
-        return;
-    }
-
-    if (
-        toolId === "free-body-diagram"
-    ) {
-        /*
-         * Outlines what would appear on a free-body
-         * diagram and flags anything still marked Unknown,
-         * which is what the student has to resolve.
-         */
-        const unknowns = [];
-
-        features.forEach(
-            object => {
-                Object.keys(
-                    object.unknownValues || {}
-                ).forEach(
-                    key => {
-                        if (
-                            object.unknownValues[
-                                key
-                            ] === true
-                        ) {
-                            unknowns.push(
-                                `${object.name} ${key}`
-                            );
-                        }
-                    }
-                );
-            }
-        );
-
-        setToolMessage(
-            unknowns.length
-                ? `${features.length} features · unknown: ${unknowns.join(", ")}`
-                : `${features.length} features · no unknowns marked`
-        );
-    }
 }
+
+/*
+ * ========================================================
+ * RESULTANT AND FORCE COMPONENTS: THE INPUT-SELECTION STATE
+ * ========================================================
+ *
+ * These two are CHILD analysis features. A Resultant reads one or more Force
+ * features and a Force Components pair reads exactly one, and everything either
+ * of them shows is DERIVED from those forces. So the one thing the student must
+ * be able to say, unambiguously, is WHICH force(s) the child reads.
+ *
+ * That question used to be answered for them - the tools read whatever was in
+ * the selection at the instant the button was pressed. A force the student had
+ * just drawn was still selected, so pressing Resultant produced a Resultant of
+ * it without the student ever naming it, and a stray click during creation
+ * could take an existing Resultant's parent as the input by proximity.
+ *
+ * The workflow here makes the input EXPLICIT:
+ *
+ *     activate the tool        -> "Select force" / "Select force(s)"
+ *     click a Force            -> it is added as an input (never inferred)
+ *     click a Resultant        -> nothing: not a Force, so not an input
+ *     click empty space        -> nothing
+ *     Enter                    -> the child is created from the inputs
+ *
+ * NOTHING IS GUESSED. A click on a child never stands in for its parent, the
+ * nearest force is never chosen, and the previously selected force is never
+ * reused. The Selected force(s) are shown by the ordinary selection highlight,
+ * which is already the application's way of saying "this one is picked".
+ */
+export const ANALYSIS_INPUT_TOOLS = [
+    "resultant",
+    "force-components"
+];
+
+export function isAnalysisInputTool(toolId) {
+    return ANALYSIS_INPUT_TOOLS.includes(toolId);
+}
+
+/*
+ * The prompt the tool shows while it waits for its input.
+ */
+export function analysisInputMessage(toolId) {
+    return toolId === "force-components"
+        ? "Select force"
+        : "Select force(s)";
+}
+
+/*
+ * ARM THE TOOL AND ENTER THE INPUT-SELECTION STATE.
+ *
+ * The interaction phase is what routes the next click to this tool rather than
+ * to universal selection, so the student is genuinely choosing the input rather
+ * than selecting objects the application then reads.
+ *
+ * The SELECTION IS CLEARED on entry. That is deliberate and is the whole of
+ * "do not use the last selected force": whatever was selected when the button
+ * was pressed is not an input, and the student starts from a blank slate they
+ * build themselves.
+ */
+export function beginAnalysisInput(toolId) {
+    enggDrawingState.setActiveTool(drawingState, toolId);
+
+    enggDrawingState.clearInteraction(drawingState);
+
+    drawingState.interaction.phase = "analysis-input";
+    drawingState.interaction.analysisKind = toolId;
+
+    drawingState.selection.selectedObjectIds = [];
+    drawingState.selection.boxSelectionIds = [];
+
+    setToolMessage(analysisInputMessage(toolId));
+
+    renderProperties();
+    renderCurrentDrawing();
+}
+
+/*
+ * A CLICK WHILE THE TOOL IS WAITING FOR ITS INPUT.
+ *
+ * ONLY A FORCE IS AN INPUT. Anything else - a Resultant, a Force Components
+ * pair, a beam, a support, empty space - is not, so the click does nothing and
+ * the tool keeps waiting. That is what stops a click on a child feature being
+ * read as a click on its parent, and what stops unrelated geometry silently
+ * being added.
+ *
+ * A force is TOGGLED: clicking one adds it, clicking it again removes it, and
+ * clicking it a third time adds it once - never twice. So a Resultant of three
+ * forces is built by three clicks and no duplicates can arise.
+ *
+ * For Force Components exactly ONE force is wanted, so a click REPLACES the
+ * input rather than accumulating: the last force the student named is the one
+ * being resolved, which is unambiguous.
+ */
+export function handleAnalysisInputClick(
+    resolution,
+    event
+) {
+    const toolId =
+        drawingState.interaction.analysisKind ||
+        drawingState.activeTool;
+
+    const point =
+        resolution?.rawPointerPoint ||
+        resolution?.effectiveConstructionPoint ||
+        null;
+
+    const object = point
+        ? drawingState.objects.find(
+              candidate =>
+                  candidate.type === "force" &&
+                  objectAtPointForInput(candidate, point)
+          )
+        : null;
+
+    if (!object) {
+        /*
+         * NOT A FORCE, SO NOT AN INPUT. The tool stays in its waiting state
+         * and says so, rather than creating anything or selecting something
+         * else.
+         */
+        setToolMessage(analysisInputMessage(toolId));
+
+        return;
+    }
+
+    const selected =
+        drawingState.selection.selectedObjectIds || [];
+
+    if (toolId === "force-components") {
+        /*
+         * ONE FORCE, REPLACED RATHER THAN ACCUMULATED.
+         */
+        enggDrawingState.selectObject(drawingState, object.id);
+    } else if (selected.includes(object.id)) {
+        /*
+         * CLICKING AN ALREADY-CHOSEN FORCE REMOVES IT. No duplicate can be
+         * created, because the id is either present or it is not.
+         */
+        enggDrawingState.selectObjects(
+            drawingState,
+            selected.filter(id => id !== object.id)
+        );
+    } else {
+        enggDrawingState.selectObjects(drawingState, [
+            ...selected,
+            object.id
+        ]);
+    }
+
+    setToolMessage(analysisInputMessage(toolId));
+
+    renderProperties();
+    renderCurrentDrawing();
+}
+
+/*
+ * COMMIT THE CHILD FROM THE EXPLICITLY CHOSEN INPUTS.
+ *
+ * The inputs are read from the SELECTION, which is what the student built by
+ * clicking. A commit with nothing chosen creates nothing and says so, which is
+ * the honest outcome for "I have not told you which force yet".
+ */
+export function commitAnalysisInput() {
+    const toolId =
+        drawingState.interaction.analysisKind ||
+        drawingState.activeTool;
+
+    const chosen =
+        drawingState.objects.filter(
+            object =>
+                object.type === "force" &&
+                drawingState.selection.selectedObjectIds.includes(
+                    object.id
+                )
+        );
+
+    if (!chosen.length) {
+        setToolMessage(analysisInputMessage(toolId));
+
+        return false;
+    }
+
+    if (toolId === "force-components") {
+        createForceComponents(chosen[0]);
+    } else {
+        createResultant(chosen);
+    }
+
+    /*
+     * THE OPERATION IS FINISHED, so the interaction is cleared but the TOOL
+     * stays armed - the same "place another one" shape every placement tool
+     * has. Escape is how the student leaves it.
+     */
+    enggDrawingState.clearInteraction(drawingState);
+    drawingState.interaction.phase = "analysis-input";
+    drawingState.interaction.analysisKind = toolId;
+
+    drawingState.selection.selectedObjectIds = [];
+
+    setToolMessage(analysisInputMessage(toolId));
+
+    renderProperties();
+    renderCurrentDrawing();
+
+    return true;
+}
+
+/*
+ * Is a point on a specific force?
+ *
+ * A thin local hit test, kept here so the input-selection state does not depend
+ * on the general hit test's ordering - a click here is asking one question
+ * only ("is this a FORCE?"), and the answer must not be influenced by what
+ * else happens to be under the cursor.
+ */
+function objectAtPointForInput(
+    force,
+    point
+) {
+    const geometry = force.geometry || {};
+
+    const start =
+        geometry.start ||
+        geometry.position;
+
+    if (!start) {
+        return false;
+    }
+
+    /*
+     * The force is aimed at along its drawn arrow, using the same shared
+     * resolver the renderer and the ordinary hit test use, so the click lands
+     * on the arrow the student can actually see.
+     */
+    const tolerance =
+        12 /
+        Math.max(
+            1,
+            enggDrawingState.BASE_PIXELS_PER_UNIT *
+                (drawingState.camera?.zoom || 1)
+        );
+
+    const end =
+        enggLoadProfile.drawnForceEnd(
+            drawingState,
+            geometry
+        );
+
+    if (!end) {
+        return false;
+    }
+
+    return distanceToSegment(point, start, end) <= tolerance;
+}
+

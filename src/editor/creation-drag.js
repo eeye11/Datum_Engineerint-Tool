@@ -371,12 +371,17 @@ export function beginCreationDrag(
         const annotateArmed =
             drawingState.interaction.annotateStage === "anchor";
 
-        if (
+        /*
+         * A press on an existing feature is NOT refused here either - it is
+         * NOTED, so a drag from existing geometry can still begin the leader
+         * while a plain click still falls through to selection. This is the
+         * same deferral the geometry tools use below, for the same reason: a
+         * leader that attaches to a feature must be startable by pressing on
+         * that feature.
+         */
+        const annotateOnExisting =
             !annotateArmed &&
-            pressSelectsExistingObject(event)
-        ) {
-            return false;
-        }
+            pressSelectsExistingObject(event);
 
         editorState.creationDrag = {
             pointerId: event.pointerId,
@@ -389,7 +394,8 @@ export function beginCreationDrag(
                 x: event.clientX,
                 y: event.clientY
             },
-            moved: false
+            moved: false,
+            onExisting: annotateOnExisting
         };
 
         return true;
@@ -409,18 +415,33 @@ export function beginCreationDrag(
     }
 
     /*
-     * A press on an existing feature selects it instead, exactly as a
-     * click would - so the drag must not begin a feature through it. Only
-     * asked when STARTING: an anchor already placed is the student's own
-     * geometry, and the next point of their own construction may well land
-     * on it.
+     * ========================================================
+     * A PRESS ON AN EXISTING FEATURE IS NOT DECIDED YET
+     * ========================================================
+     *
+     * It used to be refused here, so that a press on a beam selected the beam
+     * rather than starting something through it. That is right for a CLICK and
+     * wrong for a DRAG: a student drawing a new Line that begins at a beam's
+     * endpoint is pressing ON the beam, and refusing the press meant the drag
+     * was never armed - the feature did not start from the mouse-down point,
+     * and only appeared (based on the release) once the cursor had left the
+     * geometry. Starting a run of members from a joint is exactly the case that
+     * broke.
+     *
+     * So the press is ARMED either way and the decision is deferred to the
+     * gesture, which is the only thing that can actually tell them apart:
+     *
+     *     press on existing, no travel -> a CLICK; the browser's own click
+     *                                     selects the feature (see
+     *                                     pressSelectsExistingObject below)
+     *     press on existing, travel    -> a DRAG; the active tool owns it and
+     *                                     starts at the mouse-down/snapped point
+     *
+     * `onExisting` records which case this is so the release can do the right
+     * thing - commit a creation for a drag, or leave the click to selection.
      */
-    if (
-        idle &&
-        pressSelectsExistingObject(event)
-    ) {
-        return false;
-    }
+    const onExisting =
+        idle && pressSelectsExistingObject(event);
 
     /*
      * ========================================================
@@ -482,7 +503,15 @@ export function beginCreationDrag(
             y: event.clientY
         },
 
-        moved: false
+        moved: false,
+
+        /*
+         * THE PRESS LANDED ON AN EXISTING FEATURE. It is not a decision, only
+         * a note: the drag path uses it so a press that never travels is left
+         * to the click pipeline (which selects that feature), while a press
+         * that travels lets the tool start from the same point.
+         */
+        onExisting
     };
 
     return true;

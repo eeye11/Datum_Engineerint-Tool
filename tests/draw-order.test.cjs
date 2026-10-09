@@ -106,19 +106,39 @@ check(
  * THE CONTROLS ARE WIRED TO THE PAGE
  * ========================================================
  */
-console.log("\n  the controls are wired\n");
+/*
+ * THE CONTROLS ARE REACHED FROM THE TOOLS MENU.
+ *
+ * They were buttons on the global tool bar, which has been removed - it put two
+ * rows of File/Save/Undo on one screen and duplicated the menu bar. The COMMANDS
+ * were not removed with it: each is now a Tools menu item that calls the same
+ * function the button called.
+ *
+ * So this asserts the commands are still reachable, through the menu, which is
+ * where they now live.
+ */
+console.log("\n  the commands are reachable from the Tools menu\n");
 
-const html = fs.readFileSync(
-  require("path").join(__dirname, "..", "index.html"),
-  "utf8",
-);
+const menuCommands = fs.readFileSync(locate("menu-commands.js"), "utf8");
 
+/*
+ * The four directions are named on the menu items, and each runs the draw-order
+ * command with its direction - so the direction is what proves the item exists.
+ */
 ["front", "forward", "backward", "back"].forEach((id) => {
   check(
-    `the ${id} button is in the toolbar`,
-    html.includes(`data-draw-order="${id}"`),
+    `the ${id} command is offered by the Tools menu`,
+    menuCommands.includes(`applyDrawOrderToSelection("${id}")`),
   );
 });
+
+check(
+  "and the menu calls the SAME function the buttons called",
+  /export function applyDrawOrderToSelection[\s\S]{0,300}?applyDrawOrder\(direction\)/.test(
+    fs.readFileSync(locate("menu-commands-actions.js"), "utf8"),
+  ),
+  "a second implementation of the ordering rule would be a second answer",
+);
 
 const editorIndex = fs.readFileSync(locate("index.js"), "utf8");
 

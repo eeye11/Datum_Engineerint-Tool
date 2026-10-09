@@ -1462,6 +1462,45 @@ export function updateFeatureProperty(object, key, value) {
         }
     }
 
+    if (object.type === 'dimension') {
+        /*
+         * WHICH LENGTH UNIT A DIMENSION READS IN.
+         *
+         * The measurement itself is never stored - it is recomputed from the
+         * referenced geometry on every panel draw and every redraw - so this
+         * writes NO value at all. It records only the unit the student wants
+         * the number WRITTEN in, and `formatMeasurement` does the conversion
+         * through the shared unit table.
+         *
+         * That is what keeps a dimension DRIVING across a unit change: the
+         * reference, the placement and the world-scale relationship are all
+         * untouched, so a 100 mm span read in cm shows "10 cm" and still
+         * updates the moment the geometry it measures moves.
+         *
+         * A unit the length quantity does not have is refused rather than
+         * stored, so a dimension can never be left asking to be read in a
+         * force or a moment.
+         */
+        if (key === 'displayUnit') {
+            const unit = String(value ?? '');
+
+            if (unit && !enggQuantities?.isUnitFor?.('length', unit)) {
+                return false;
+            }
+
+            /*
+             * THE SHEET'S OWN UNIT IS STORED AS NULL. A dimension read in mm -
+             * the unit the sheet already works in - keeps no override, which is
+             * the state every dimension had before this field existed.
+             */
+            object.displayUnit = unit && unit !== 'mm' ? unit : null;
+
+            return true;
+        }
+
+        return false;
+    }
+
     if (object.type === 'variable-dimension') {
         /*
          * THE SYMBOL IS THE VALUE.

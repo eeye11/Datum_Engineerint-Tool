@@ -137,6 +137,7 @@ function createDimension({
   style = {},
   label = null,
   name,
+  displayUnit = null,
 } = {}) {
   const normalisedRefs = normaliseReferences(refs);
 
@@ -192,6 +193,18 @@ function createDimension({
       precision: null,
       ...style,
     },
+
+    /*
+     * WHICH LENGTH UNIT THE VALUE IS READ IN.
+     *
+     * The measurement itself is always taken in the sheet's own unit, so the
+     * geometric association - and therefore the dimension staying DRIVING -
+     * is unaffected by this. It says only how the number is WRITTEN: a 100 mm
+     * span read in cm shows "10 cm" while still measuring 100 mm. Null means
+     * the sheet's own unit, which is what a dimension created before this
+     * existed keeps.
+     */
+    displayUnit: displayUnit || null,
 
     /*
      * True until a reference stops resolving. Not a flag the user
@@ -1245,6 +1258,39 @@ function formatMeasurement(
   const prefix = definition?.prefix || "";
 
   /*
+   * THE DISPLAY UNIT.
+   *
+   * The measurement is always taken in the sheet's own unit (mm), because
+   * that is what the World Scale gives. The student may READ it in another
+   * length unit - cm, m, in, ft - and that changes the NUMBER SHOWN, never
+   * the geometry or the measurement.
+   *
+   * This is the one place the conversion happens, and it is a CONVERSION,
+   * not a relabel: 100 mm read in cm is 10 cm, not 100 cm. The stored
+   * reference and the world-scale relationship are untouched, so a dimension
+   * stays DRIVING and keeps updating in whichever unit is chosen.
+   *
+   * An ANGLE is not a length and has no length unit, so it is left alone.
+   */
+  const displayUnit =
+    measurement.angular
+      ? null
+      : dimension.displayUnit || measurement.unit;
+
+  const shown =
+    !measurement.angular &&
+    displayUnit &&
+    enggQuantities?.convertValue &&
+    displayUnit !== measurement.unit
+      ? enggQuantities.convertValue(
+          rounded,
+          "length",
+          measurement.unit,
+          displayUnit,
+        )
+      : rounded;
+
+  /*
    * ONE FORMATTER FOR EVERY DIMENSION.
    *
    * The unit used to be conditional on a per-dimension `showUnits` style
@@ -1281,10 +1327,10 @@ function formatMeasurement(
   if (!formatter) {
     return measurement.angular
       ? `${prefix}${value}°`
-      : `${prefix}${value} ${measurement.unit}`;
+      : `${prefix}${formatAtPrecision(shown, precision)} ${displayUnit || measurement.unit}`;
   }
 
-  return formatter.formatLength(rounded, measurement.unit, {
+  return formatter.formatLength(shown, displayUnit || measurement.unit, {
     prefix,
     precision,
     angular: measurement.angular === true,

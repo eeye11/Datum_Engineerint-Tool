@@ -171,12 +171,29 @@ check(
   "otherwise the next release would complete an abandoned gesture",
 );
 
-console.log("\n  a press on existing geometry still selects\n");
+console.log("\n  a press on existing geometry is DEFERRED, not refused\n");
+
+/*
+ * THE PRESS IS NO LONGER REFUSED. It used to return early, which meant a drag
+ * that started on a beam could not begin a feature at all - the new member
+ * only appeared once the cursor had left the geometry. The press is armed now
+ * and the DECISION is deferred to the gesture: a click on the feature still
+ * selects it, while a drag lets the active tool start from the pressed point.
+ */
+check(
+  "the press on an existing feature is NOTED, not refused",
+  /const onExisting =\s*idle &&\s*pressSelectsExistingObject\(event\)/.test(
+    drag,
+  ),
+  "refusing the press is what stopped a drag from starting on a beam",
+);
 
 check(
-  "starting on an existing feature does not begin a creation",
-  /if \(\s*idle &&\s*pressSelectsExistingObject\(event\)\s*\)/.test(drag),
-  "the Select/creation boundary must not move",
+  "and it is no longer an early return",
+  !/if \(\s*idle &&\s*pressSelectsExistingObject\(event\)\s*\)\s*\{\s*return false;/.test(
+    drag,
+  ),
+  "a click is still a selection, but that is decided on release",
 );
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

@@ -113,14 +113,32 @@ console.log("\n  the section bar is one row that scrolls, never wraps\n");
     /flex-wrap:\s*nowrap/.test(rule),
   );
 
+  /*
+   * THE SCROLLING MOVED TO THE INNER GROUP.
+   *
+   * The toolsets live in `.drawing-toolbar-scroll` now, because the Hide
+   * control at the far right must NOT be pushed off the edge by eleven
+   * toolsets - so the OVERFLOW is on the group that holds the toolsets, and the
+   * bar around it is a plain flex row. The invariant is the same - one row that
+   * scrolls rather than one that wraps - it is simply carried by the child.
+   */
+  const scroller = ruleFor(".drawing-toolbar-scroll {");
+
   check(
-    "and scrolls horizontally",
-    /overflow-x:\s*auto/.test(rule),
+    "and its toolset group scrolls horizontally",
+    /overflow-x:\s*auto/.test(scroller),
+    "the toolset row must scroll rather than fold onto a second line",
   );
 
   check(
     "keeping its height stable",
-    /overflow-y:\s*hidden/.test(rule),
+    /overflow-y:\s*hidden/.test(scroller),
+  );
+
+  check(
+    "and the bar around the scroller does not itself scroll",
+    !/overflow-x:\s*auto/.test(rule),
+    "the Hide control is a sibling of the scroller, not something it scrolls past",
   );
 }
 

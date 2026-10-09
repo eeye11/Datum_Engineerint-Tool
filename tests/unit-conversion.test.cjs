@@ -150,10 +150,7 @@ console.log("\n  the three value states survive a unit change\n");
     "Unknown must not become 0 by being converted",
   );
 
-  check(
-    "and null the same",
-    convertValue(null, "force", "N", "kN") === null,
-  );
+  check("and null the same", convertValue(null, "force", "N", "kN") === null);
 }
 
 /* ============================================================
@@ -178,8 +175,7 @@ console.log("\n  only the units that belong to the quantity\n");
 
   check(
     "a moment offers moment units",
-    unitsFor("moment").includes("N·m") &&
-      unitsFor("moment").includes("kN·m"),
+    unitsFor("moment").includes("N·m") && unitsFor("moment").includes("kN·m"),
   );
 
   check(
@@ -225,10 +221,7 @@ console.log("\n  a force's stored magnitude is always in N\n");
     "the number is the base-unit value; the unit only says how to write it",
   );
 
-  check(
-    "and the unit is recorded",
-    profile.forceUnit(force.geometry) === "kN",
-  );
+  check("and the unit is recorded", profile.forceUnit(force.geometry) === "kN");
 
   /*
    * WHICH IS THE WHOLE TRICK: reading 250 base units in kN gives 0.25, so the

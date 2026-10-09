@@ -8,101 +8,35 @@ import enggAnalysisDependencies from "../features/analysis/analysis-dependencies
 import enggDiagramEquations from "../features/analysis/diagram-equations.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
+import enggQuantities from "../core/units/quantities.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggSketchEditor from "../ui/editors/sketch-editor.js";
 import enggPropertyPanel from "../ui/feature-panel/property-panel.js";
-import { drawingState, editorState } from "./editor-state.js";
+import { drawingState } from "./editor-state.js";
 import { relativeCoordinateRows } from "./relative-coordinates.js";
 import { staticsSupportSection } from "./statics-tools.js";
-import { usesStaticsVectors } from "../core/model/feature-types.js";
 
-export function staticsDisplayMarkup(object) {
-    if (!usesStaticsVectors(object)) {
-        return "";
-    }
-
-    const current =
-        enggLoadProfile.vectorScaleFor(
-            drawingState
-        );
-
-    /*
-     * The dropdown carries the decades for speed, and a CUSTOM entry at
-     * the bottom for everything else.
-     *
-     * The custom value is stored in exactly the same place as a listed
-     * one and read back the same way, so choosing it is not a different
-     * kind of setting - it is the same setting, typed. The entry is only
-     * shown as selected when the current value is NOT one of the offered
-     * magnitudes; otherwise the real value is selected and the custom box
-     * is hidden, so the control never claims a scale the sheet is not
-     * using.
-     */
-    const isListed =
-        enggLoadProfile.VECTOR_SCALE_OPTIONS.some(
-            option => option.value === current
-        );
-
-    const options =
-        enggLoadProfile.VECTOR_SCALE_OPTIONS
-            .map(
-                option => `
-                    <option
-                        value="${option.value}"${
-                            option.value === current
-                                ? " selected"
-                                : ""
-                        }
-                    >${option.label}</option>
-                `
-            )
-            .join("");
-
-    const customField =
-        isListed && !editorState.staticsCustomScaleOpen
-            ? ""
-            : `
-            <div class="drawing-property-grid drawing-property-grid-value">
-                <span class="drawing-property-grid-label">Custom Scale</span>
-                <input type="number" step="any" min="0"
-                    data-statics-vector-custom
-                    aria-label="Custom vector scale"
-                    value="${isListed ? current : current}">
-                <span class="drawing-property-unit">Ã—</span>
-                <button type="button"
-                    class="drawing-property-action"
-                    data-statics-vector-apply>Apply</button>
-            </div>
-        `;
-
-    return `
-        <div class="drawing-properties-block drawing-statics-display">
-            <div class="drawing-properties-title">STATICS DISPLAY</div>
-
-            <div class="drawing-property-grid">
-                <span class="drawing-property-grid-label">Vector Scale</span>
-                <span class="drawing-property-grid-value">
-                    <select data-statics-vector-scale
-                        aria-label="Vector Scale">
-                        ${options}
-                        <option
-                            value="${
-                                enggLoadProfile
-                                    .CUSTOM_VECTOR_SCALE
-                            }"${
-                                isListed && !editorState.staticsCustomScaleOpen
-                                    ? ""
-                                    : " selected"
-                            }
-                        >Customâ€¦</option>
-                    </select>
-                </span>
-            </div>
-
-            ${customField}
-        </div>
-    `;
-}
+/*
+ * ========================================================
+ * VECTOR SCALE IS NOT HERE ANY MORE
+ * ========================================================
+ *
+ * The Vector Scale control used to be rendered at the top of this panel - a
+ * STATICS DISPLAY block offering the decades and a custom box - because it
+ * decides how large every force and load arrow is drawn.
+ *
+ * It is a SHEET-WIDE display setting, though, not a property of the feature in
+ * front of the student, and a sheet-wide control does not belong in a panel
+ * that describes one feature: it lived inside a long scrolling list where it
+ * was easy to miss, and there was only ever one of it while the panel could
+ * show many features. It now sits on the TOP TOOLBAR beside Magnitudes, where
+ * every other global display control already is, and it is editable there
+ * without selecting anything.
+ *
+ * The reading and writing are unchanged - `load-profile.vectorScaleFor` and
+ * `state.statics.vectorScale` are still the one source of truth - so nothing
+ * about how an arrow is drawn is affected by where the control lives.
+ */
 
 /*
  * The Reverse Direction control for a load.
@@ -260,7 +194,7 @@ export function annotationSectionMarkup(
  * box can be produced - and a second list would be a second answer.
  *
  * That is not hypothetical. The first version of this named
- * "distributed-load" and "moment"; Datum's features are called "load"
+ * "distributed-load" and "moment"; DAETUM's features are called "load"
  * and "moment", so the list matched nothing at all and the section was
  * offered to no feature whatsoever while looking entirely correct.
  *
@@ -302,6 +236,28 @@ export function unitSelectMarkup({
     current,
     label,
 }) {
+    /*
+     * THE SHARED CONTROL, WHERE IT IS AVAILABLE.
+     *
+     * Every unit selector in the application resolves to ONE builder -
+     * `propertyPanel.unitSelect` - so a load's unit control and a force's are
+     * the same control, at the same width, with the same dropdown and the same
+     * keyboard behaviour. The fallback below is the same markup again, for the
+     * harness contexts where the panel module is not loaded, so this function
+     * never returns nothing.
+     */
+    const panels =
+        enggPropertyPanel;
+
+    if (panels && panels.unitSelect) {
+        return panels.unitSelect({
+            property,
+            units,
+            current,
+            label,
+        });
+    }
+
     const options = units
         .map(
             unit =>
@@ -311,7 +267,7 @@ export function unitSelectMarkup({
         )
         .join("");
 
-    return `<select data-property="${property}" aria-label="${label}">${options}</select>`;
+    return `<select class="drawing-property-unit-select" data-property="${property}" aria-label="${label}">${options}</select>`;
 }
 
 /*
@@ -597,6 +553,26 @@ export function analysisPanelRows(
             readOnly(
                 "Status",
                 "Source deleted - showing no values"
+            )
+        );
+    } else if (
+        object.type === "resultant" ||
+        object.type === "force-components"
+    ) {
+        /*
+         * THE CHILD SAYS IT IS DERIVED.
+         *
+         * A Resultant and a Force Components pair are not independent Statics
+         * objects: every value and every part of their geometry is calculated
+         * from the source force(s) listed above. Saying so on the panel is what
+         * tells the student why the numbers are read-only and why the feature
+         * does not drag - the control for changing them is the SOURCE force,
+         * not this child.
+         */
+        rows.push(
+            readOnly(
+                "Status",
+                "Derived from its source force"
             )
         );
     }
@@ -1462,11 +1438,27 @@ export function distributedLoadPanelMarkup(
      */
     const loadUnitValue = enggLoadProfile.loadUnit(geometry);
 
+    /*
+     * THE UNITS COME FROM THE SHARED TABLE, NOT FROM A LOCAL LIST.
+     *
+     * `unitsFor("distributedLoad")` is the ONE list of units a distributed
+     * load may be stated in. The literal `["kN/m", "N/mm"]` this replaced
+     * was a second list that could drift from the quantity's own units - so a
+     * unit added to the table would not appear here, and a unit removed from
+     * it would still be offered. Both lists are the same list now, and the
+     * conversion that reads the stored number uses the same table.
+     */
+    const loadUnits =
+        enggQuantities?.unitsFor?.("distributedLoad") || [
+            "kN/m",
+            "N/mm",
+        ];
+
     const loadUnitOptions = unitSelectMarkup({
         property: "loadUnit",
-        units: ["kN/m", "N/mm"],
+        units: loadUnits,
         current: loadUnitValue,
-        label: "Load unit"
+        label: "Load unit",
     });
 
     rows.push(`

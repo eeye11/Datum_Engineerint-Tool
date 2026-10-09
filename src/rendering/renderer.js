@@ -1274,8 +1274,31 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         /*
          * THE LEADER OR ARROW SHAFT, drawn before the content so the text
          * sits ON TOP of its own pen rather than under it.
+         *
+         * A LEADER OR CALLOUT DRAWS ITS WHOLE PATH - attachment, every bend,
+         * endpoint - as one polyline, because that ordered list IS the pen. An
+         * arrow, and a leader with no bends, is the same thing with a path two
+         * points long, so there is one drawing path rather than a straight case
+         * and a bent case that could disagree about where the line goes.
          */
-        if (start && end) {
+        const pathScreen =
+            (model.leaderPathPoints?.(entity) || []).map((point) =>
+                toScreen(point)
+            );
+
+        if (pathScreen.length >= 2) {
+            svg.appendChild(
+                createSvgElement("polyline", {
+                    points: pathScreen
+                        .map((point) => `${point.x},${point.y}`)
+                        .join(" "),
+                    fill: "none",
+                    stroke,
+                    "stroke-width": 1,
+                    "stroke-linejoin": "round"
+                })
+            );
+        } else if (start && end) {
             svg.appendChild(
                 createSvgElement("line", {
                     x1: start.x,
@@ -1286,7 +1309,9 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     "stroke-width": 1
                 })
             );
+        }
 
+        if (start && end) {
             /*
              * THE ARROWHEAD SITS AT THE POINTED END.
              *
@@ -1297,7 +1322,16 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
              * a shared guess.
              */
             const headAt = kind === "arrow" ? end : start;
-            const tailAt = kind === "arrow" ? start : end;
+
+            /*
+             * THE TAIL IS THE NEAREST PATH POINT, not always the far end - so
+             * a bent leader's head still lies along the segment it actually
+             * ends, rather than pointing back at the text box across the bends.
+             */
+            const tailAt =
+                kind === "arrow"
+                    ? start
+                    : pathScreen[1] || end;
 
             if (
                 (kind === "arrow" || kind === "leader" || kind === "callout") &&
@@ -1321,7 +1355,25 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          * with no text (an arrow, a bare table) draws none.
          */
         const textAt = anchor || end;
-        const text = model.textOf(entity);
+
+        /*
+         * WHAT IS DRAWN IS THE CONTENT, OR THE PLACEHOLDER WHEN THERE IS
+         * NONE.
+         *
+         * An empty annotation is still a visible, editable thing: it draws
+         * its contextual placeholder - "Enter note", "Enter callout" - in a
+         * MUTED style, so the student can see the feature they just placed and
+         * write into it, and so the sheet distinguishes "not written yet" from
+         * "written, and it says this". The placeholder is drawn only; it is
+         * never stored on the feature.
+         */
+        const text = model.displayTextOf(entity);
+
+        const isPlaceholderText = Boolean(model.isPlaceholder?.(entity));
+
+        const textStroke = isPlaceholderText
+            ? "#9aa4aa"
+            : stroke;
 
         if (textAt && text) {
             const lines = String(text).split("\n");
@@ -1367,7 +1419,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     svg,
                     lines,
                     textAt,
-                    stroke,
+                    textStroke,
                     fontSize,
                     lineHeight,
                     entity.style?.align
@@ -1674,14 +1726,15 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         }
 
         /*
-         * A FIXED SCALE IN ENGINEERING UNITS PER PIXEL OF FRAME HEIGHT,
-         * so a value of 10 means the same thing on every diagram and the
-         * student can read magnitudes off their own work. The frame's own
-         * pixel height comes from the bounding box rather than from the
-         * world, so the curve cannot zoom itself.
+         * THE VALUE SCALE COMES FROM `analysisValueScale`, below.
+         *
+         * There used to be a `const unitHeight = rangeWidth * 0.16;` here that
+         * was never read - the real scale has always been the one that function
+         * returns. It has been removed rather than left in place, because a
+         * number that looks like it sets the scale and does not is worse than no
+         * number: the next person to change how large a curve is drawn would
+         * have edited it and seen nothing happen.
          */
-        const unitHeight = rangeWidth * 0.16;
-
         const peak =
             equations.peakMagnitude(entries);
 
@@ -5980,6 +6033,48 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                             `${point.x},${point.y}`
                     )
                     .join(" "),
+                fill: stroke,
+                stroke: "none"
+            })
+        );
+
+        /*
+         * THE CENTRE DOT: THE POINT THE MOMENT IS APPLIED AT.
+         *
+         * A moment's centre is its APPLICATION POINT - the exact spot the
+         * couple acts on - and the curved arrow alone does not say where that
+         * is: a reader can see which way something turns without being able to
+         * tell the joint it turns about. The dot marks it.
+         *
+         * IT SITS AT THE ARC'S OWN CENTRE, which is the moment's attachment
+         * coordinate passed in by the caller (`toScreen(position)`). There is
+         * no offset of any kind, so the moment's attachment point, the centre of
+         * the symbol and the centre of the dot are the same point by
+         * construction - and they stay together when the moment moves.
+         *
+         * IT IS DRAWN IN SCREEN SPACE, at a FIXED pixel radius, so it is a
+         * constant small marker at every zoom: clearly visible when zoomed out,
+         * and never swelling into a blob when zoomed in. That is why it is not
+         * derived from the arc radius, which is a presentation size the student
+         * may change - the attachment marker must not grow with the symbol.
+         *
+         * IT IS VISUALLY SUBORDINATE. A dot smaller than the arc's stroke
+         * weight times a little would vanish; one as large as the arrowhead
+         * would compete with it. The radius below is deliberately between the
+         * two, in the panel's own dark stroke, so it reads as an engineering
+         * reference mark rather than as a second arrowhead.
+         *
+         * IT IS NOT A FEATURE. It is drawn as part of the moment and is owned
+         * by it - not selectable, not movable and not deletable on its own, so
+         * it cannot be separated from the point it marks.
+         */
+        const centreDotRadius = 2.2;
+
+        svg.appendChild(
+            createSvgElement("circle", {
+                cx: arc.center.x,
+                cy: arc.center.y,
+                r: centreDotRadius,
                 fill: stroke,
                 stroke: "none"
             })

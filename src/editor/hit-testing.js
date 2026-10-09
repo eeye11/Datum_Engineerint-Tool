@@ -930,7 +930,7 @@ export function objectAtPoint(
                      * be reached - the rectangle swallowed every click within
                      * its perimeter.
                      *
-                     * Datum has no Fill tool, so a rectangle is a collection of
+                     * DAETUM has no Fill tool, so a rectangle is a collection of
                      * edges rather than a filled region, and selection must
                      * follow what is actually drawn. Removing the clause is
                      * what lets inner geometry be selected through the shape.
@@ -1038,7 +1038,7 @@ export function objectAtPoint(
                      * THE INTERIOR IS NOT A HIT TARGET.
                      *
                      * A triangle is its three edges, not a filled region -
-                     * Datum has no Fill tool - so treating the inside as part
+                     * DAETUM has no Fill tool - so treating the inside as part
                      * of the feature made the triangle block every click
                      * within its perimeter and hid anything drawn inside it.
                      * Selecting an edge still selects the triangle as one

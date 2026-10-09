@@ -7,45 +7,618 @@
  * once. The other stylesheets refer to these names; change a value here and
  * it changes everywhere.
  *
- * THE PALETTE follows the University of Alberta's: UAlberta green as the
- * one accent colour (active tools, the selected tab, primary buttons) and
- * UAlberta gold as a highlight. The green the interface was designed with,
- * #1f5c38, is a shade darker than the official #275d38; the official
- * values are listed below so the palette can be aligned with one edit.
+ * THE PALETTE is DAETUM's DEEP TEAL & ICE: a deep teal as the one interaction
+ * accent (active tools, the selected workspace, toggles that are on) - and NOTHING
+ * else. NEUTRAL SURFACES DOMINATE - a soft ice-mint and white in Light Mode, a
+ * deep teal-charcoal in Dark Mode - so the accent is noticed because it MEANS
+ * something rather than because it is everywhere. A page painted teal has no
+ * accent left to draw the eye.
+ *
+ * WHERE THE VALUES LIVE.
+ *
+ * `--datum-green` (the teal accent), `--datum-teal`, and the neutral surface
+ * tokens are the names a reader should reach for. `--precision-*` names the exact
+ * palette the design was specified with, so the semantic tokens above can be SET
+ * to it - see the note above `--precision-green-500`.
+ *
+ * THE TOKEN NAMES SAY `green` AND `gold`, AND THE VALUES ARE TEAL AND ICE. That
+ * is deliberate: the names are the ROLES the interface refers to in a hundred
+ * places, and renaming them would be a sweeping, colour-adjacent refactor rather
+ * than a colour change. The role of `--datum-green` is "the one interaction
+ * accent"; the role of `--datum-gold` is "the secondary highlight"; the role of
+ * `--datum-focus` is "the focus ring". Their VALUES are the Deep Teal & Ice
+ * palette, restated below.
  *
  * Drawing colours (a feature's stroke, the selection highlight on the
  * canvas) are not here: they belong to the drawing, are stored in the
  * document, and are set by the renderer.
  */
+/*
+ * ============================================================
+ * THEME: LIGHT AND DARK
+ * ============================================================
+ *
+ * The tokens above are the LIGHT theme's values. The blocks below re-point the
+ * same names for the dark theme, and the whole interface follows - because every
+ * surface is styled through these names rather than through a literal colour.
+ *
+ * WHY `data-theme` ON THE ROOT AND NOT A CLASS ON EACH PANEL
+ * ---------------------------------------------------------
+ * One attribute on `<html>` is the single source of truth, so a component
+ * cannot be half-themed: there is no way to set the menu dark and forget the
+ * dialog, because neither of them decides its own colours. The resolver in
+ * `theme.js` writes the attribute; nothing else does.
+ *
+ * WHAT THE ATTRIBUTE CAN SAY
+ * --------------------------
+ *   (absent)      follow the operating system
+ *   light         the light palette, whatever the OS prefers
+ *   dark          the dark palette, whatever the OS prefers
+ *
+ * An ABSENT attribute is the "System Default" state. The `prefers-color-scheme`
+ * block below then supplies the dark values when the OS asks for them, so System
+ * Default needs no JavaScript to be correct on first paint - which is what stops
+ * a dark-mode user seeing a white flash before the script runs.
+ *
+ * THE DRAWING IS NOT THEMED. Nothing here touches a feature's stroke, a vector's
+ * colour, a dimension's text or the canvas background: those belong to the
+ * DOCUMENT and are stored in it. Theming the interface must never recolour work
+ * the student made, and a dark interface over a light sheet is a normal thing to
+ * want. See the Canvas section for the canvas background, which is a separate
+ * setting.
+ */
 :root {
-    /* University of Alberta reference colours. */
-    --ualberta-green: #275d38;
-    --ualberta-gold: #f2cd00;
+    /*
+     * ========================================================
+     * THE LIGHT PALETTE: A DEEP TEAL & ICE STUDIO
+     * ========================================================
+     *
+     * ICE, NOT WHITE. The backdrop is a soft ice-mint (#F2F8F7) rather than a
+     * white page, and every panel, menu and toolbar surface is a clean white
+     * (#FFFFFF) that sits ON that backdrop - so a raised surface reads as raised.
+     * An interface where every surface is #ffffff has no depth to give away.
+     *
+     * TEAL IS THE IDENTITY, NOT THE DECORATION. `--datum-green` - the token name
+     * the whole interface reaches for - is now the Deep Teal accent (#087E83),
+     * used for active tools, the selected tab and primary actions. It is NOT
+     * applied to every surface, and it is NOT the default drawing line colour:
+     * a page painted teal has no accent left to draw the eye.
+     *
+     * ICE IS THE COUNTERPOINT. Selection and focus are a cool ice-teal (#D9EFED),
+     * sparingly, so the current selection is visible without competing with the
+     * accent.
+     */
 
-    /* The accent: UAlberta green, in the shades the interface uses. */
-    --datum-green: #1f5c38;
-    --datum-green-hover: #17472b;
-    --datum-green-ink: #164c2d;
-    --datum-green-line: #a9c7b4;
-    --datum-green-soft: #c5d9cb;
-    --datum-green-tint: #dcebe2;
-    --datum-green-wash: #e6f0ea;
-    --datum-gold: var(--ualberta-gold);
+        /* The PRECISION palette, named exactly as specified. */
+    --precision-green-500: #087E83;
+    --precision-green-600: #066A6E;
+    --precision-green-700: #05595C;
+    --precision-green-800: #05494B;
+    --precision-green-300: #7ECBC8;
+    --precision-green-100: #D9EFED;
+    --precision-gold-500: #087E83;
+    --precision-gold-400: #0A959B;
+    --precision-gold-700: #05595C;
+    --precision-gold-100: #D9EFED;
+    --precision-slate-50: #F2F8F7;
+    --precision-slate-100: #EDF5F4;
+    --precision-slate-200: #D5E5E3;
+    --precision-slate-300: #C2D8D6;
+    --precision-slate-400: #8FA9A7;
 
-    /* Neutrals. */
-    --datum-ink: #26343b;
-    --datum-muted: #70808a;
-    --datum-subtle: #6b7b83;
-    --datum-border: #d4dde1;
-    --datum-panel: #f5f8f9;
-    --datum-page: #f5f6f8;
+    /*
+     * `#5D7777` WAS THE SPECIFIED SECONDARY TEXT, and it is darkened by two
+     * steps here. On the ice-mint page it measured 4.47:1 - just under the WCAG
+     * AA 4.5:1 floor for normal text - so `#5A7373` (4.73:1 on the page, 5.08:1
+     * on white) is the smallest change that clears it while staying the same
+     * secondary teal-grey. Every other Deep Teal & Ice value is used exactly as
+     * given.
+     */
+    --precision-slate-500: #5A7373;
+    --precision-slate-700: #3E5A5A;
+    --precision-slate-900: #193335;
+    --precision-night-950: #142426;
+    --precision-night-900: #1B3032;
+    --precision-night-800: #203B3C;
+    --precision-night-700: #27494B;
+    --precision-night-200: #E8F5F3;
+    --precision-night-500: #A8C6C3;
+    --precision-night-bd: #365052;
+    --precision-night-bd-strong: #4A676A;
+    --precision-green-dark-400: #4DD0C5;
+    --precision-green-dark-600: #37B8AE;
+    --precision-gold-dark-400: #4DD0C5;
+
+    /*
+     * Deep teal - the core interaction accent.
+     *
+     * THE PRECISION TEAL: #087E83, a dark teal whose green and blue channels sit
+     * close together so it reads cool rather than as a green. It is dark enough to
+     * carry white text on a light surface, which is what makes the selected states
+     * legible.
+     *
+     * `green-ink` IS THE DEEPER TEAL. That is the TEXT colour: on a light surface
+     * text wants the darkest value for its contrast even where an ICON, which is
+     * larger and simpler, is comfortable with a slightly brighter one.
+     */
+    --datum-green: #087E83;
+    --datum-green-hover: #066A6E;
+    --datum-green-ink: #05595C;
+    --datum-green-line: var(--precision-green-300);
+    --datum-green-soft: var(--precision-green-300);
+    --datum-green-tint: var(--precision-green-100);
+    --datum-green-wash: var(--precision-slate-100);
+
+    /*
+     * The secondary highlight - ICE, the counterpoint, used sparingly.
+     *
+     * It was academic gold. The Deep Teal & Ice palette has ONE identity hue, so
+     * the counterpoint is the pale ice-teal rather than a second, competing hue;
+     * it marks focus, the current selection and values worth noticing.
+     */
+    --datum-gold: #087E83;
+    --datum-gold-ink: var(--precision-gold-700);
+    --datum-gold-tint: var(--precision-gold-100);
+
+    /*
+     * The neutral surfaces, from the backdrop up to the raised surface.
+     *
+     * DEPTH COMES FROM A STEP, NOT AN OUTLINE. The page is the ice-mint, the
+     * panel is a barely-there ice wash, the toolbar surface is white and only a
+     * genuinely RAISED surface - a dialog, the writing sheet - is pure white,
+     * which is what keeps elevation meaning something.
+     */
+    --datum-ink: var(--precision-slate-900);
+    --datum-muted: var(--precision-slate-500);
+    --datum-subtle: var(--precision-slate-400);
+    --datum-border: var(--precision-slate-200);
+    --datum-border-strong: var(--precision-slate-300);
+
+    --datum-page: var(--precision-slate-50);
+    --datum-panel: var(--precision-slate-100);
     --datum-surface: #ffffff;
+    --datum-raised: #ffffff;
 
-    /* Status. */
-    --datum-error: #b00020;
-    --datum-focus: #1677ff;
+    /*
+     * THE INTERFACE LAYERS, named so each one is a decision rather than a
+     * reused literal: the header sits above the menu bar, which sits above the
+     * toolbar, which sits above the panels.
+     */
+    --datum-chrome: #ffffff;
+    --datum-menu: #ffffff;
+    --datum-menu-hover: var(--precision-slate-100);
+    --datum-rail: var(--precision-slate-50);
+
+    /* Inputs: a distinct surface so a field reads as editable. */
+    --datum-input: #ffffff;
+    --datum-input-hover: var(--precision-slate-100);
+    --datum-input-border: var(--precision-slate-300);
+    --datum-placeholder: var(--precision-slate-400);
+
+    --datum-overlay: rgba(15, 23, 42, 0.28);
+    --datum-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+    --datum-shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.10);
+
+    /*
+     * SEMANTIC STATES.
+     *
+     * Deliberately NOT teal. A warning that shares the brand's colour stops
+     * reading as a warning - the whole point of a semantic colour is that it is
+     * different from everything else.
+     */
+    --datum-success: #1f6b3f;
+    --datum-warning: #9a6b00;
+    --datum-warning-tint: #fdf1dc;
+    --datum-warning-line: #e0b877;
+    --datum-error: #a3321f;
+    --datum-error-tint: #fbeae6;
+
+    /* The amber Unknown state, which is a value state and not an error. */
+    --datum-unknown-ink: var(--datum-warning);
+    --datum-unknown-tint: var(--datum-warning-tint);
+    --datum-unknown-line: var(--datum-warning-line);
+
+    /*
+     * FOCUS IS THE DEEP TEAL INK, and it is darker than the accent so the ring
+     * reads against BOTH the ice-mint page and the accent-tinted selected rows -
+     * the one job left over from the gold it replaced.
+     */
+    --datum-focus: var(--precision-gold-700);
 
     /* Type. */
-    --datum-font: Arial, sans-serif;
-    --datum-font-mono: Consolas, "Courier New", monospace;
+    --datum-font: "Segoe UI", "IBM Plex Sans", "Source Sans 3", system-ui, Arial, sans-serif;
+    --datum-font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+
+    /*
+     * SPACING, RADII, HEIGHTS AND LAYERS.
+     *
+     * A scale rather than chosen-per-component numbers, so two panels cannot
+     * disagree about what "a small gap" is. The steps are the 4px multiples
+     * every interface settles on.
+     */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+
+    --radius-sm: 3px;
+    --radius-md: 5px;
+    --radius-lg: 8px;
+
+    --control-h: 22px;
+    --control-h-lg: 26px;
+    --icon-sm: 14px;
+    --icon-md: 16px;
+    --icon-lg: 20px;
+
+    --z-canvas: 1;
+    --z-toolbar: 60;
+    --z-menu: 70;
+    --z-dialog: 200;
+    --z-popover: 210;
+
+    /*
+     * DRAWING DEFAULT, NOT INTERFACE COLOUR.
+     *
+     * The colour a NEWLY drawn feature gets when nobody has chosen one. It is a
+     * token because it has to be legible against the canvas, which is its own
+     * setting - see the canvas block - and it is deliberately NOT the ink
+     * colour, which is text rather than geometry.
+     *
+     * `--datum-canvas-ink` IS the Light Mode default line colour (#193335, a dark
+     * teal-charcoal), and it is what the light canvas is drawn for. It is a
+     * DIFFERENT value from the dark theme's, because a light line on white is no
+     * line at all - see the dark block, where it becomes ice-white.
+     */
+    --datum-canvas: #ffffff;
+    --datum-canvas-ink: #193335;
+}
+
+/*
+ * THE DARK PALETTE: A PRECISION CHARCOAL DRAFTING STUDIO.
+ *
+ * NOT BLUE. The previous dark theme was graphite with a BLUE cast - #202a30,
+ * #182026, #39454c, and a #6fb4ff focus - which is the house style of a hundred
+ * technology products and says nothing about DAETUM. Every surface here has a
+ * green or warm-neutral undertone instead.
+ *
+ * DEPTH COMES FROM BRIGHTNESS, NOT FROM OUTLINES. The backdrop, the panels, the
+ * menu and a raised dialog are four different values, so a floating surface
+ * reads as floating without needing a bright border. Flattening them - or
+ * lighting every surface equally - is what makes a dark interface look like a
+ * single grey sheet.
+ *
+ * THE ACCENT IS SOFTENED, NOT INVERTED. `#087E83` on a deep teal-charcoal is
+ * almost black, so the accent lifts to a bright ice-teal (#4DD0C5). It stays the
+ * same colour family, so the application still looks like DAETUM.
+ *
+ * THE FOCUS AND SELECTION ARE THE LIFTED ACCENT. Focus, selection and important
+ * state read through the same teal family rather than a second hue, so the
+ * interface has ONE identity in the dark as well as in the light.
+ */
+[data-theme="dark"] {
+    /* The browser's own controls - option lists, scrollbars - go dark too. */
+    color-scheme: dark;
+
+    /*
+     * THE PRECISION PALETTE, RE-STATED FOR THE DARK BLOCK.
+     *
+     * The `--precision-*` names must be declared in EVERY theme block, for the
+     * same reason the type and scale tokens are: a token that exists in only one
+     * palette is a token the dark theme inherits BY ACCIDENT. The dark variants
+     * of the two accents are the separate `-dark-*` names, so the light values
+     * are never reused on a charcoal surface where they would disappear.
+     */
+    --precision-green-500: #087E83;
+    --precision-green-600: #066A6E;
+    --precision-green-700: #05595C;
+    --precision-green-800: #05494B;
+    --precision-green-300: #7ECBC8;
+    --precision-green-100: #D9EFED;
+    --precision-gold-500: #4DD0C5;
+    --precision-gold-400: #6FDDD4;
+    --precision-gold-700: #4DD0C5;
+    --precision-gold-100: #203B3C;
+    --precision-slate-50: #F2F8F7;
+    --precision-slate-100: #EDF5F4;
+    --precision-slate-200: #D5E5E3;
+    --precision-slate-300: #C2D8D6;
+    --precision-slate-400: #8FA9A7;
+    --precision-slate-500: #5D7777;
+    --precision-slate-700: #3E5A5A;
+    --precision-slate-900: #193335;
+    --precision-night-950: #142426;
+    --precision-night-900: #1B3032;
+    --precision-night-800: #203B3C;
+    --precision-night-700: #27494B;
+    --precision-night-200: #E8F5F3;
+    --precision-night-500: #A8C6C3;
+    --precision-night-bd: #365052;
+    --precision-night-bd-strong: #4A676A;
+    --precision-green-dark-400: #4DD0C5;
+    --precision-green-dark-600: #37B8AE;
+    --precision-gold-dark-400: #4DD0C5;
+
+    /*
+     * Deep teal, LIFTED for the deep teal-charcoal.
+     *
+     * THE ACCENT VALUES ARE WRITTEN OUT RATHER THAN ALIASED to the palette
+     * names above, and that is deliberate: the theme tests assert the SHAPE of
+     * this palette - that the accent is a teal, that it is lighter than the light
+     * theme's - and a check can only read a value that is actually stated here.
+     * An alias would make the source say `var(...)` and the check have to resolve
+     * it, for no gain: these lines ARE the palette, and the `--precision-*` names
+     * exist for the components that want to reach past them.
+     */
+    --datum-green: #4DD0C5;
+    --datum-green-hover: #37B8AE;
+    --datum-green-ink: #4DD0C5;
+    --datum-green-line: #37B8AE;
+    --datum-green-soft: var(--precision-night-700);
+    --datum-green-tint: var(--precision-night-800);
+    --datum-green-wash: var(--precision-night-800);
+
+    /* The secondary highlight - ICE - the same family, lifted. */
+    --datum-gold: #4DD0C5;
+    --datum-gold-ink: #4DD0C5;
+    --datum-gold-tint: #203B3C;
+
+    /* Deep teal-charcoal and ice - never blue-grey, never pure black. */
+    --datum-ink: #E8F5F3;
+    --datum-muted: #A8C6C3;
+    --datum-subtle: var(--precision-night-500);
+    --datum-border: #365052;
+    --datum-border-strong: var(--precision-night-bd-strong);
+
+    /* The deep teal-charcoal is stated once, here, and named for the palette. */
+    --datum-page: #142426;
+    --datum-panel: #1B3032;
+    --datum-surface: #1B3032;
+    --datum-raised: var(--precision-night-800);
+
+    --datum-chrome: #1B3032;
+    --datum-menu: #1B3032;
+    --datum-menu-hover: var(--precision-night-800);
+    --datum-rail: var(--precision-night-900);
+
+    /*
+     * THE INPUT SURFACE IS DARK AND SLIGHTLY DEEPER than the panel it sits on,
+     * so a field reads as a well rather than a raised chip. A white input on a
+     * dark interface is the single most common way a dark theme is left
+     * unfinished.
+     */
+    --datum-input: var(--precision-night-950);
+    --datum-input-hover: var(--precision-night-800);
+    --datum-input-border: var(--precision-night-bd-strong);
+    --datum-placeholder: #8FA9A7;
+
+    --datum-overlay: rgba(0, 0, 0, 0.55);
+    --datum-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --datum-shadow-soft: 0 1px 4px rgba(0, 0, 0, 0.45);
+
+    /*
+     * SEMANTIC STATES, LIFTED FOR THE DARK SURFACE.
+     *
+     * Still not teal: a warning in the brand's colour is not a warning.
+     */
+    --datum-success: #6fbf8b;
+    --datum-warning: #e8c07a;
+    --datum-warning-tint: #3a3120;
+    --datum-warning-line: #6b5a34;
+    --datum-error: #e2806a;
+    --datum-error-tint: #3a2521;
+
+    --datum-unknown-ink: var(--datum-warning);
+    --datum-unknown-tint: var(--datum-warning-tint);
+    --datum-unknown-line: var(--datum-warning-line);
+
+    /* Focus is the lifted ice-teal, bright against every dark surface. */
+    --datum-focus: #4DD0C5;
+
+    /*
+     * THE TYPE TOKENS ARE REPEATED IN EVERY THEME BLOCK.
+     *
+     * They do not change between themes - the font is the same - but a token
+     * that exists in only one palette is a token the dark theme inherits BY
+     * ACCIDENT. Keeping the three blocks identical in WHAT THEY DEFINE is what
+     * makes "every token the interface uses is defined for every theme" a fact
+     * rather than a hope, and the tests check exactly that.
+     */
+    --datum-font: "Segoe UI", "IBM Plex Sans", "Source Sans 3", system-ui, Arial, sans-serif;
+    --datum-font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+
+    /* The scale is the same in both themes - only the colours change. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+
+    --radius-sm: 3px;
+    --radius-md: 5px;
+    --radius-lg: 8px;
+
+    --control-h: 22px;
+    --control-h-lg: 26px;
+    --icon-sm: 14px;
+    --icon-md: 16px;
+    --icon-lg: 20px;
+
+    --z-canvas: 1;
+    --z-toolbar: 60;
+    --z-menu: 70;
+    --z-dialog: 200;
+    --z-popover: 210;
+
+    /*
+     * THE CANVAS KEEPS ITS OWN APPEARANCE.
+     *
+     * A dark interface over a LIGHT sheet is a normal, supported combination -
+     * the theme styles the surrounding instrument, not the paper the work is
+     * drawn on. So the sheet stays white in both themes.
+     *
+     * `--datum-canvas-ink` IS the Dark Mode default line colour (#E8F5F3, an
+     * ice-white), the counterpart of the light theme's dark teal-charcoal. It is
+     * only the value the application READS when it has to draw a default-coloured
+     * line on a dark sheet; it never recolours a feature that already exists.
+     */
+    --datum-canvas: #ffffff;
+    --datum-canvas-ink: #E8F5F3;
+}
+
+/*
+ * ============================================================
+ * `color-scheme`: THE NATIVE CONTROLS, WHICH NO TOKEN CAN REACH
+ * ============================================================
+ *
+ * A `<select>`'s open option list, a date picker, a scrollbar, an input's
+ * autofill highlight - these are drawn by the BROWSER, not by CSS, and they do
+ * not read our tokens. Without this property a dark interface shows a white
+ * option list and a bright scrollbar, which is the most visible way a dark
+ * theme is left half-finished.
+ *
+ * `color-scheme` is the one property that reaches them: it tells the browser
+ * which of its own two palettes to use for everything it draws itself.
+ *
+ * IT IS SET ON THE LIGHT BLOCK AND RE-SET IN THE DARK ONE, so it follows the
+ * theme rather than the operating system. `light` here, `dark` below, and the
+ * `prefers-color-scheme` block sets it too - so a System Default user gets
+ * native controls that match the palette they are actually being shown.
+ */
+:root {
+    color-scheme: light;
+}
+
+/*
+ * SYSTEM DEFAULT.
+ *
+ * No `data-theme` attribute means "whatever the operating system prefers".
+ * This is a plain media query, so it is correct before any script runs - there
+ * is no frame in which a dark-mode user sees the light palette.
+ *
+ * It is repeated rather than shared with the block above because CSS has no way
+ * to say "apply this selector list under this media condition" without writing
+ * the declarations out. The duplication is deliberate and it is the reason the
+ * resolver does not need to react to the OS changing.
+ */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        color-scheme: dark;
+
+        /*
+         * THE PRECISION NAMES AGAIN. This block must define the SAME tokens as
+         * the explicit dark theme, or a user on System Default gets a
+         * partially-dark interface - and `theme-tokens.test.cjs` checks exactly
+         * that, token by token.
+         */
+        --precision-green-500: #087E83;
+        --precision-green-600: #066A6E;
+        --precision-green-700: #05595C;
+        --precision-green-800: #05494B;
+        --precision-green-300: #7ECBC8;
+        --precision-green-100: #D9EFED;
+        --precision-gold-500: #4DD0C5;
+        --precision-gold-400: #6FDDD4;
+        --precision-gold-700: #4DD0C5;
+        --precision-gold-100: #203B3C;
+        --precision-slate-50: #F2F8F7;
+        --precision-slate-100: #EDF5F4;
+        --precision-slate-200: #D5E5E3;
+        --precision-slate-300: #C2D8D6;
+        --precision-slate-400: #8FA9A7;
+        --precision-slate-500: #5D7777;
+        --precision-slate-700: #3E5A5A;
+        --precision-slate-900: #193335;
+        --precision-night-950: #142426;
+        --precision-night-900: #1B3032;
+        --precision-night-800: #203B3C;
+        --precision-night-700: #27494B;
+        --precision-night-200: #E8F5F3;
+        --precision-night-500: #A8C6C3;
+        --precision-night-bd: #365052;
+        --precision-night-bd-strong: #4A676A;
+        --precision-green-dark-400: #4DD0C5;
+        --precision-green-dark-600: #37B8AE;
+        --precision-gold-dark-400: #4DD0C5;
+
+        --datum-green: #4DD0C5;
+        --datum-green-hover: #37B8AE;
+        --datum-green-ink: #4DD0C5;
+        --datum-green-line: #37B8AE;
+        --datum-green-soft: var(--precision-night-700);
+        --datum-green-tint: var(--precision-night-800);
+        --datum-green-wash: var(--precision-night-800);
+
+        --datum-gold: #4DD0C5;
+        --datum-gold-ink: #4DD0C5;
+        --datum-gold-tint: #203B3C;
+
+        --datum-ink: #E8F5F3;
+        --datum-muted: #A8C6C3;
+        --datum-subtle: var(--precision-night-500);
+        --datum-border: #365052;
+        --datum-border-strong: var(--precision-night-bd-strong);
+
+        --datum-page: #142426;
+        --datum-panel: #1B3032;
+        --datum-surface: #1B3032;
+        --datum-raised: var(--precision-night-800);
+
+        --datum-chrome: #1B3032;
+        --datum-menu: #1B3032;
+        --datum-menu-hover: var(--precision-night-800);
+        --datum-rail: var(--precision-night-900);
+
+        --datum-input: var(--precision-night-950);
+        --datum-input-hover: var(--precision-night-800);
+        --datum-input-border: var(--precision-night-bd-strong);
+        --datum-placeholder: #8FA9A7;
+
+        --datum-overlay: rgba(0, 0, 0, 0.55);
+        --datum-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+        --datum-shadow-soft: 0 1px 4px rgba(0, 0, 0, 0.45);
+
+        --datum-success: #6fbf8b;
+        --datum-warning: #e8c07a;
+        --datum-warning-tint: #3a3120;
+        --datum-warning-line: #6b5a34;
+        --datum-error: #e2806a;
+        --datum-error-tint: #3a2521;
+
+        --datum-unknown-ink: var(--datum-warning);
+        --datum-unknown-tint: var(--datum-warning-tint);
+        --datum-unknown-line: var(--datum-warning-line);
+
+        --datum-focus: #4DD0C5;
+
+        /* Type and scale: unchanged between themes, declared for the same reason. */
+        --datum-font: "Segoe UI", "IBM Plex Sans", "Source Sans 3", system-ui, Arial, sans-serif;
+        --datum-font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 24px;
+
+        --radius-sm: 3px;
+        --radius-md: 5px;
+        --radius-lg: 8px;
+
+        --control-h: 22px;
+        --control-h-lg: 26px;
+        --icon-sm: 14px;
+        --icon-md: 16px;
+        --icon-lg: 20px;
+
+        --z-canvas: 1;
+        --z-toolbar: 60;
+        --z-menu: 70;
+        --z-dialog: 200;
+        --z-popover: 210;
+
+        --datum-canvas: #ffffff;
+        --datum-canvas-ink: #E8F5F3;
+    }
 }

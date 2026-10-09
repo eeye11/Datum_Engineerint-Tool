@@ -6,6 +6,7 @@ import enggFeatureGeometry from "../core/geometry/feature-geometry.js";
 import { coordinateSystemArms, rigidBodyHandles } from "../core/geometry/feature-handles.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDimensions from "../core/scale/dimensions.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingCanvas } from "./dom.js";
@@ -491,6 +492,47 @@ function manipulationHandles(
     }
 
     /*
+     * A LEADER OR A CALLOUT IS EDITED ALONG ITS PEN.
+     *
+     * The path is one ordered list - attachment, bends, endpoint - and each of
+     * those points is a handle, so the student can bend the leader around the
+     * drawing by dragging rather than by typing coordinates. The kinds WITHOUT
+     * a path (a note, a label, a symbol, a tolerance, a table, a bare arrow)
+     * get nothing here and keep their existing whole-feature move.
+     *
+     * `bend{i}` names a bend by its index in the STORED list, which is the
+     * same index `removeLeaderBend` takes and the same order the path is
+     * drawn in - so a handle and the bend it moves cannot drift apart.
+     */
+    if (
+        object.type === "annotate" &&
+        enggAnnotate.hasLeaderPath(
+            object.annotateKind
+        )
+    ) {
+        const path =
+            enggAnnotate.leaderPathPoints(object);
+
+        if (path.length >= 2) {
+            const bends =
+                Array.isArray(g.bends)
+                    ? g.bends
+                    : [];
+
+            return [
+                { kind: "annotate-attachment", point: path[0] },
+
+                ...bends.map((bend, index) => ({
+                    kind: `annotate-bend${index}`,
+                    point: bend
+                })),
+
+                { kind: "annotate-endpoint", point: path[path.length - 1] }
+            ];
+        }
+    }
+
+    /*
      * An analysis object IS dragged, and the two halves of it stay in step.
      *
      * A Force Components and a Resultant are re-derived from their sources
@@ -963,6 +1005,8 @@ const CONSTRUCTION_ACTIVE_PHASES = [
     "first-point",
     "statics-span",
     "statics-attach",
+    /* The Resultant / Force Components input-selection state. */
+    "analysis-input",
 
     /*
      * The three steps of a distributed load. Each is listed because each

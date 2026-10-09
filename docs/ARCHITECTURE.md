@@ -1,4 +1,4 @@
-# Datum — Architecture
+# DAETUM — Architecture
 
 Where things live, why, and the rules that keep them there. Read this
 before changing the code; [TOOL-MAP.md](TOOL-MAP.md) then tells you where
@@ -8,7 +8,7 @@ a particular toolbar command's code is.
 
 ## The shape of the application
 
-Datum is a static web application: plain ES modules, built by Vite into
+DAETUM is a static web application: plain ES modules, built by Vite into
 files any web server can host. There is no framework. `index.html` loads
 one module, `src/main.js`, and everything else is reached through imports.
 

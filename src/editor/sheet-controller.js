@@ -13,10 +13,52 @@ import { markDocumentDirty, serializeDocumentBody } from "./document-commands.js
 import { drawingCanvas, drawingDisplayToggles, drawingGridToggle, drawingSnapToggle, drawingZoomValue } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
+import { defaultLineColour } from "./theme.js";
 import { setToolMessage } from "./toolbar-render.js";
 
 const drawingSheetBar =
     document.getElementById("drawingSheetTabs");
+
+/*
+ * ========================================================
+ * THE DEFAULT DRAWING COLOUR OF A LOADED SHEET
+ * ========================================================
+ *
+ * A sheet carries its own `styleDefaults.stroke`. The rule is:
+ *
+ *   1. the student HAS chosen a colour - the stored value is kept, whatever the
+ *      theme, because it is the student's own choice;
+ *   2. otherwise the stroke is the THEME's default, so it is re-pointed to the
+ *      theme in effect now. A sheet saved under the light theme therefore opens
+ *      with the right default line colour under the dark one.
+ *
+ * WHAT COUNTS AS "CHOSEN" is `strokeExplicit === true` - the flag the colour
+ * picker sets. A file saved BEFORE the flag existed has none, and its stroke is
+ * judged by its VALUE: the old fixed default was `#000000`, so that value means
+ * "no explicit choice" and any other does not. A document someone deliberately
+ * drew in red keeps its red; a document that never chose one moves to the new
+ * theme default with everything else.
+ *
+ * ONLY THE DEFAULT FOR FUTURE FEATURES IS TOUCHED. This returns a new defaults
+ * object and never walks `objects`, so existing features keep the strokes they
+ * were drawn with - a theme change must not recolour the drawing.
+ */
+export function adoptDefaultStroke(styleDefaults = {}) {
+    const loaded = { ...styleDefaults };
+
+    const legacyDefault = loaded.stroke === "#000000";
+
+    const chosenByStudent =
+        loaded.strokeExplicit === true ||
+        (loaded.strokeExplicit === undefined && !legacyDefault);
+
+    if (!chosenByStudent) {
+        loaded.stroke = defaultLineColour();
+        loaded.strokeExplicit = false;
+    }
+
+    return loaded;
+}
 
 export function sheetById(sheetId) {
     return enggSheets.sheetById(
@@ -97,9 +139,8 @@ function adoptSheetViewportIntoEditor() {
     Object.assign(drawingState.camera, sheet.viewport);
     drawingState.snap = { ...sheet.snap };
     drawingState.objectSnap = { ...sheet.objectSnap };
-    drawingState.styleDefaults = {
-        ...sheet.styleDefaults,
-    };
+
+    drawingState.styleDefaults = adoptDefaultStroke(sheet.styleDefaults);
     drawingState.grid = { ...sheet.grid };
     drawingState.units = sheet.units;
 
@@ -316,27 +357,78 @@ export function loadSheetIntoEditor(sheet) {
 }
 
 /*
+ * ========================================================
+ * STATING A TOGGLE'S ON/OFF STATE
+ * ========================================================
+ *
+ * The GRID/SNAP and DISPLAY toggles are ICON-ONLY, so there is no word beside
+ * them to update. The state is carried by three things that ARE there:
+ *
+ *   the button's `aria-pressed` attribute   - the state, for a screen reader
+ *   the `.active` class                    - the state, visually
+ *   the button's `title`                   - "Grid: on" / "Grid: off", on hover
+ *
+ * THE TOOLTIP IS THE ONE THAT REPLACED THE LABEL, and it is not just cosmetic:
+ * an icon-only toggle whose only explanation was a tooltip reading "Grid" would
+ * say WHAT it is but not WHICH WAY IT IS - so the word ON/OFF has to travel with
+ * it. That is this function's whole job.
+ *
+ * IT NO LONGER WRITES TEXT INTO THE BUTTON. `textContent = "..."` replaces every
+ * child, so the old implementation deleted the icon and left a bare word where a
+ * symbol had been - the exact failure it was written to avoid. There is no text
+ * node to find in an icon-only button, so writing one is not attempted.
+ *
+ * It is one function because several places state a toggle's ON/OFF - this
+ * module, the toolbar's own handler and the settings dialog - and several copies
+ * of "which node is the label" would be several chances to get it wrong.
+ */
+export function setToggleLabel(button, word, on) {
+    if (!button) {
+        return;
+    }
+
+    const state = on ? "on" : "off";
+
+    button.classList.toggle("active", Boolean(on));
+    button.setAttribute("aria-pressed", String(Boolean(on)));
+    button.setAttribute("title", `${word}: ${state}`);
+    button.setAttribute("aria-label", `${word}: ${state}`);
+
+    /*
+     * A button that IS purely text - an older panel, a test harness - has no
+     * icon to preserve, so its visible text is kept in step as well. An
+     * icon-only toggle has no text node, and nothing is written.
+     */
+    const labelNode = [...button.childNodes]
+        .reverse()
+        .find(
+            (node) =>
+                node.nodeType === 3 &&
+                node.textContent.trim()
+        );
+
+    if (labelNode) {
+        labelNode.textContent = ` ${word} ${on ? "ON" : "OFF"}`;
+    }
+}
+
+/*
  * The Grid and Snap buttons state themselves from the editor rather
  * than from a variable of their own, so that a sheet arriving with
  * its grid off or its snapping off shows that immediately.
  */
 export function syncWorkspaceSettingToggles() {
     if (drawingGridToggle) {
-        const on = Boolean(
-            drawingState.grid.visible
-        );
-
-        drawingGridToggle.textContent =
-            on ? "Grid ON" : "Grid OFF";
-
-        drawingGridToggle.classList.toggle(
-            "active",
-            on
-        );
-
-        drawingGridToggle.setAttribute(
-            "aria-pressed",
-            String(on)
+        /*
+         * THE TOGGLE STATES ITSELF from the editor rather than from a variable
+         * of its own, so a sheet arriving with its grid off shows that
+         * immediately. `setToggleLabel` writes the active class, the pressed
+         * state and the ON/OFF tooltip together, so the three cannot drift.
+         */
+        setToggleLabel(
+            drawingGridToggle,
+            drawingGridToggle.dataset.toggleName || "Grid",
+            Boolean(drawingState.grid.visible)
         );
     }
 
@@ -348,21 +440,10 @@ export function syncWorkspaceSettingToggles() {
     }
 
     if (drawingSnapToggle) {
-        const on = Boolean(
-            drawingState.snap.enabled
-        );
-
-        drawingSnapToggle.textContent =
-            on ? "Snap ON" : "Snap OFF";
-
-        drawingSnapToggle.classList.toggle(
-            "active",
-            on
-        );
-
-        drawingSnapToggle.setAttribute(
-            "aria-pressed",
-            String(on)
+        setToggleLabel(
+            drawingSnapToggle,
+            drawingSnapToggle.dataset.toggleName || "Snap",
+            Boolean(drawingState.snap.enabled)
         );
     }
 
@@ -395,16 +476,19 @@ export function syncWorkspaceSettingToggles() {
 
         const on = drawingState.display?.[key] !== false;
 
-        button.textContent =
-            button.textContent
-                .replace(/\s+(ON|OFF)$/, "") +
-            (on ? " ON" : " OFF");
-
-        button.classList.toggle("active", on);
-
-        button.setAttribute(
-            "aria-pressed",
-            String(on)
+        /*
+         * THE NAME COMES FROM THE BUTTON, not from its text.
+         *
+         * The toggle is ICON-ONLY, so there is no trailing text node to read a
+         * word back from - and deriving it from the markup would find the icon
+         * and nothing else. `data-toggle-name` in the markup is the one place
+         * the name is written, and `setToggleLabel` uses it for the tooltip and
+         * the accessible name.
+         */
+        setToggleLabel(
+            button,
+            button.dataset.toggleName || key,
+            on
         );
     });
 }

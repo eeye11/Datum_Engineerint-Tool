@@ -80,6 +80,26 @@ const otherBeam = {
   },
 };
 
+/*
+ * A LENGTH FEATURE.
+ *
+ * A dimension is the feature that DEFINES and therefore HOLDS the sheet's
+ * scale: it is what states that this much drawn distance is that much real
+ * length. Its own contents do not matter to these checks - only that a Length
+ * feature is present or absent - so a minimal one is enough.
+ */
+const dimension = {
+  id: "dimension-1",
+  type: "dimension",
+  dimensionType: "linear",
+  sourceRefs: [
+    { kind: "line", featureId: "beam-1", anchor: "start" },
+    { kind: "line", featureId: "beam-1", anchor: "end" },
+  ],
+  placement: { x: 200, y: 20 },
+  style: { showUnits: true, precision: null },
+};
+
 const drawing = state.createDrawingState();
 drawing.objects = [beam];
 
@@ -300,36 +320,49 @@ check(
  * hand proves the scale survives a list assignment, not that it
  * survives a deletion - and deletion is the act the rule is about.
  */
+/*
+ * ========================================================
+ * THE SCALE IS HELD BY THE LENGTH FEATURE, NOT BY GEOMETRY
+ * ========================================================
+ *
+ * A Length - a dimension - is what DEFINES the scale: it states what a drawn
+ * distance really is. So it is the presence of a Length that keeps the scale,
+ * and when the last one is deleted the scale has nothing left behind it and is
+ * dropped.
+ *
+ * THAT IS WHY THE OLD CONTROL IS GONE. It used to assert that any sheet still
+ * holding geometry kept its scale - which was right while the scale was held by
+ * the geometry itself. It is no longer right: a beam with no dimension on it
+ * has nothing that declares what the beam measures, so the scale goes with the
+ * dimension, and the next Length the student makes re-establishes it.
+ */
 {
-  const held = drawing.scale.mmPerUnit;
+  /* A sheet of geometry and a Length, correctly calibrated. */
+  drawing.objects = [beam, dimension];
 
-  /*
-   * A sheet holding geometry keeps its scale: this is the control. The
-   * reset must fire on EMPTINESS, not on any removal.
-   */
-  drawing.objects = [beam, otherBeam];
-
-  state.removeObjectsAndDescendants(drawing, new Set([otherBeam.id]));
+  state.resetScaleIfSheetIsEmpty(drawing);
 
   check(
-    "a sheet that still holds geometry keeps its scale",
-    scale.isCalibrated(drawing) &&
-      drawing.scale.mmPerUnit === held,
+    "a sheet holding a LENGTH feature keeps its scale",
+    scale.isCalibrated(drawing) === true,
     `scale became ${JSON.stringify(drawing.scale)}`,
   );
 
   /*
-   * And now the last of it goes.
+   * The Length goes. Geometry alone is not enough now.
    */
-  state.removeObjectsAndDescendants(drawing, new Set([beam.id]));
+  state.removeObjectsAndDescendants(drawing, new Set([dimension.id]));
 
   check(
-    "removing the LAST geometry uncalibrates the sheet",
-    drawing.objects.length === 0 &&
-      scale.isCalibrated(drawing) === false,
-    `objects=${drawing.objects.length} scale=${JSON.stringify(
-      drawing.scale,
-    )}`,
+    "deleting the LAST Length uncalibrates the sheet",
+    scale.isCalibrated(drawing) === false,
+    `scale=${JSON.stringify(drawing.scale)}`,
+  );
+
+  check(
+    "even though geometry remains on it",
+    drawing.objects.length > 0,
+    `objects=${drawing.objects.length}`,
   );
 
   /*
@@ -339,16 +372,11 @@ check(
    * than inheriting one.
    */
   check(
-    "and the emptied sheet is genuinely uncalibrated, not defaulted",
+    "and the sheet is genuinely uncalibrated, not defaulted",
     drawing.scale === null,
     `scale = ${JSON.stringify(drawing.scale)}`,
   );
 
-  /*
-   * A RELATIONSHIP WITH NOTHING TO RELATE. Whatever was drawn next on
-   * this sheet would be measured with a calibration taken from geometry
-   * that no longer exists, so the reset cannot be omitted.
-   */
   check(
     "so its lengths no longer claim a scale they cannot support",
     scale.readScale(drawing) === null,
@@ -359,11 +387,10 @@ check(
 /*
  * A LONE FORCE IS NOT A LENGTH.
  *
- * The rule is about LENGTH scale, so only geometry that has a length
- * can hold one. A force - or a load, a moment, a support - describes a
- * force or a reaction, not a distance, and a sheet left holding one is
- * empty of geometry in this sense: there is no length on it for a
- * length scale to describe.
+ * The rule is about LENGTH scale, so only a Length feature can hold one. A
+ * force - or a load, a moment, a support - describes a force or a reaction, not
+ * a distance, and a sheet left holding one has no length on it for a length
+ * scale to describe.
  */
 {
   const withForce = state.createDrawingState();
@@ -387,20 +414,20 @@ check(
   );
 
   /*
-   * And a Drawing with real geometry keeps it, so the rule does not
-   * simply drop every scale it is asked about.
+   * And a sheet holding a LENGTH keeps it, so the rule does not simply drop
+   * every scale it is asked about.
    */
-  const withBeam = state.createDrawingState();
+  const withLength = state.createDrawingState();
 
-  withBeam.scale = { mmPerUnit: 4, unit: "mm" };
-  withBeam.objects = [beam];
+  withLength.scale = { mmPerUnit: 4, unit: "mm" };
+  withLength.objects = [beam, dimension];
 
-  state.resetScaleIfSheetIsEmpty(withBeam);
+  state.resetScaleIfSheetIsEmpty(withLength);
 
   check(
-    "but one holding a length keeps its scale",
-    scale.isCalibrated(withBeam),
-    `scale = ${JSON.stringify(withBeam.scale)}`,
+    "but one holding a Length keeps its scale",
+    scale.isCalibrated(withLength),
+    `scale = ${JSON.stringify(withLength.scale)}`,
   );
 }
 

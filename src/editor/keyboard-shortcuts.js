@@ -9,6 +9,7 @@ import enggSketchEditor from "../ui/editors/sketch-editor.js";
 import enggNoteEditor from "../ui/editors/note-editor.js";
 import { drawToolDefinitions } from "./tools.js";
 import { cycleAnnotationKind } from "./annotation-tool.js";
+import { nudgeSelection } from "./arrow-movement.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { copySelectionToClipboard, cutSelectionToClipboard, pasteFromClipboard } from "./clipboard-commands.js";
 import { deleteSelectedObjects } from "./delete-command.js";
@@ -453,8 +454,51 @@ export function installKeyboardShortcuts() {
             }
 
             /*
+             * ========================================================
+             * THE ARROW KEYS MOVE THE SELECTION
+             * ========================================================
+             *
+             * One step in the requested direction, through the shared
+             * movement system - which decides what the step means for each
+             * feature (free, attached, fixed, derived) rather than the key
+             * deciding it here. See arrow-movement.js.
+             *
+             * IT IS CHECKED AFTER THE `editable` GUARD ABOVE, so an arrow key
+             * while a Features field has focus moves the CARET - typing a
+             * value must never nudge the drawing behind the field. And it is
+             * refused while a construction is running, because the arrow then
+             * belongs to that tool and not to the selection.
+             */
+            if (
+                event.key === "ArrowUp" ||
+                event.key === "ArrowDown" ||
+                event.key === "ArrowLeft" ||
+                event.key === "ArrowRight"
+            ) {
+                const moving = {
+                    ArrowUp: "up",
+                    ArrowDown: "down",
+                    ArrowLeft: "left",
+                    ArrowRight: "right"
+                }[event.key];
+
+                if (
+                    drawingState.selection.selectedObjectIds
+                        .length &&
+                    drawingState.interaction.phase === "idle"
+                ) {
+                    event.preventDefault();
+
+                    nudgeSelection(moving);
+
+                    return;
+                }
+            }
+
+            /*
              * Delete and Backspace.
-             */        if (
+             */
+            if (
                 event.code ===
                     "Delete" ||
                 event.key ===

@@ -80,10 +80,26 @@ export const FEATURE_TYPES = Object.freeze({
     shaft: { body: true, spanShaped: true },
 
     force: { attachable: true, vector: true },
-    resultant: { vector: true },
+    /*
+     * ====================================================
+     * THE DERIVED CHILDREN OF A FORCE
+     * ====================================================
+     *
+     * A Resultant and a Force Components pair are ANALYSIS CHILDREN of the
+     * force(s) they read. They are selectable, inspectable, deletable and they
+     * contribute to Fit - but they are NOT independently movable, because their
+     * position, direction and magnitude are all derived from their parents.
+     *
+     * `derived` records that explicitly, so the shared Move system asks what a
+     * feature IS rather than keeping its own list of type names - and a future
+     * derived child gets the same treatment by being listed here once.
+     */
+    resultant: { vector: true, derived: true },
     load: { attachable: true, vector: true },
     "varying-load": { attachable: true, vector: true },
     moment: { attachable: true, pointLike: true },
+
+    "force-components": { annotation: true, derived: true },
 
     "pin-support": { attachable: true, support: true, pointLike: true },
     "roller-support": { attachable: true, support: true, pointLike: true },
@@ -116,7 +132,6 @@ export const FEATURE_TYPES = Object.freeze({
     annotate: { annotation: true },
 
     "analysis-diagram": { annotation: true },
-    "force-components": { annotation: true },
     "coordinate-system-2d": { annotation: true },
 
     construction: { annotation: true }
@@ -152,6 +167,32 @@ export const usesStaticsVectors = object => traitOf(object?.type, "vector");
 export const isAreaType = type => traitOf(type, "area");
 export const isPointLikeType = type => traitOf(type, "pointLike");
 export const isAnnotationType = type => traitOf(type, "annotation");
+
+/*
+ * ====================================================
+ * A DERIVED FEATURE IS READ, NOT MOVED
+ * ====================================================
+ *
+ * A Resultant and a Force Components pair are static children of the force(s)
+ * they read. Their position, direction and magnitude are all re-derived from
+ * those parents, so moving one directly would be a change the next refresh
+ * immediately undoes - or worse, an offset that survives as a lie about where
+ * the reading belongs.
+ *
+ * They may still be SELECTED, inspected, box-selected, fitted, hovered and
+ * deleted; only the Move is refused, and it is refused because the thing the
+ * student wants changed lives on the PARENT.
+ */
+export const isDerivedType = type => traitOf(type, "derived");
+
+/*
+ * Is this feature one whose geometry is decided by something else?
+ *
+ * Asked of an OBJECT rather than a type, so callers that have the feature in
+ * hand do not have to name its type.
+ */
+export const isDerivedFeature = object =>
+    Boolean(object) && traitOf(object.type, "derived");
 
 /*
  * IS THIS TYPE KNOWN AT ALL?

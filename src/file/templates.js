@@ -3,7 +3,7 @@
  * USER TEMPLATES
  * ========================================================
  *
- * A template is a USER-CREATED starting document. Datum ships none: the library
+ * A template is a USER-CREATED starting document. DAETUM ships none: the library
  * begins empty, and a template exists only because the user made one from an
  * `.enggdraw` file they already had.
  *
@@ -21,7 +21,7 @@
  * --------------------------
  * The source `.enggdraw` is an ordinary file the user owns. It may be moved,
  * renamed or deleted at any moment, so a template cannot depend on it still
- * being there. The document is copied into Datum's own storage at the moment
+ * being there. The document is copied into DAETUM's own storage at the moment
  * the template is created, and the template keeps working whatever happens to
  * the file it came from.
  *
@@ -104,12 +104,12 @@ function readAll() {
   } catch (error) {
     /*
      * A damaged library is reported and reset rather than carried around. The
-     * user's own `.enggdraw` files are untouched by this - only Datum's copies
+     * user's own `.enggdraw` files are untouched by this - only DAETUM's copies
      * are lost, and a template can be made again from the source.
      */
     if (typeof console !== "undefined" && console.warn) {
       console.warn(
-        "[Datum] The template library could not be read and was reset.",
+        "[DAETUM] The template library could not be read and was reset.",
         error
       );
     }
@@ -152,7 +152,7 @@ function writeAll(templates) {
       return true;
     } catch (ignored) {
       if (typeof console !== "undefined" && console.error) {
-        console.error("[Datum] Templates could not be saved.", error);
+        console.error("[DAETUM] Templates could not be saved.", error);
       }
 
       return false;
@@ -235,7 +235,7 @@ function copyDocumentFor(id) {
   } catch (error) {
     if (typeof console !== "undefined" && console.error) {
       console.error(
-        "[Datum] A template's document could not be copied.",
+        "[DAETUM] A template's document could not be copied.",
         error
       );
     }
@@ -256,7 +256,7 @@ function copyDocumentFor(id) {
  * The document is the validated document from an `.enggdraw` the user chose.
  * This function does not read, parse or validate anything - that is the file
  * pipeline's job, and the caller has already done it, so a template can only
- * ever be created from a document Datum could actually open.
+ * ever be created from a document DAETUM could actually open.
  *
  * Returns the new template's id, or null when it could not be stored.
  */
@@ -324,7 +324,7 @@ function renameTemplate(id, name) {
 /*
  * Remove a template.
  *
- * This deletes Datum's stored copy and NOTHING else. The `.enggdraw` the
+ * This deletes DAETUM's stored copy and NOTHING else. The `.enggdraw` the
  * template was made from is the user's file, is not referenced here, and is
  * never touched - removing a template is not a file deletion.
  */

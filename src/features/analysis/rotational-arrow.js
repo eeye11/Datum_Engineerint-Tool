@@ -48,8 +48,17 @@ const GAP_RADIANS = (30 * Math.PI) / 180;
  * enough that the curve and its head are unmistakably a
  * rotational symbol rather than a stray arc, small enough that
  * a moment on a short beam does not swallow the beam.
+ *
+ * IT WAS RAISED FROM 16 TO 20. A freshly placed moment read as a
+ * little tight around its own centre point, and the centre dot
+ * added below needs a little room inside the curve to read as the
+ * application point rather than as a speck on the arc. The change
+ * is deliberately modest - the symbol stays proportional to the
+ * member it sits on - and it is a DEFAULT only: a moment that has
+ * an `arcRadius` of its own keeps it exactly, so existing drawings
+ * and user-set sizes are untouched.
  */
-const DEFAULT_ARC_RADIUS_PX = 16;
+const DEFAULT_ARC_RADIUS_PX = 20;
 
 /*
  * The bounds on a student-edited radius, in screen pixels.

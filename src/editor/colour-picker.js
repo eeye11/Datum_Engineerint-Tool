@@ -10,6 +10,7 @@ import { renderProperties } from "./feature-panel.js";
 import { objectAtPoint } from "./hit-testing.js";
 import { canvasPointFromEvent } from "./tool-activation.js";
 import { setToolMessage } from "./toolbar-render.js";
+import { syncStyleControls } from "./style-controls.js";
 
 /*
  * ========================================================
@@ -263,8 +264,43 @@ function updateColourSwatch() {
         );
 
     if (swatch) {
-        swatch.style.background =
-            drawingColor.value;
+        /*
+         * THE COLOUR IS PUBLISHED AS A TOKEN, which is what fills the droplet.
+         *
+         * `--datum-colour-value` is read by the toolbar's drop icon
+         * (`.drawing-strip-icon-fill`), so the CURRENT DRAWING COLOUR appears
+         * inside the drop.
+         *
+         * IT IS SET ON THE CONTROL, NOT ON THE SWATCH. The swatch is a SIBLING
+         * of the icon, not an ancestor of it, so a property written there would
+         * not inherit into the drop and the fill would silently fall back to the
+         * surface. The wrapper contains both, so the value reaches the icon from
+         * it - and the swatch still keeps its own copy, for any rule that reads
+         * the swatch directly.
+         *
+         * IT IS THE REAL COLOUR, never the interface's green accent: the accent
+         * marks which tools are ACTIVE, and a droplet filled with it would claim
+         * the drawing was green.
+         */
+        const control =
+            swatch.closest(
+                ".drawing-strip-icon-control"
+            ) || swatch;
+
+        control.style.setProperty(
+            "--datum-colour-value",
+            drawingColor.value
+        );
+
+        swatch.setAttribute(
+            "title",
+            `Drawing colour: ${drawingColor.value.toUpperCase()}`
+        );
+
+        swatch.setAttribute(
+            "aria-label",
+            `Drawing colour: ${drawingColor.value.toUpperCase()}`
+        );
     }
 }
 
@@ -743,8 +779,31 @@ export function applyStyleControls() {
     ) {
         drawingState.styleDefaults = {
             ...drawingState.styleDefaults,
-            ...nextStyle
+            ...nextStyle,
+
+            /*
+             * THE STUDENT HAS CHOSEN A COLOUR, so it is now THEIR colour and not
+             * the theme's default. Marking it here is what makes the choice
+             * survive a later theme change - see the precedence in
+             * `drawing-state.js` and the re-point in `sheet-controller.js`.
+             *
+             * The thickness and line type are not marked: only the COLOUR has a
+             * theme-dependent default to yield to.
+             */
+            strokeExplicit: true
         };
+
+        /*
+         * THE ICON FOLLOWS THE DEFAULT TOO.
+         *
+         * With nothing selected the new style is stored as the DEFAULT for the
+         * next thing drawn - and that is still a change the toolbar has to show.
+         * This used to return here without re-syncing, so the thickness and
+         * line-type ICONS kept the old value whenever the student changed the
+         * setting with nothing selected: the control said one thing and the
+         * drawing would do another.
+         */
+        syncStyleControls();
 
         return;
     }

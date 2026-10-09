@@ -3,7 +3,7 @@
  * THE SHARED FEATURE-PANEL VOCABULARY
  * ========================================================
  *
- * Every feature panel in Datum is the same argument told about different
+ * Every feature panel in DAETUM is the same argument told about different
  * engineering objects: what is this, what does it act on, what does it
  * measure, where is it, how is it drawn. That argument has a shape, and the
  * shape is not a matter of taste - it is what lets a student who has just
@@ -182,7 +182,7 @@ const quantity = (value, unit = "") => {
  * THE BASE ROW
  * ====================================================
  *
- * The one layout every field in Datum's property panels shares: a label, a
+ * The one layout every field in DAETUM's property panels shares: a label, a
  * value or control, an optional unit, and an optional trailing slot for the
  * small state controls (constraint tick, unknown marker) that sit after the
  * unit so the reading order is always Label -> Value -> Unit -> State.
@@ -651,7 +651,7 @@ const SECTION_ORDER = [
 ];
 
 /*
- * The title of the panel: the feature's own name, in the type case Datum
+ * The title of the panel: the feature's own name, in the type case DAETUM
  * uses for headings.
  *
  * This is the user-facing name and never the internal type. "analysis-

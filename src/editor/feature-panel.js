@@ -9,7 +9,6 @@ import { renderComponentTree, renderLoadBuildPanel } from "./feature-tree.js";
 import { LOAD_BUILD_PHASES, loadBuildInstruction } from "./load-tool.js";
 import { bindFeaturePropertyControls } from "./property-binding.js";
 import { enhanceNumericInputs } from "./property-inputs.js";
-import { staticsDisplayMarkup } from "./statics-panel.js";
 import { syncStyleControls } from "./style-controls.js";
 
 export function renderProperties() {
@@ -115,24 +114,21 @@ export function renderProperties() {
         "block";
 
     /*
-     * THE STATICS DISPLAY SECTION, ABOVE THE FEATURE BEING EDITED.
+     * THE FEATURES PANEL IS FEATURE-SPECIFIC PROPERTIES ONLY.
      *
-     * The Vector Scale belongs to the Statics environment rather than to
-     * any one feature: it decides how large every force and load arrow on
-     * the sheet is drawn, so putting it inside the Point Force's own
-     * panel - or the load's - would be a lie about what it controls. It
-     * is stated once, here, where it reads as a sheet-wide setting.
+     * The Vector Scale used to be rendered here, above the feature being
+     * edited, on the reasoning that it belonged to the Statics environment
+     * rather than to the feature. That was half right - it IS sheet-wide - but
+     * a sheet-wide setting does not belong in a panel that describes ONE
+     * feature: it sat inside a scrolling list, was easy to miss, and there was
+     * only ever one of it while the panel showed many features.
      *
-     * It is rendered ABOVE the feature's properties and is present
-     * whenever a Statics feature is being edited. A non-Statics feature
-     * has no arrows to scale, so the section is simply not drawn.
-     *
-     * This markup is the display half only. The engineering half - the
-     * magnitude, unit, direction and attachment of the feature below it -
-     * is unchanged by anything chosen here.
+     * It now lives on the TOP TOOLBAR beside Magnitudes, where every other
+     * global display control already is, and is editable there without
+     * selecting anything. So the panel is built from the feature's own
+     * properties alone.
      */
     drawingProperties.innerHTML =
-        staticsDisplayMarkup(object) +
         featurePropertyMarkup(object);
     drawingProperties.dataset.selectedObjectId = object.id;
     drawingProperties.dataset.geometrySignature = JSON.stringify({

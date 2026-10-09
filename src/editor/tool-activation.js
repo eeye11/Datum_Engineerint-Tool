@@ -5,6 +5,7 @@
 import enggDrawingState from "../core/model/drawing-state.js";
 import { isAnnotationTool } from "./annotation-tool.js";
 import { annotateInstruction, isAnnotateTool } from "./annotate-creation.js";
+import { analysisInputMessage, isAnalysisInputTool } from "./analysis-tools.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { isDimensionTool } from "./dimension-tool.js";
 import { drawingCanvas, drawingRedo, drawingUndo, toolList } from "./dom.js";
@@ -190,6 +191,17 @@ export function initialToolMessage(
     }
 
     /*
+     * A RESULTANT OR A FORCE COMPONENTS TOOL ASKS FOR ITS INPUT BY NAME.
+     *
+     * These are child analysis features, and the one thing the student has to
+     * say is which force(s) they read. The wording comes from the tool's own
+     * module so the bottom bar and the tool cannot describe different things.
+     */
+    if (isAnalysisInputTool(toolId)) {
+        return analysisInputMessage(toolId);
+    }
+
+    /*
      * AN ANNOTATE TOOL NAMES ITS OWN FIRST STEP.
      *
      * A geometric kind - a leader, a callout, an arrow - begins by asking
@@ -254,16 +266,27 @@ export function initialToolMessage(
     );
 }
 
+/*
+ * KEEP THE UNDO / REDO CONTROLS HONEST - WHERE THEY EXIST.
+ *
+ * These used to be buttons on the global tool bar. That bar is gone and the
+ * commands live in the Edit menu, where the disabled state is read fresh each
+ * time the menu opens (`menu-commands.js` asks `canUndo()` / `canRedo()`).
+ *
+ * The guard is not decoration: this function is called on every render, and
+ * without it a missing button would throw a TypeError inside the render path -
+ * which is how removing the bar the first time broke the whole application.
+ * Reaching the buttons defensively lets the same function serve a layout with
+ * them and one without.
+ */
 export function updateHistoryControls() {
-    drawingUndo.disabled =
-        !enggDrawingState.canUndo(
-            drawingState
-        );
+    if (drawingUndo) {
+        drawingUndo.disabled = !enggDrawingState.canUndo(drawingState);
+    }
 
-    drawingRedo.disabled =
-        !enggDrawingState.canRedo(
-            drawingState
-        );
+    if (drawingRedo) {
+        drawingRedo.disabled = !enggDrawingState.canRedo(drawingState);
+    }
 }
 
 export function performUndo() {

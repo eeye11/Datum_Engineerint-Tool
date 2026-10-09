@@ -13,7 +13,7 @@ import { appearanceMarkup } from "./appearance-panel.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
 import { mmOf, staticsRoleLabel } from "./handles.js";
-import { relativeCoordinateRows } from "./relative-coordinates.js";
+import { absolutePositionRows, relativeCoordinateRows } from "./relative-coordinates.js";
 import { MAGNITUDE_BEARING_TYPES, analysisPanelRows, annotationSectionMarkup, arcRadiusRow, distributedLoadPanelMarkup, momentDirectionOf, reverseDirectionMarkup, supportPanelRows } from "./statics-panel.js";
 import { STATICS_FEATURE_LABELS, staticsConnectionSection } from "./statics-tools.js";
 import { trianglePropertyMarkup } from "./triangle-panel.js";
@@ -676,6 +676,24 @@ export function featurePropertyMarkup(object) {
             )
             .join("");
 
+        /*
+         * THE UNIT HALF COMES FROM THE SHARED CONTROL.
+         *
+         * `unitSelect` is the ONE unit selector every panel uses, so it is
+         * built there rather than assembled again here - which is what keeps
+         * its width, its type size and its dropdown behaviour identical on a
+         * force, a moment and a load.
+         */
+        const unitControl = panels && panels.unitSelect
+            ? panels.unitSelect({
+                  property: unitProperty,
+                  units,
+                  current: currentUnit,
+                  label: `${label} unit`,
+                  disabled: isUnknown,
+              })
+            : `<select class="drawing-property-unit-select" data-property="${unitProperty}" aria-label="${label} unit">${options}</select>`;
+
         return `
             <div class="drawing-property-grid drawing-property-grid-value${
                 isUnknown ? " drawing-property-unknown" : ""
@@ -695,7 +713,7 @@ export function featurePropertyMarkup(object) {
                             value="${number(shown)}">`
                 }
                 <span class="drawing-property-unit">
-                    <select data-property="${unitProperty}" aria-label="${label} unit">${options}</select>${
+                    ${unitControl}${
                         showKnown ? knownBox(key, label) : ""
                     }</span>
                 <span class="drawing-property-state">${
@@ -1022,7 +1040,7 @@ export function featurePropertyMarkup(object) {
      *
      * A feature with no registered label is better named for what it is than
      * not named at all, so the fallback stays - but it is a last resort that
-     * should not be reached by any feature Datum ships.
+     * should not be reached by any feature DAETUM ships.
      */
     const displayLabel =
         staticsRoleLabel(object) ||
@@ -1153,10 +1171,13 @@ export function featurePropertyMarkup(object) {
          * control at all; it now gets the one that applies to it, the
          * size of the marker itself.
          */
-        rows.push(section("POSITION"));
         rows.push(relativeRows("POSITION"));
-        rows.push(coordinate("X", "position.x", geometry.position.x, "mm", true));
-        rows.push(coordinate("Y", "position.y", geometry.position.y, "mm", true));
+        rows.push(
+            absolutePositionRows(object, {
+                coordinate,
+                section
+            })
+        );
 
         rows.push(section("MASS"));
         rows.push(scalar("Mass", "mass",
@@ -1582,25 +1603,24 @@ export function featurePropertyMarkup(object) {
             );
         }
 
+        /*
+         * THE APPLICATION POINT.
+         *
+         * On a body, the force is positioned ALONG it - one number, whose height
+         * and orientation follow from the member and the force's own direction -
+         * so the relative rows below are the whole placement and there is no
+         * absolute pair to offer (see `absolutePositionRows`).
+         *
+         * In free space there is no axis to be measured along, so the absolute X
+         * and Y ARE the placement and both are shown.
+         */
         rows.push(section("APPLICATION POINT"));
         rows.push(relativeRows("APPLICATION POINT"));
         rows.push(
-            coordinate(
-                "X",
-                "start.x",
-                vector.x,
-                "mm",
-                true
-            )
-        );
-        rows.push(
-            coordinate(
-                "Y",
-                "start.y",
-                vector.y,
-                "mm",
-                true
-            )
+            absolutePositionRows(object, {
+                coordinate,
+                section
+            })
         );
     } else if (object.type === "moment") {
         /*
@@ -1697,9 +1717,20 @@ export function featurePropertyMarkup(object) {
          */
         rows.push(relativeRows("RELATIONSHIP"));
 
-        rows.push(section("POSITION"));
-        rows.push(coordinate("Application Point X", "position.x", geometry.position.x, "mm", true));
-        rows.push(coordinate("Application Point Y", "position.y", geometry.position.y, "mm", true));
+        /*
+         * THE APPLICATION POINT, the same rule as a force's.
+         *
+         * A moment on a body is positioned along it; a moment in free space has
+         * the absolute pair and nothing else. `absolutePositionRows` decides
+         * which of those applies, so the moment and the force cannot disagree
+         * about what a child of a body is offered.
+         */
+        rows.push(
+            absolutePositionRows(object, {
+                coordinate,
+                section
+            })
+        );
 
         rows.push(section("APPEARANCE"));
         rows.push(arcRadiusRow(geometry));
@@ -1772,8 +1803,12 @@ export function featurePropertyMarkup(object) {
                 : "BODY"
         ));
         rows.push(relativeRows("POSITION"));
-        rows.push(coordinate("Position X", "position.x", geometry.position.x, "mm", true));
-        rows.push(coordinate("Position Y", "position.y", geometry.position.y, "mm", true));
+        rows.push(
+            absolutePositionRows(object, {
+                coordinate,
+                section
+            })
+        );
     } else if (object.type === "polygon") {
         /*
          * The definition is remembered from creation so
@@ -2083,6 +2118,55 @@ export function featurePropertyMarkup(object) {
         if (kind === "leader" || kind === "callout" || kind === "arrow") {
             rows.push(leaderStyleRows(object));
         }
+
+        /*
+         * THE PEN'S PATH, for the two kinds that have one.
+         *
+         * A leader and a callout are a PEN - attachment, bends, endpoint - and
+         * the bends are what carry it around the drawing. The count is shown,
+         * and adding or removing a bend is a control rather than something the
+         * student has to rebuild the feature to do.
+         *
+         * ADDING PLACES THE NEW BEND AT THE MIDPOINT of the segment it splits,
+         * so the drawn line does not move when it is added - the student then
+         * drags it where they want it. REMOVING RECONNECTS the neighbours, so
+         * the path stays continuous and can never be left broken.
+         */
+        if (kind === "leader" || kind === "callout") {
+            const bends = Array.isArray(geometry.bends)
+                ? geometry.bends.length
+                : 0;
+
+            rows.push(section("PATH"));
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label">Bends</span>
+                    <span class="drawing-property-derived">${bends}</span>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+
+            rows.push(`
+                <div class="drawing-property-grid drawing-property-grid-value">
+                    <span class="drawing-property-grid-label">Path</span>
+                    <span class="drawing-property-path-actions">
+                        <button type="button"
+                            class="drawing-property-action"
+                            data-annotate-add-bend
+                            aria-label="Add a bend to the leader">Add Bend</button>
+                        <button type="button"
+                            class="drawing-property-action"
+                            data-annotate-remove-bend
+                            aria-label="Remove the last bend"
+                            ${bends ? "" : "disabled"}>Remove Bend</button>
+                    </span>
+                    <span class="drawing-property-unit"></span>
+                    <span></span>
+                </div>
+            `);
+        }
     } else if (object.type === "dimension") {
         /*
          * ========================================================
@@ -2109,6 +2193,7 @@ export function featurePropertyMarkup(object) {
         rows.push(section("GENERAL"));
         rows.push(dimensionValueRow(object));
         rows.push(dimensionTypeRow(object));
+        rows.push(dimensionUnitRow(object));
     } else if (object.type === "variable-dimension") {
         /*
          * A VARIABLE DIMENSION.
@@ -2434,6 +2519,63 @@ function dimensionTypeRow(object) {
                 variableMeasureLabel(object.dimensionType),
             )}</span>
             <span class="drawing-property-unit"></span>
+            <span></span>
+        </div>
+    `;
+}
+
+/*
+ * WHICH LENGTH UNIT A DIMENSION IS READ IN.
+ *
+ * The measurement is always taken in the sheet's own unit; this says only how
+ * it is WRITTEN, so a 100 mm span read in cm shows "10 cm" while still
+ * measuring 100 mm. It is a CONVERSION, not a relabel, and it is done in
+ * `formatMeasurement` through the shared unit table.
+ *
+ * The control is the ONE unit selector every unit-bearing feature uses, so it
+ * has the same width and behaviour as a force's or a moment's.
+ *
+ * AN ANGLE HAS NO LENGTH UNIT, so no control is offered for an angular
+ * dimension - there is nothing to convert it to, and offering degrees beside
+ * millimetres would be a category error.
+ */
+function dimensionUnitRow(object) {
+    const angular = object.dimensionType === "angular";
+
+    if (angular) {
+        return "";
+    }
+
+    const units =
+        enggQuantities?.unitsFor?.("length") || ["mm", "cm", "m"];
+
+    const current =
+        object.displayUnit || "mm";
+
+    const options = units
+        .map(
+            unit =>
+                `<option value="${unit}"${
+                    unit === current ? " selected" : ""
+                }>${unit}</option>`
+        )
+        .join("");
+
+    const control =
+        enggPropertyPanel?.unitSelect
+            ? enggPropertyPanel.unitSelect({
+                  property: "displayUnit",
+                  units,
+                  current,
+                  label: "Dimension unit",
+              })
+            : `<select class="drawing-property-unit-select" data-property="displayUnit" aria-label="Dimension unit">${options}</select>`;
+
+    return `
+        <div class="drawing-property-grid drawing-property-grid-value">
+            <span class="drawing-property-grid-label">Unit</span>
+            <span class="drawing-property-derived"></span>
+            <span class="drawing-property-unit">${control}</span>
             <span></span>
         </div>
     `;

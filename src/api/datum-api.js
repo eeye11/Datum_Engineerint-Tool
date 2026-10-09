@@ -1,20 +1,20 @@
 /*
  * ============================================================
- * THE DATUM INTEGRATION API
+ * THE DAETUM INTEGRATION API
  * ============================================================
  *
  * This is the one supported way for other tools - the OCR pipeline, the
- * autograder, a course platform - to work with Datum. Everything else in
+ * autograder, a course platform - to work with DAETUM. Everything else in
  * src/ is internal and may change without notice; this module is versioned
  * (API_VERSION) and documented in docs/INTEGRATION.md.
  *
- * WHAT DATUM HOLDS
+ * WHAT DAETUM HOLDS
  * ----------------
  * A student's submission has two halves:
  *
  *   - the WRITTEN SOLUTION, a LaTeX source (typically produced by the OCR
  *     tool from the handwritten page and corrected by the student), and
- *   - the DRAWINGS, one per sheet of the Datum document.
+ *   - the DRAWINGS, one per sheet of the DAETUM document.
  *
  * The written solution places a drawing with a reference token,
  * [DRAWING_REFERENCE:<sheetId>]. The token names a sheet, not a picture,
@@ -59,7 +59,7 @@ function getDocument() {
 
 /*
  * Replace the document with a .enggdraw file: the parsed object, or its
- * JSON text. Older file versions are migrated; a file that is not a Datum
+ * JSON text. Older file versions are migrated; a file that is not a DAETUM
  * document is refused and the current document is left as it was.
  */
 function loadDocument(file) {

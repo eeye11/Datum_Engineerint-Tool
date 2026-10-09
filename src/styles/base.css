@@ -1,7 +1,8 @@
 body {
     font-family: var(--datum-font);
     margin: 40px;
-    background-color: #f5f5f5;
+    background-color: var(--datum-page);
+    color: var(--datum-ink);
 }
 
 h1 {
@@ -9,15 +10,16 @@ h1 {
 }
 
 .panel {
-    background-color: white;
+    background-color: var(--datum-raised);
+    color: var(--datum-ink);
     padding: 20px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 
     flex: 1;
 
     min-width: 0;
 
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--datum-shadow-soft);
 }
 
 .panel h2 {
@@ -28,16 +30,29 @@ textarea {
     width: 100%;
     height: 300px;
 
-    font-family: monospace;
+    font-family: var(--datum-font-mono);
     font-size: 16px;
 
+    background: var(--datum-input);
+    color: var(--datum-ink);
+    border: 1px solid var(--datum-input-border);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    caret-color: var(--datum-green);
+
     box-sizing: border-box;
+}
+
+textarea:focus-visible {
+    border-color: var(--datum-focus);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
 }
 
 .handwritten-area {
     height: 300px;
 
-    border: 2px dashed #aaa;
+    border: 2px dashed var(--datum-input-border);
 
     display: flex;
 

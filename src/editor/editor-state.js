@@ -118,19 +118,15 @@ export const editorState = {
      * to size, so nothing is offered for it and the panel is unchanged.
      */
     /*
-     * Whether the CUSTOM box is showing.
+     * Vector Scale is NOT view state any more.
      *
-     * This is view state, not part of the drawing, and it has to exist
-     * separately because the panel is rebuilt from scratch every time it is
-     * rendered. Without it, choosing "Custom…" would re-render the panel from
-     * the stored scale - which is a listed value - and the dropdown would
-     * snap straight back to it, so the custom box could never be opened at
-     * all.
-     *
-     * It is cleared as soon as a scale is chosen or applied, so it never
-     * outlives the reason it was opened.
+     * The panel's dropdown could show a "Custom..." entry, which needed a flag
+     * here so a re-render did not snap the control back to the listed value it
+     * was reading. The control now lives on the top toolbar as a plain number
+     * field, and `state.statics.vectorScale` is the one value it reads and
+     * writes - so there is no second piece of state to keep in step, and the
+     * flag that existed only to hold it open is gone with it.
      */
-    staticsCustomScaleOpen: false,
 
     /*
      * Active direct-manipulation drag.

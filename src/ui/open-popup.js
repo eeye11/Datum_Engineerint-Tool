@@ -13,7 +13,7 @@
  *     Recent      a file that was open before, reopened directly
  *     Import      choose a .enggdraw from the laptop
  *
- * TEMPLATES START EMPTY. Datum ships no example drawings and no built-in
+ * TEMPLATES START EMPTY. DAETUM ships no example drawings and no built-in
  * template cards; the library contains only what the user has added, and the
  * section says so plainly until there is something in it.
  *
@@ -802,7 +802,7 @@ function openOpenPopup() {
          * A RECENT FILE'S MENU.
          *
          * Every action here is one the environment can actually perform. Remove
-         * touches only Datum's record and always works; Delete is the
+         * touches only DAETUM's record and always works; Delete is the
          * destructive one and goes through the caller, which confirms it; Reveal
          * is offered only where the browser has a way to do it.
          */

@@ -15,65 +15,99 @@ body {
     margin: 0;
     font-family: var(--app-ui-font);
     background: var(--datum-page);
-    color: #222;
+    color: var(--datum-ink);
 }
 
 /* =========================
-   HEADER
+   BAND 1: APPLICATION AND DOCUMENT
 ========================= */
 
 .header {
-    background: #ffffff;
-    border-bottom: 1px solid #d9dce1;
-    padding: 22px 40px;
+    /*
+     * THE HEADER IS ITS OWN LAYER, one step off the page behind it.
+     *
+     * It carries the identity, so it is the most-established surface in the
+     * application - a raised white in Light Mode, a slate panel in Dark Mode.
+     * Every colour here is a token, so the header follows the theme like
+     * everything else rather than being pinned to the light palette.
+     */
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    color: var(--datum-ink);
+    padding: 0 16px;
 
     /*
-     * THREE COLUMNS: BRAND, DOCUMENT, SPACE.
+     * THREE AREAS, LEFT TO RIGHT: BRAND, DOCUMENT, WORKSPACE TABS.
      *
-     * The middle column is what CENTRES the document name - not a margin, and
-     * not a flex gap. A margin would put the name wherever "Datum" happened to
-     * end, so a longer brand would push it right and a shorter filename would
-     * leave it stranded; and with flex the name's position would depend on
-     * everything beside it.
+     * `minmax(0, 1fr) auto` rather than three equal columns. The document name
+     * gets ALL the slack between the brand and the tabs, which is what lets a
+     * long filename use the room - and its own `min-width: 0` plus an ellipsis
+     * is what stops it ever reaching across into the tabs. Equal columns would
+     * cap the name at a third of the bar whatever was free beside it.
      *
-     * Equal outer columns (`1fr auto 1fr`) mean the middle sits at the true
-     * centre of the header whatever the two sides contain, so neither the brand
-     * nor the filename can move the other.
+     * The brand and the tabs are `auto`, so they take exactly what they need.
      */
     display: grid;
     align-items: center;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 16px;
+    min-height: 40px;
 }
 
-.header h1 {
-    margin: 0;
-    font-size: 28px;
+.header-identity {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
 
     /* The brand owns the left column. */
     justify-self: start;
+    min-width: 0;
 }
 
 /*
- * THE CURRENT DOCUMENT'S NAME.
+ * THE MARK TAKES THE ACCENT, and the wordmark takes the ink.
+ *
+ * Two colours, not one: a mark and a word painted the same green read as a
+ * logo printed in one ink, whereas a green mark beside near-black type reads as
+ * a mark AND a name. In Dark Mode both tokens shift together, so the relation
+ * is preserved without a second rule.
+ */
+.header-mark {
+    color: var(--datum-green);
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.header-wordmark {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--datum-ink);
+}
+
+/*
+ * THE DOCUMENT NAME IS THE SECOND VOICE, not a smaller heading.
+ *
+ * It sits between the brand and the workspace tabs, in secondary type, so the
+ * bar reads brand -> document -> workspace without any of the three competing.
  *
  * SECONDARY TO THE BRAND, deliberately: smaller, not bold, muted. It names the
- * drawing, not the application, and it must not compete with the heading for
- * attention.
- *
- * It is one line with an ellipsis rather than a wrapping block, so a very long
- * filename cannot make the header taller - the full name is available in the
- * tooltip, which is where a truncated name belongs.
+ * drawing, not the application. It is one line with an ellipsis rather than a
+ * wrapping block, so a very long filename cannot make the header taller - the
+ * full name is available in the tooltip, which is where a truncated name
+ * belongs.
  */
 .header-document {
-    align-items: baseline;
+    align-items: center;
     color: var(--datum-muted);
     display: flex;
-    font-size: 14px;
-    gap: 4px;
-    justify-self: center;
+    font-size: 13px;
+    gap: 6px;
+    justify-self: start;
     max-width: 100%;
     min-width: 0;
+    overflow: hidden;
 }
 
 .header-document-name {
@@ -85,17 +119,120 @@ body {
 /*
  * THE UNSAVED MARK.
  *
- * A single asterisk beside the name, in the accent colour so it is noticed
- * without being loud. It is hidden with the `hidden` attribute rather than
- * emptied, so the element is always there and only its visibility changes.
+ * A small filled dot beside the name, in the accent colour so it is noticed
+ * without being loud, and hidden with the `hidden` attribute rather than
+ * emptied - so the element is always there and only its visibility changes.
+ * The `<span>` is empty in the markup; the dot is drawn, so it cannot be
+ * confused with a character in the filename.
  */
 .header-document-dirty {
-    color: var(--datum-green);
-    font-weight: 700;
+    background: var(--datum-green);
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 7px;
+    width: 7px;
 }
 
 .header-document-dirty[hidden] {
     display: none;
+}
+
+/*
+ * THE WORKSPACE TABS: WRITTEN SOLUTION | ENGINEERING DRAWING.
+ *
+ * TWO TABS, ONE NAVIGATION GROUP, at the far right of Band 1. They are not in
+ * the menu bar and they are not the toolset selector - this chooses which half
+ * of the submission is open, which is a different question from which toolset
+ * is armed.
+ *
+ * A SEGMENTED CONTROL, NOT TWO SEPARATE LABELS.
+ *
+ * The group carries a recessed "well" - the input surface, a hairline border
+ * and a small radius - and the active tab is a RAISED segment inside it: the
+ * raised surface, its own subtle edge and shadow, and the accent ink. That is
+ * what makes the pair read as ONE control with two positions rather than two
+ * words with a coloured one, and it is what looks deliberate in both themes
+ * without needing a different treatment in each.
+ *
+ * THE WELL IS THE INPUT TOKEN in Light Mode (white on a white bar still reads
+ * as a recess, because its border and the segment inside it give it an edge)
+ * and the DEEPEST NIGHT surface in Dark Mode, where a well genuinely is darker
+ * than the bar around it. The raised segment is `--datum-raised`, which is white
+ * in Light and the lightest slate in Dark - so "raised" means the same thing in
+ * both.
+ */
+.tabs {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    gap: 2px;
+    justify-self: end;
+    min-width: 0;
+    padding: 3px;
+}
+
+.tab {
+    /*
+     * 12px, NOT 17px.
+     *
+     * These are the two halves of the submission, sitting in a 40px application
+     * bar. A tab is navigation, and navigation in a compact bar is set at the
+     * size of the other labels around it - 17px here read as a page heading and
+     * made the bar itself want to be 60px tall.
+     */
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--datum-muted);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    min-height: 26px;
+    padding: 0 14px;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    white-space: nowrap;
+}
+
+/*
+ * AN INACTIVE SEGMENT LIFTS ITS INK ON HOVER ONLY - it never takes the raised
+ * surface itself, so "hovered" and "selected" cannot be confused.
+ */
+.tab:hover {
+    color: var(--datum-ink);
+}
+
+/*
+ * THE ACTIVE SEGMENT: RAISED SURFACE, ACCENT INK, HAIRLINE EDGE.
+ *
+ * The ink is the accent's deep green rather than a tinted background, because
+ * the SEGMENT already carries the elevation - two surfaces on top of one another
+ * would be a heavy chip inside a chip. In Dark Mode the accent ink is the lifted
+ * green, so the same rule reads correctly on charcoal with no second declaration.
+ *
+ * THE WEIGHT CARRIES THE STATE AS WELL AS THE COLOUR: the active label is 700
+ * against the inactive 600, so which half is open is legible in a monochrome
+ * screenshot or to a student who cannot distinguish the green.
+ */
+.tab.active {
+    background: var(--datum-raised);
+    border-color: var(--datum-border-strong);
+    box-shadow: var(--datum-shadow-soft);
+    color: var(--datum-green-ink);
+    font-weight: 700;
+}
+
+.tab.active:hover {
+    color: var(--datum-green);
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
 }
 
 
@@ -106,47 +243,19 @@ body {
 .page {
     max-width: 1500px;
     margin: 0 auto;
-    padding: 30px 40px;
+    padding: 0 40px 16px;
 }
 
 
-/* =========================
-   TABS
-========================= */
-
-.tabs {
-    display: flex;
-    gap: 5px;
-
-    border-bottom: 1px solid #cfd3d8;
-
-    margin-bottom: 25px;
-}
-
-.tab {
-    padding: 14px 30px;
-
-    border: none;
-    background: transparent;
-
-    font-size: 17px;
-    font-weight: 600;
-
-    color: #666;
-
-    cursor: pointer;
-
-    border-bottom: 3px solid transparent;
-}
-
-.tab:hover {
-    color: #222;
-}
-
-.tab.active {
-    color: var(--datum-green);
-    border-bottom: 3px solid var(--datum-green);
-}
+/*
+ * THE TAB STRIP IS NO LONGER HERE.
+ *
+ * `.tabs` / `.tab` are styled in the BAND 1 section above, because the workspace
+ * tabs are the right-hand third of the application and document bar now. The
+ * rules that used to live here - a full-width strip with its own border and
+ * margin - would have turned the tabs back into a separate row, so they are
+ * gone rather than left to fight the header's layout.
+ */
 
 
 /* =========================
@@ -181,7 +290,7 @@ body {
     font-size: 16px;
     font-weight: 600;
 
-    color: #555;
+    color: var(--datum-muted);
 
     padding-left: 5px;
 }
@@ -206,18 +315,17 @@ body {
 ========================= */
 
 .panel {
-    background: #ffffff;
+    background: var(--datum-raised);
 
-    border: 1px solid #d8dce1;
+    border: 1px solid var(--datum-border);
 
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 
     min-height: 430px;
 
     padding: 15px;
 
-    box-shadow:
-        0 2px 6px rgba(0,0,0,0.05);
+    box-shadow: var(--datum-shadow-soft);
 }
 
 
@@ -234,9 +342,15 @@ body {
     justify-content: center;
     align-items: center;
 
-    background: #fafafa;
+    /*
+     * A SKETCH PAD, NOT A RAISED PANEL - so it sits a shade below the panel it
+     * is inside rather than one step above it. The dashed border is what says
+     * "this is a place to put something".
+     */
+    background: var(--datum-input);
+    border: 2px dashed var(--datum-input-border);
 
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 
     overflow: hidden;
 }
@@ -265,6 +379,21 @@ body {
 
     padding: 18px;
 
+    /*
+     * A CODE EDITOR IS DARK IN BOTH THEMES, DELIBERATELY.
+     *
+     * These are the only hardcoded colours outside `tokens.css`, and they are
+     * hardcoded on purpose: this is where the student writes the LaTeX that
+     * produces the solution, and a monospaced source pane is conventionally
+     * dark whatever the surrounding application does. The two are unlike
+     * anything else in the interface and the contrast between them is
+     * deliberate, not an oversight.
+     *
+     * Both themes keep it identical, so the code reads the same whichever
+     * appearance is chosen - and unlike the interface inputs, it is already
+     * light-on-dark, so it cannot become the "white field on a dark interface"
+     * fault this pass exists to remove.
+     */
     background: #1e1e1e;
 
     color: #e6e6e6;
@@ -291,8 +420,17 @@ body {
     height: 395px;
     padding: 20px;
     overflow: auto;
-    background: #ffffff;
-    border-radius: 6px;
+
+    /*
+     * THE RENDERED SOLUTION IS DOCUMENT CONTENT, so it is a raised sheet in both
+     * themes - `--datum-raised` is white in Light Mode and the lightest dark
+     * surface in Dark Mode. It is deliberately NOT the input colour: this is
+     * where the writing appears, not where it is typed.
+     */
+    background: var(--datum-raised);
+    color: var(--datum-ink);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
 }
 
 #writingOutput mjx-container[display="true"] {
@@ -311,11 +449,11 @@ body {
 
     background: var(--datum-green);
 
-    color: white;
+    color: var(--datum-raised);
 
     border: none;
 
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 
     cursor: pointer;
 
@@ -324,6 +462,11 @@ body {
 
 .update-button:hover {
     background: var(--datum-green-hover);
+}
+
+.update-button:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: 2px;
 }
 
 
@@ -360,11 +503,16 @@ body {
 
 .header {
     flex: 0 0 auto;
-    padding: 10px 20px;
+    padding: 0 20px;
 }
 
+/*
+ * THE WORDMARK IS THE HEADER'S OWN SIZE, set on the element rather than on an
+ * `h1` alone - the bar is 40px tall and the type has to fit inside it without
+ * the layout having to be told twice.
+ */
 .header h1 {
-    font-size: 20px;
+    font-size: 16px;
     line-height: 1.2;
 }
 
@@ -378,9 +526,14 @@ body {
     width: 100%;
 }
 
+/*
+ * THE TABS ARE IN THE HEADER NOW, so this rule only says they never shrink to
+ * make room for a long document name - the NAME is the thing that may truncate,
+ * because a clipped filename is readable in its tooltip and a clipped tab is
+ * not readable at all.
+ */
 .tabs {
     flex: 0 0 auto;
-    margin-bottom: 6px;
 }
 
 .review-content.active {

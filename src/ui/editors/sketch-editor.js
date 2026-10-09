@@ -901,15 +901,84 @@ function elementAt(screen, elements, scale) {
  * and none anywhere else: an offset would have to be tuned per zoom and would
  * be wrong the moment the frame changed size.
  */
-function pointFromEvent(event, svg, scale) {
+/*
+ * ========================================================
+ * WHERE THE CURSOR IS, IN THE GRAPH'S OWN COORDINATES
+ * ========================================================
+ *
+ * THE BUG THIS FIXES. The graph SVG carries a `viewBox` of 0 0 900 320 and is
+ * laid out with `width: 100%`, so the browser SCALES the viewBox to whatever
+ * width the panel happens to be and centres it vertically (`xMidYMid meet`).
+ *
+ * The old code did this:
+ *
+ *     x: event.clientX - rect.left,
+ *     y: event.clientY - rect.top,
+ *
+ * which is a position in RENDERED PIXELS. But `scale.fromScreen` maps from
+ * VIEWBOX UNITS - the 0..WIDTH, 0..HEIGHT space the graph is drawn in. The two
+ * only agree when the SVG is displayed at exactly 900x320, which it almost
+ * never is: the panel is a flexible width and the element is `width: 100%`.
+ *
+ * So every click and every pointer move was converted through the wrong space,
+ * and the error grew with the difference - which is exactly "the line being
+ * drawn is not aligned with the cursor", and why it was worse in a narrower
+ * panel. It also explains the letterboxing: `meet` centres the drawing, adding
+ * a VERTICAL offset that a rect-relative subtraction cannot see at all.
+ *
+ * SO THE OFFSET IS SCALED INTO VIEWBOX UNITS, letterbox included. The ratio and
+ * the centring are read from the element's own rect and the viewBox it declares,
+ * so this holds for any panel width, any zoom and either aspect arrangement.
+ *
+ * A single ratio and two offsets, applied to the raw client point - the same
+ * arithmetic the SVG's own `getScreenCTM()` performs, written out because the
+ * editor also runs in a test harness where the CTM is not available.
+ */
+function clientToViewBox(event, svg) {
   const rect = svg.getBoundingClientRect
     ? svg.getBoundingClientRect()
-    : { left: 0, top: 0 };
+    : { left: 0, top: 0, width: WIDTH, height: HEIGHT };
 
-  return scale.fromScreen({
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-  });
+  /*
+   * THE DECLARED VIEWBOX, or the editor's own canvas when there is none.
+   * `viewBox.baseVal` is the parsed form; the attribute is the fallback for a
+   * DOM that does not implement it.
+   */
+  const declared =
+    svg.viewBox?.baseVal && svg.viewBox.baseVal.width
+      ? svg.viewBox.baseVal
+      : null;
+
+  const boxWidth = Number(declared?.width) || WIDTH;
+  const boxHeight = Number(declared?.height) || HEIGHT;
+
+  const renderedWidth = Number(rect.width) || boxWidth;
+  const renderedHeight = Number(rect.height) || boxHeight;
+
+  /*
+   * `meet` fits the viewBox INSIDE the element, keeping its shape - so the
+   * scale is the SMALLER of the two ratios, and the leftover space is shared
+   * equally on each side of whichever axis has room.
+   */
+  const ratio = Math.min(
+    renderedWidth / boxWidth,
+    renderedHeight / boxHeight,
+  );
+
+  const drawnWidth = boxWidth * ratio;
+  const drawnHeight = boxHeight * ratio;
+
+  const offsetLeft = (renderedWidth - drawnWidth) / 2;
+  const offsetTop = (renderedHeight - drawnHeight) / 2;
+
+  return {
+    x: (event.clientX - rect.left - offsetLeft) / ratio,
+    y: (event.clientY - rect.top - offsetTop) / ratio,
+  };
+}
+
+function pointFromEvent(event, svg, scale) {
+  return scale.fromScreen(clientToViewBox(event, svg));
 }
 
 /*

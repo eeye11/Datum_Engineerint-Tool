@@ -17,7 +17,7 @@
  * want, and the choice is made in the system panel rather than in a
  * second, application-owned dialog:
  *
- *     Datum project  the editable document
+ *     DAETUM project  the editable document
  *     PNG            a clean drawing snip
  *     JPG / JPEG     the same snip, encoded differently
  *
@@ -155,7 +155,7 @@ function formatTable() {
       /*
        * THE NATIVE FORMAT'S NAME.
        *
-       * The software is Datum; the editable drawing format it reads and writes
+       * The software is DAETUM; the editable drawing format it reads and writes
        * is EnggDraw, and the extension is .enggdraw. The type shown in the
        * operating system's panel therefore reads "EnggDraw (*.enggdraw)" -
        * naming the FORMAT, which is what the type control is for, rather than
