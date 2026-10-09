@@ -82,7 +82,7 @@ export const toolIcons = {
 	Tolerance: drawingIcon(`<rect ${iconStroke} x="3" y="5" width="14" height="10"/><path ${iconStroke} d="M6 8l2 2-2 2M11 8h3M11 12h3"/>`),
 	Table: drawingIcon(`<rect ${iconStroke} x="3" y="4" width="14" height="12"/><path ${iconStroke} d="M3 8h14M3 12h14M8 4v12M13 4v12"/>`),
 	Reference: drawingIcon(`<path ${iconStroke} d="M4 4h12v12H4zM7 7h6M7 10h6M7 13h3"/>`),
-	"Coordinate System": drawingIcon(`<path ${iconStroke} d="M4 16V4M4 16h12M4 16l3-3M4 16l3 1M16 16l-3-3M16 16l-3 1"/>`),
+	"Coordinate System": drawingIcon(`<path ${iconStroke} d="M4 16V4M4 16h12M1 7l3-3 3 3M13 13l3 3-3 3"/>`),
 	"Reference Point": drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 3v4M10 13v4M3 10h4M13 10h4"/>`),
 	"Reference Line": drawingIcon(`<path ${iconStroke} stroke-dasharray="3 2" d="M3 15L17 5"/><circle ${iconStroke} cx="3" cy="15" r="1"/><circle ${iconStroke} cx="17" cy="5" r="1"/>`),
 
