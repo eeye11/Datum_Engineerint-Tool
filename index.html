@@ -490,11 +490,6 @@
                     reachable at every width. See
                     `body.datum-topbar-hidden` in `styles/editor.css`.
                 -->
-                <div
-                    id="datumMenuBar"
-                    class="datum-menubar"
-                    aria-label="Main menu"
-                ></div>
 
                     <!--
                         THE GLOBAL TOOL BAR IS GONE.
@@ -592,6 +587,8 @@
                         stays reachable at every width - which is also why it is
                         a separate grid row from the bar this button folds away.
                     -->
+                </nav>
+
                     <button
                         class="drawing-topbar-hide"
                         id="headerHideButton"
@@ -605,7 +602,6 @@
                         </svg>
                         <span class="header-hide-text">Hide</span>
                     </button>
-                </nav>
 
                 <!--
                     ========================================================
@@ -651,6 +647,8 @@
                     THE DRAWING'S HIDE CONTROL IS ON THE TOOLSET BAR ABOVE,
                     not here - see `editor/workspace-layout.js`.
                 -->
+                <div class="drawing-menu-controls-bar">
+                    <div id="datumMenuBar" class="datum-menubar" aria-label="Main menu"></div>
                 <div class="drawing-style-strip" aria-label="Command search and quick-access controls">
                     <label class="drawing-command-search" aria-label="Search commands">
                         <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" class="drawing-command-search-icon"><circle fill="none" stroke="currentColor" stroke-width="1.6" cx="9" cy="9" r="5"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12.8 12.8L17 17"/></svg>
@@ -761,10 +759,10 @@
 
                     <div class="drawing-strip-field drawing-strip-icon-control">
                         <select id="drawingLineType" class="drawing-strip-icon-select" title="Line type" aria-label="Line type">
-                            <option value="solid">Solid</option>
-                            <option value="dashed">Dashed</option>
-                            <option value="center">Center</option>
-                            <option value="construction">Construction</option>
+                            <option value="solid" label="Solid  ━━━━━━━">Solid</option>
+                            <option value="dashed" label="Dashed  ━ ━ ━ ━">Dashed</option>
+                            <option value="center" label="Center  ━ · ━ · ━">Center</option>
+                            <option value="construction" label="Construction  ┄┄┄┄┄┄┄">Construction</option>
                         </select>
                         <span class="drawing-strip-icon" aria-hidden="true">
                             <!--
@@ -808,39 +806,28 @@
                     </button>
                     <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" data-toggle-name="Snap" aria-pressed="true" title="Snap: on" aria-label="Snap">
                         <!--
-                            SNAP: A POINT LOCKING ONTO A TARGET.
-
-                            A small ring marks the thing being snapped TO, and a node
-                            with a short lead marks the point being snapped. It reads as
-                            "snap this to that" in the same clean, geometric language as
-                            the Grid and Vector Scale icons beside it - where the old
-                            magnet was a dense pictogram with three curves and did not
-                            belong to the same set.
+                            SNAP: a cursor tip aligned with a target point.
                         -->
-                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle fill="none" stroke="currentColor" stroke-width="1.5" cx="12.5" cy="7.5" r="3"/><circle fill="currentColor" stroke="none" cx="6" cy="14" r="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M7.2 12.8L9.8 10.2"/></svg>
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2 6V2h4M10 2h4v4M2 10v4h4"/><circle fill="currentColor" cx="8" cy="8" r="1.5"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M8 8l3.5 9 1.5-4 4-1.5z"/></svg>
                     </button>
                     <button class="drawing-status-toggle active" id="drawingDimensionsToggle" type="button" data-toggle-name="Dimensions" aria-pressed="true" title="Dimensions: on" aria-label="Dimensions">
                         <!--
-                            DIMENSIONS: ONE DIMENSION LINE, drawn the way a size is
-                            written on an engineering drawing - two extension lines, a
-                            line between them, and an arrowhead at each end. The doubled
-                            version before it said the same thing twice and read as noise at
-                            18px; one clean dimension says it once, clearly.
+                            DIMENSIONS: a ruler with measurement tick marks.
                         -->
-                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4.5 4v12M15.5 4v12"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4.5 10h11"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 8L4.5 10L7 12M13 8L15.5 10L13 12"/></svg>
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2" y="6" width="16" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M5 6v4M7.5 6v2.5M10 6v4M12.5 6v2.5M15 6v4"/></svg>
                     </button>
                     <button class="drawing-status-toggle active" id="drawingMagnitudesToggle" type="button" data-toggle-name="Magnitudes" aria-pressed="true" title="Magnitudes: on" aria-label="Magnitudes">
                         <!--
                             MAGNITUDES: A FORCE ARROW WITH ITS VALUE.
 
-                            One horizontal arrow on a baseline, with a short tick above
-                            it for the number that is written beside a force. Read on its
-                            own it says "a vector and its value", which is exactly what
-                            this toggle shows and hides - and it is distinct from the
-                            Dimension icon, which carries extension lines rather than a
-                            value tick.
+                            A force arrow with an F label above it
+                            represents showing or hiding force magnitudes.
                         -->
-                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M3 14h11"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M11 11.5L14 14L11 16.5"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M8 4.5v3.5M8 6.5h5"/></svg>
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><text x="9" y="9" text-anchor="middle" fill="currentColor" font-family="Georgia, serif" font-size="11" font-style="italic">F</text><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3 14h14M13.5 10.5L17 14l-3.5 3.5"/></svg>
+                    </button>
+
+                    <button class="drawing-status-toggle" id="drawingFitView" type="button" data-toggle-name="Fit" aria-pressed="false" title="Fit: off" aria-label="Fit drawing to view">
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M7 3H3v4M13 3h4v4M17 13v4h-4M7 17H3v-4"/><rect x="6.5" y="6.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
                     </button>
 
                     <!--
@@ -866,12 +853,9 @@
                     <div class="drawing-vector-scale" title="Vector Scale - how large force and load arrows are drawn. This is display only and never changes a magnitude.">
                         <span class="drawing-vector-scale-icon" aria-hidden="true">
                             <!--
-                                VECTOR SCALE: TWO ARROWS OF DIFFERENT LENGTHS, side by side
-                                - the same vector drawn larger and smaller, which is exactly
-                                what this control changes. A single arrow would read as
-                                "a vector"; two at different scales read as SCALE.
+                                VECTOR SCALE: a force arrow beside a size marker.
                             -->
-                            <svg viewBox="0 0 20 20" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 6.5h11"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M10.5 3.8l2.7 2.7-2.7 2.7"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 13.5h6"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6.2 11.6l1.9 1.9-1.9 1.9"/></svg>
+                            <svg viewBox="0 0 20 20" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 17V3M3.5 6.5L7 3l3.5 3.5"/><path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" d="M13 3h4M15 3v14M13 17h4"/></svg>
                         </span>
                         <select id="drawingVectorScale" aria-label="Vector Scale"></select>
                         <span class="drawing-vector-scale-value" id="drawingVectorScaleValue" aria-hidden="true">1×</span>
@@ -880,6 +864,8 @@
                         </span>
                         <input id="drawingVectorScaleCustom" class="drawing-vector-scale-custom" type="number" step="any" min="0" aria-label="Custom vector scale" placeholder="e.g. 3" hidden>
                     </div>
+                </div>
+
                 </div>
 
                 <!--
@@ -911,7 +897,6 @@
                     </aside>
                 </div>
 
-                <div class="drawing-canvas-area">
                     <!--
                         THE WAY BACK, ONCE THE TOP BAR IS HIDDEN.
 
@@ -923,10 +908,8 @@
                         The line is not a floating overlay covering the work: it
                         takes its own row above the canvas, full width.
 
-                        The arrow points UP, the direction the bar comes back
-                        from, and the label reads "Top Bar" - the name of the
-                        thing that returns - rather than repeating the word
-                        "Show", which the up arrow already says.
+                        A small white Show tab with a downward arrow restores
+                        the top toolbar.
                     -->
                     <div class="drawing-topbar-show-row">
                         <button
@@ -939,12 +922,13 @@
                             hidden
                         >
                             <svg viewBox="0 0 16 16" aria-hidden="true">
-                                <path d="M3 10l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
-                            <span>Top Bar</span>
+                            <span>Show</span>
                         </button>
                     </div>
 
+                <div class="drawing-canvas-area">
                     <div class="drawing-canvas" aria-label="Engineering drawing canvas">
                     </div>
                 </div>
