@@ -516,7 +516,7 @@ async function saveAs(documentBody, suggestedName, options = {}) {
   }
 
   if (supportsNativePicker()) {
-    let handle = null;
+    let handle;
 
     try {
       handle = await window.showSaveFilePicker({

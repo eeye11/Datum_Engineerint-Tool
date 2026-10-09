@@ -22,7 +22,23 @@
     -->
     <meta name="version" content="1.0.0">
 
+    <!--
+        THE BROWSER TAB ICON.
+
+        ONE FIXED BRAND COLOUR under every theme, and the SAME geometric D the
+        header draws. A tab is a separate document, so it is served as a file
+        rather than rendered from the page's CSS - which is exactly why it cannot
+        and must not be themed.
+
+        AN SVG IS PRIMARY, WITH A PNG FALLBACK. Every current browser reads an
+        SVG favicon and scales it cleanly to 16, 32 and 48 pixels, but a PNG is
+        offered first-fallback for anything that does not - both carry the SAME
+        fixed colour, so the tab looks identical whichever one a browser picks.
+    -->
     <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/favicon.png">
+    <link rel="mask-icon" href="/src/assets/favicon.svg" color="#087E83">
 
     <script
         id="MathJax-script"
@@ -67,25 +83,44 @@
     <header class="header">
 
         <!--
-            THE IDENTITY: A MARK AND THE WORDMARK.
+            THE IDENTITY: THE DAETUM MARK AND THE WORDMARK.
 
-            The mark is drawn inline so it follows the accent through the theme
-            - `currentColor` means the glyph is the same green as the wordmark
-            beside it, and neither needs a second colour defined for dark mode.
+            THE MARK IS THE LETTER D, ENGINEERED. A vertical SPINE is the flat
+            left-hand edge of the letter, and a ROUNDED ARC is its bowl - and the
+            arc's centre IS the spine, at the central dot, so the spine is a
+            DIAMETER of the bowl rather than a line beside it. The arc is
+            therefore the right-hand SEMICIRCLE of that circle, and the letter is
+            closed by its own stem: the wide opening on the left is the half the
+            spine replaces. Inside sit the solid central point and a short
+            horizontal axis, which are the coordinate-system reading of the same
+            figure.
 
-            It is a DIVIDING INSTRUMENT, not a letter: two legs, a joint and a
-            measured span, which is what the application is for. A wordmark
-            alone would name the product; a mark and a wordmark together give the
-            header something to be recognised BY at a glance, which is what makes
-            an application look established rather than assembled.
+            IT IS THE SAME GEOMETRY AS THE BROWSER TAB ICON, generated from
+            `app/daetum-mark.js`. The coordinates below are that module's, placed
+            here as static markup because the header must paint before any script
+            runs - and a test asserts the two agree, so the header and the tab
+            cannot drift into two different drawings of one brand.
+
+            THE COLOUR FOLLOWS THE THEME, NOT THE ACCENT. The mark is
+            `currentColor`, which `--logo-color` sets - dark ink on the light
+            interface, ice-white on the dark one - so it stays legible on either
+            surface without a second rule per palette. It deliberately does NOT
+            take the teal accent: the accent is the colour of buttons, selections
+            and focus rings, so a mark painted in it reads as something to click.
+
+            THE DOT IS DRAWN LAST, so it sits over both axes and no line runs
+            visibly through the filled centre.
         -->
         <div class="header-identity">
             <span class="header-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22" focusable="false">
-                    <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
-                        d="M3 20V8M11 20V4M19 20v-9"/>
-                    <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
-                        d="M1.5 21.5h21"/>
+                <svg viewBox="0 0 24 24" width="24" height="24" focusable="false">
+                    <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                        d="M6.2 4.2V19.8"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                        d="M6.2 8.714A7 7 0 1 1 6.2 15.286"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                        d="M1.6 12H11.6"/>
+                    <circle cx="6.2" cy="12" r="2.5" fill="currentColor"/>
                 </svg>
             </span>
 

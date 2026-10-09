@@ -168,7 +168,7 @@ function trussMembersTouch(
  * It is what keeps an internal member from leaving the boundary
  * the student established.
  */
-function trussPointInsideOutline(
+export function trussPointInsideOutline(
     point,
     outline
 ) {
@@ -764,7 +764,7 @@ export function cancelTrussConstruction() {
     renderCurrentDrawing();
 }
 
-function beginTrussConstruction() {
+export function beginTrussConstruction() {
     enggDrawingState.setInteraction(
         drawingState,
         {

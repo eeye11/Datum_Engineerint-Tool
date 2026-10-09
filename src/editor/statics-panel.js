@@ -156,10 +156,6 @@ export function annotationSectionMarkup(
         ? model.magnitudeShownFor(object, state)
         : true;
 
-    const display =
-        object.annotationDisplay ||
-        {};
-
     /*
      * THERE IS NO "Show Unit" CONTROL, AND THERE IS NO REASON FOR ONE.
      *
@@ -1344,7 +1340,6 @@ export function distributedLoadPanelMarkup(
     helpers
 ) {
     const {
-        coordinate,
         scalar,
         section
     } = helpers;

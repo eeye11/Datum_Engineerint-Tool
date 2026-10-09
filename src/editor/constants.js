@@ -11,13 +11,6 @@ export const COORDINATE_SYSTEM_LENGTH = 25;
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /*
- * Smallest interior angle a triangle may take. Keeps
- * angle edits from collapsing a triangle into a
- * degenerate sliver.
- */
-const MIN_TRIANGLE_ANGLE = 0.01;
-
-/*
  * The default line weight for a Statics tool's features.
  *
  * A Point Force gets its own heavier weight; every other Statics

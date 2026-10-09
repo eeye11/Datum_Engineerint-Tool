@@ -153,6 +153,16 @@ export function applyTheme(preference) {
         root.setAttribute("data-theme", chosen);
     }
 
+    /*
+     * AND NOTHING ELSE IS TOUCHED HERE.
+     *
+     * `applyTheme` writes the root attribute and stops. The favicon needs
+     * updating too, but it is kept OUT of this function deliberately: this is the
+     * one place that must stay incapable of reaching the drawing, and a rule that
+     * says "this writes one attribute on the root element" is only enforceable
+     * while it is true. So the callers that COMPLETE a theme change do it - see
+     * `setThemePreference` and `installSavedTheme` below.
+     */
     return chosen;
 }
 
@@ -165,6 +175,20 @@ export function applyTheme(preference) {
 export function setThemePreference(preference) {
     const chosen = applyTheme(preference);
 
+    /*
+     * THE DRAWING FOLLOWS, ONCE THE ATTRIBUTE IS SET.
+     *
+     * The canvas is SVG whose strokes are resolved for the active theme as they
+     * are painted, so it has to be REPAINTED for a theme change to reach it. Until
+     * it is, the sheet keeps the previous theme's ink: black lines on a charcoal
+     * canvas, which is exactly the "the drawing disappears in dark mode" report.
+     *
+     * Doing it here, beside the favicon, is what makes the sequence complete -
+     * theme, tab, canvas - in one place, so a caller cannot switch one and forget
+     * another.
+     */
+    repaintCanvasForTheme();
+
     try {
         globalThis.localStorage?.setItem(STORAGE_KEY, chosen);
     } catch (error) {
@@ -172,6 +196,32 @@ export function setThemePreference(preference) {
     }
 
     return chosen;
+}
+
+/*
+ * REPAINT THE DRAWING IN THE NEW THEME.
+ *
+ * A DYNAMIC import, for the same reason `tabs.js` uses one: the renderer is a
+ * large module and importing it at the top of this file would make it load before
+ * the rest of the editor, reversing the start-up order the application was built
+ * with. It is reached only when a theme is actually chosen.
+ *
+ * IT CANNOT THROW OR DELAY ANYTHING. A repaint is presentation, so a failure - or
+ * a drawing that is not on screen yet - must never stop a theme from being applied
+ * or Stored. A theme change on the Written Solution tab, where there is no canvas
+ * to repaint, simply does nothing.
+ *
+ * The import is a no-op after the first call: the module is already evaluated, so
+ * only the redraw happens.
+ */
+function repaintCanvasForTheme() {
+    import("../editor/canvas-render.js")
+        .then(({ renderCurrentDrawing }) => {
+            renderCurrentDrawing();
+        })
+        .catch(() => {
+            /* No canvas to repaint, or the renderer is not up yet. */
+        });
 }
 
 /*
@@ -198,7 +248,9 @@ export function resolvedTheme() {
  * the right theme.
  */
 export function installSavedTheme() {
-    return applyTheme(readThemePreference());
+    const chosen = applyTheme(readThemePreference());
+
+    return chosen;
 }
 
 const enggTheme = {

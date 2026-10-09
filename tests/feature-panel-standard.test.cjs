@@ -181,8 +181,8 @@ check(
 );
 
 check(
-  "its coordinate pair is a heading plus two separate fields",
-  /coordinatePair\s*=/.test(propertyMarkup) &&
+  "its coordinate fields go through the shared scalar",
+  !/coordinatePair\s*=/.test(propertyMarkup) &&
     /panels\.scalar\(/.test(propertyMarkup),
   "coordinates are being concatenated into one string again",
 );
@@ -322,12 +322,15 @@ check(
   "a one-row label is being fed to a two-row builder again",
 );
 
+/* The pair builder was removed: a position is two separate single-row
+ * coordinate calls at each site, each naming its own axis. Nothing may
+ * reintroduce a helper that appends X/Y to one label, because that is the
+ * nested-label defect this block guards against.
+ */
 check(
-  "the pair form names its own two ordinates",
-  /coordinatePair\s*=/.test(propertyMarkup) &&
-    /coordinate\("X"/.test(propertyMarkup) &&
-    /coordinate\("Y"/.test(propertyMarkup),
-  "the pair form does not build distinct X and Y fields",
+  "no pair builder appends axes to a single label",
+  !/coordinatePair\s*=/.test(propertyMarkup),
+  "a two-row pair builder has come back",
 );
 
 /*

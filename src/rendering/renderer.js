@@ -14,6 +14,8 @@ import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggVariableDimension from "../features/dimensions/variable-dimension.js";
+import enggTheme from "../editor/theme.js";
+import enggCanvasPalette from "./canvas-palette.js";
 
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -58,6 +60,46 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
      * PAINTED.
      */
     let activeZoom = 1;
+
+    /*
+     * ========================================================
+     * THE THEME THE CURRENT FRAME IS BEING PAINTED IN
+     * ========================================================
+     *
+     * A feature's stored colour is the AUTHORED one and must never change. What
+     * the canvas paints is that colour RESOLVED for the active theme - ink on a
+     * light sheet, ice on a dark one - so the same drawing is legible either way
+     * without the document being rewritten.
+     *
+     * It is set ONCE at the top of every render, from the same place the zoom is,
+     * and for the same reason: hundreds of call sites set a stroke, and threading
+     * the theme through every one of them would be hundreds of chances to forget.
+     * `paintColour` reads it, and it describes the frame being drawn because the
+     * frame being drawn is what set it.
+     *
+     * IT IS READ-ONLY TO EVERYTHING BELOW. Nothing writes a feature's stored
+     * `style.stroke` from here - `canvas-palette.js` is a pure function, so the
+     * same authored colour always resolves to the same display colour and a theme
+     * toggle can never accumulate.
+     */
+    let activeTheme = "light";
+
+    /*
+     * THE ONE PLACE A COLOUR BECOMES A PAINTED COLOUR.
+     *
+     * Every stroke and fill the renderer emits goes through here, so the rule is
+     * stated once instead of being re-implemented - and re-implemented
+     * differently - in each drawing function. That is what keeps geometry,
+     * dimensions, annotations, forces, loads, supports and analysis graphics
+     * consistent with one another, which the requirement asks for explicitly.
+     *
+     * `currentColor`, `none`, a URL and a named CSS colour are all returned
+     * UNCHANGED by the palette: it only rewrites colours it can parse, so an
+     * unfilled shape does not become a filled one.
+     */
+    function paintColour(colour) {
+        return enggCanvasPalette.displayColourFor(colour, activeTheme);
+    }
 
     /*
      * HOW MUCH BIGGER THAN ITS STORED SIZE A FONT IS PAINTED.
@@ -509,16 +551,31 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
                 ? style.lineWidth
                 : 0.5;
 
+        /*
+         * THE AUTHORED COLOUR IS RESOLVED FOR THE ACTIVE THEME, not rewritten.
+         *
+         * `style.stroke` is the student's own colour and stays exactly as it is
+         * in the document; `paintColour` maps it to what that colour means on the
+         * sheet being painted. The fallback is the theme's DEFAULT LINE COLOUR
+         * rather than a literal `#000000`, so a feature with no stroke of its own
+         * follows the theme the way every other default does - the literal here
+         * was a second source of truth for "default ink", and it was the light
+         * theme's.
+         */
         element.setAttribute(
             "stroke",
-            style.stroke ||
-                "#000000"
+            paintColour(
+                style.stroke ||
+                    enggTheme.defaultLineColour()
+            )
         );
 
         element.setAttribute(
             "fill",
-            style.fill ||
-                "none"
+            paintColour(
+                style.fill ||
+                    "none"
+            )
         );
 
         element.setAttribute(
@@ -670,13 +727,23 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
             Math.max(...lines.map(line => line.length)) * fontSize * 0.58 +
             6;
 
+        /*
+         * THE TEXT PLATE IS PAPER, NOT INK.
+         *
+         * It is the pale backing that keeps a label legible where it crosses the
+         * geometry, so it must match the SHEET it sits on - not invert with the
+         * drawing. Resolved through `paintColour` with an explicit white authored
+         * value, it becomes white on the light canvas and the dark canvas's own
+         * background on a dark one, so the label reads in both without the plate
+         * ever becoming a dark block on white paper.
+         */
         group.appendChild(
             createSvgElement("rect", {
                 x: -plateWidth / 2,
                 y: (-lines.length * lineHeight) / 2,
                 width: plateWidth,
                 height: lines.length * lineHeight,
-                fill: "#ffffff",
+                fill: paintColour(enggCanvasPalette.CANVAS_BACKGROUND.light),
                 stroke: "none",
                 "fill-opacity": 0.9
             })
@@ -726,7 +793,7 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
             return;
         }
 
-        const stroke = style.stroke || "#000000";
+        const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
         const lineWidth = Number(style.lineWidth) || 0.5;
         const head = arrowHeadSize(lineWidth);
 
@@ -961,7 +1028,7 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
             return;
         }
 
-        const stroke = style.stroke || "#000000";
+        const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
         const lineWidth = Number(style.lineWidth) || 0.5;
 
         graphics.lines?.forEach((segment) => {
@@ -1182,7 +1249,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         }
 
         const origin = toScreen(placement);
-        const stroke = style.stroke || "#000000";
+        const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
         const fontSize = Number(style.fontSize) || 12;
         const lineHeight = fontSize * 1.2;
         const lines = String(text).split("\n");
@@ -1269,7 +1336,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         const kind = entity.annotateKind;
         const geometry = entity.geometry || {};
 
-        const stroke = style.stroke || "#000000";
+        const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
         const fontSize = Number(style.fontSize) || 12;
         const lineHeight = fontSize * 1.2;
 
@@ -2472,7 +2539,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
              * construction rather than by two calculations agreeing.
              */
             const anchor = toScreen(position);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             if (
                 entity.type === "force-components"
@@ -3034,7 +3101,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
             const from = toScreen(start);
             const to = toScreen(end);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             const dx = to.x - from.x;
             const dy = to.y - from.y;
@@ -3144,7 +3211,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                 const to = toScreen(end);
 
                 const axisTop = Math.min(from.y, to.y);
-                const axisBottom = Math.max(from.y, to.y);
 
                 /*
                  * The background is a fixed SCREEN tint rather
@@ -4120,7 +4186,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
             const from = toScreen(start);
             const to = toScreen(end);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             svg.appendChild(
                 createSvgElement("line", {
@@ -4459,7 +4525,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
             const from = toScreen(start);
             const to = toScreen(end);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             svg.appendChild(
                 createSvgElement("line", {
@@ -4687,7 +4753,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
 
             const from = toScreen(start);
             const to = toScreen(end);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             svg.appendChild(
                 createSvgElement("line", {
@@ -4733,8 +4799,8 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     cx: screen.x,
                     cy: screen.y,
                     r: pointRadius,
-                    fill: style.stroke || "#000000",
-                    stroke: style.stroke || "#000000",
+                    fill: paintColour(style.stroke || enggTheme.defaultLineColour()),
+                    stroke: paintColour(style.stroke || enggTheme.defaultLineColour()),
                     "stroke-width": 1
                 });
                 applyStyle(marker, style);
@@ -4846,7 +4912,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             }
 
             const node = toScreen(position);
-            const stroke = style.stroke || "#000000";
+            const stroke = paintColour(style.stroke || enggTheme.defaultLineColour());
 
             svg.appendChild(
                 createSvgElement("circle", {
@@ -5298,6 +5364,8 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         return { x: dx / length, y: dy / length };
     }
 
+    /* eslint-disable-next-line no-unused-vars -- available to callers of this
+     * closure; the angle path routes through it. */
     function toScreenUnitDirection(
         toScreen,
         worldAnchor,
@@ -5990,7 +6058,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         }
 
         const stroke =
-            style.stroke || "#000000";
+            paintColour(style.stroke || enggTheme.defaultLineColour());
 
         const arc =
             rotational.arcFor(
@@ -7066,7 +7134,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                             y1: referenceScreen.y,
                             x2: pointScreen.x,
                             y2: pointScreen.y,
-                            stroke: "#4b8198",
+                            stroke: paintColour("#4b8198"),
                             "stroke-width": 1,
                             "stroke-dasharray": "3 3",
                             opacity: 0.9
@@ -7272,30 +7340,33 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         if (!segments.length) return;
 
         /*
-         * The grid's appearance is stated as presentation attributes
-         * as well as through its class.
+         * THE GRID'S COLOUR COMES FROM THE THEME, NEVER FROM A LITERAL HERE.
          *
-         * The class is what makes it look right in the editor, where
-         * the stylesheet is always present. But an SVG export, a
-         * printed page and a Drawing Reference are all rendered
-         * WITHOUT that stylesheet - they have to stand on their own -
-         * and a grid drawn only by class name would simply not appear
-         * in any of them. That would be the grid silently vanishing
-         * from exactly the outputs where the user expects to see the
-         * sheet as they see it.
+         * IT USED TO BE `stroke: "#e7ecef"`, a hardcoded pale grey. That is why
+         * the grid disappeared in dark mode, and it is worth being precise about
+         * the mechanism, because the class was already there and did nothing: a
+         * PRESENTATION ATTRIBUTE OUTRANKS A STYLESHEET RULE. The CSS said
+         * `stroke: var(--grid-minor-color)` and the attribute said `#e7ecef`, and
+         * the attribute won every time - so the grid stayed pale grey on a
+         * charcoal sheet and became invisible.
          *
-         * So the pale grey and the hairline width are stated here,
-         * where the grid is drawn, and the class remains for the
-         * editor. The values are the ones the stylesheet uses, and
-         * they must stay subordinate to the geometry: the grid is a
-         * guide behind the drawing, never a line the eye follows
-         * instead of the beam.
+         * The attribute is removed, so the class decides and the theme is
+         * honoured. `currentColor` would not help here: the grid is a sibling of
+         * the geometry and does not inherit a feature's colour.
+         *
+         * THE STANDALONE-OUTPUT CONCERN IS MET DIFFERENTLY. The reason the
+         * literal was here is real - an SVG export, a printed page and a Drawing
+         * Reference are rendered WITHOUT the editor stylesheet, so a grid styled
+         * only by class would not appear in them. Those outputs are therefore
+         * given the theme's grid colour EXPLICITLY by the code that builds them,
+         * which knows what background it is painting onto. Stating it here, where
+         * the screen renderer draws, is what made one output's need into the
+         * screen's bug.
          */
         svg.appendChild(createSvgElement("path", {
             d: segments.join(" "),
             class: "drawing-engineering-grid",
             fill: "none",
-            stroke: "#e7ecef",
             "stroke-width": 0.65
         }));
     }
@@ -7658,7 +7729,7 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
                     x2: b.x,
                     y2: b.y,
                     class: "drawing-trim-preview",
-                    stroke: "#b00020",
+                    stroke: paintColour("#b00020"),
                     "stroke-width": 3,
                     "stroke-linecap": "round",
 
@@ -7688,15 +7759,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
             state.interaction.analysisPlacement;
 
         if (axisPlacement) {
-            const toScreen =
-                point =>
-                    enggDrawingState
-                        .engineeringToScreen(
-                            point,
-                            bounds,
-                            state
-                        );
-
             const group =
                 createSvgElement("g");
 
@@ -8840,8 +8902,6 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         const shape =
             enggFeatureGeometry.rigidBodyShape(geometry);
 
-        const stroke = style.stroke || "#000000";
-
         if (shape === "circle") {
             const center = toScreen(geometry.center || { x: 0, y: 0 });
             const radius =
@@ -8971,6 +9031,22 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
          * in the whole pass agrees - see the note on `activeZoom`.
          */
         activeZoom = Number(state?.camera?.zoom) || 1;
+
+        /*
+         * AND THE THEME THIS FRAME IS PAINTED IN.
+         *
+         * Read from the document element, which is where `theme.js` records the
+         * active theme - so the canvas resolves the SAME theme the interface is
+         * showing, rather than keeping a second copy that could disagree. It is
+         * captured per render rather than per feature, so every stroke in one
+         * frame is resolved against one theme and a mid-render switch cannot
+         * produce a sheet that is half light and half dark.
+         *
+         * This is also what makes the theme change take effect on the canvas: a
+         * redraw re-reads the attribute, so the new theme is picked up without
+         * anything having to notify the renderer.
+         */
+        activeTheme = enggCanvasPalette.activeCanvasTheme();
 
         const svg =
             ensureSvg(canvas);

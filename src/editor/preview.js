@@ -15,7 +15,7 @@ import { isDimensionTool } from "./dimension-tool.js";
 import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { polygonFromCursor } from "./geometry-creation.js";
-import { LOAD_BUILD_PHASES, constantLoadDraft, distributedLoadDirectionCursor, distributedLoadDraft, isLoadBuildPhase, isLoadSpanPhase, loadBuildInstruction, loadDirectionUnderPointer } from "./load-tool.js";
+import { LOAD_BUILD_PHASES, constantLoadDraft, distributedLoadDirectionCursor, distributedLoadDraft, isLoadBuildPhase, isLoadSpanPhase, loadBuildInstruction } from "./load-tool.js";
 import { constructionFeedbackMessage, inferenceLabel, snapTypeLabel, updateInteractionFeedback } from "./pointer.js";
 import { STATICS_CHILD_TOOLS, STATICS_SPAN_TOOLS, bodyPlacementLocations, isBodyAttachedTool, staticsBodyMessage, staticsSpanInstruction, staticsToolPointCount } from "./statics-tools.js";
 import { isArcTool } from "./tool-menus.js";

@@ -14,7 +14,7 @@ import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
 import { drawingState } from "./editor-state.js";
 import { mmOf, staticsRoleLabel } from "./handles.js";
 import { absolutePositionRows, relativeCoordinateRows } from "./relative-coordinates.js";
-import { MAGNITUDE_BEARING_TYPES, analysisPanelRows, annotationSectionMarkup, arcRadiusRow, distributedLoadPanelMarkup, momentDirectionOf, reverseDirectionMarkup, supportPanelRows } from "./statics-panel.js";
+import { analysisPanelRows, arcRadiusRow, distributedLoadPanelMarkup, momentDirectionOf, reverseDirectionMarkup, supportPanelRows } from "./statics-panel.js";
 import { STATICS_FEATURE_LABELS, staticsConnectionSection } from "./statics-tools.js";
 import { trianglePropertyMarkup } from "./triangle-panel.js";
 import { trussOptimizeMarkup } from "./truss-optimizer.js";
@@ -736,8 +736,7 @@ export function featurePropertyMarkup(object) {
      * combinations on a Beam came from, and none of them was ever a real
      * engineering concept.
      *
-     * The pair form is still available where a pair is genuinely wanted: the
-     * `coordinatePair` helper below, which names its two ordinates itself.
+     * The pair form is still available where a pair is genuinely wanted.
      */
     const coordinate = (
         label,
@@ -851,25 +850,41 @@ export function featurePropertyMarkup(object) {
     };
 
     /*
-     * A COORDINATE PAIR, UNDER ITS OWN HEADING.
+     * ========================================================
+     * A COORDINATE PAIR: ONE HEADING, THEN X AND Y
+     * ========================================================
      *
-     * This is the form a position is actually shown in: a "Start" heading, then
-     * X and Y beneath it. Two fields, each carrying its own unit, and the
-     * heading is the conceptual reference rather than a prefix repeated on every
-     * row.
+     * A position is an engineering idea with its own name - "Start", "End",
+     * "Centre", "Position" - and beneath it two ordinates. That is the form the
+     * student reads:
+     *
+     *     Start
+     *     Start X   [ 150 ] mm
+     *     Start Y   [ 300 ] mm
+     *
+     * IT BUILDS ITS FIELD BY CALLING `coordinate` TWICE, not by concatenating
+     * numbers. Each call emits ONE field for ONE property, so X edits
+     * `start.x` and Y edits `start.y` and neither is a string that merely looks
+     * like a coordinate. That is the defect this shape exists to prevent: an
+     * earlier pair helper glued two ordinates into a single uneditable value and
+     * attached the unit to the second number, so the panel showed
+     *
+     *     Start
+     *     150, 300 mm
+     *
+     * where the unit appeared to belong to the ordinate and a missing value left
+     * a dangling comma behind.
+     *
+     * THE ORDINATE LABELS ARE GLUED FROM THE PAIR'S OWN NAME - `${label} X` - so
+     * a pair called "Centre" cannot produce rows called "Start X". Each ordinate
+     * carries the whole label the student reads rather than relying on the
+     * heading above, which is what keeps a single field meaningful if the pair is
+     * ever split across a layout.
+     *
+     * `xKey` and `yKey` are separate arguments rather than one key plus a suffix,
+     * because a feature does not always store its ordinates adjacent: a Point
+     * keeps `position.x`/`position.y`, a Triangle keeps `points.0.x`.
      */
-    const coordinatePair = (
-        heading,
-        xKey,
-        x,
-        yKey,
-        y,
-        unit = "mm"
-    ) => [
-        section(heading),
-        coordinate("X", xKey, x, unit, true),
-        coordinate("Y", yKey, y, unit, true),
-    ];
 
     /*
      * A NUMBER THAT IS TRUE BUT NOT WRITTEN.
@@ -2678,7 +2693,7 @@ function leaderStyleRows(object) {
  * or names it with a Variable Dimension.
  */
 function dimensionValueRow(object) {
-    let text = "";
+    let text;
 
     try {
         text =

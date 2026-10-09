@@ -1162,7 +1162,7 @@ function segmentIntersectionPoint(
 /*
  * Translate every selected object by a delta.
  */
-function moveSelectionBy(
+export function moveSelectionBy(
     deltaX,
     deltaY
 ) {
@@ -1251,7 +1251,7 @@ export function translateObject(
  * rotate never drifts the geometry away from where it
  * was.
  */
-function rotateSelectionBy(
+export function rotateSelectionBy(
     degrees
 ) {
     const selected =
@@ -1396,7 +1396,7 @@ function rotateSelectionBy(
  * Mirror the selection across the vertical line through
  * its own centre.
  */
-function mirrorSelectionVertically() {
+export function mirrorSelectionVertically() {
     const selected =
         drawingState.objects.filter(
             object =>

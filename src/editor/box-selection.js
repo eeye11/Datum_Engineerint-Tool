@@ -8,7 +8,6 @@ import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggDimensionModel from "../features/dimensions/dimension-model.js";
 import enggDrawingRenderer from "../rendering/renderer.js";
-import { COORDINATE_SYSTEM_LENGTH } from "./constants.js";
 import { distance } from "./construction-geometry.js";
 import { drawingState } from "./editor-state.js";
 import { isRectangleLike, objectPoints } from "./hit-testing.js";
@@ -577,86 +576,32 @@ function arcIntersectsSelection(
     );
 }
 
-function coordinateSystemIntersectsSelection(
-    geometry,
-    selectionBox
-) {
-    const origin =
-        geometry.origin;
-
-    const axisLength =
-        geometry.axisLength ??
-        geometry.xAxisLength ??
-        COORDINATE_SYSTEM_LENGTH;
-
-    const xPositiveEnd = {
-        x:
-            origin.x +
-            axisLength,
-
-        y:
-            origin.y
-    };
-
-    const xNegativeEnd = {
-        x:
-            origin.x -
-            axisLength,
-
-        y:
-            origin.y
-    };
-
-    const yPositiveEnd = {
-        x:
-            origin.x,
-
-        y:
-            origin.y +
-            axisLength
-    };
-
-    const yNegativeEnd = {
-        x:
-            origin.x,
-
-        y:
-            origin.y -
-            axisLength
-    };
-
-    return (
-        pointInsideSelection(
-            origin,
-            selectionBox
-        ) ||
-
-        segmentIntersectsSelection(
-            origin,
-            xPositiveEnd,
-            selectionBox
-        ) ||
-
-        segmentIntersectsSelection(
-            origin,
-            xNegativeEnd,
-            selectionBox
-        ) ||
-
-        segmentIntersectsSelection(
-            origin,
-            yPositiveEnd,
-            selectionBox
-        ) ||
-
-        segmentIntersectsSelection(
-            origin,
-            yNegativeEnd,
-            selectionBox
-        )
-    );
-}
-
+/*
+ * ========================================================
+ * DOES THIS FEATURE FALL INSIDE THE SELECTION RECTANGLE?
+ * ========================================================
+ *
+ * The dispatcher every box selection goes through: one feature, one rectangle,
+ * true if the feature's DRAWN GEOMETRY meets it. Each feature type is tested the
+ * way that type is actually drawn - a span by its segment, a rectangle-like
+ * shape by its corners and edges, a load by the body it acts on, a graph feature
+ * by its projected ink - and everything else falls back to its defining points.
+ *
+ * IT WAS CALLED `coordinateSystemIntersectsSelection`, AND THE NAME WAS WRONG.
+ * The function has been the general dispatcher for every type since the cases
+ * for rectangles, forces, loads and trusses were added to it; the name survived
+ * from when a coordinate system was the only caller. Worse, it made the ONE
+ * import that matters fail: `selection.js` imports `objectIntersectsSelection`,
+ * so the module graph threw a missing-export SyntaxError, `main.js` stopped
+ * where it imported `selection.js`, and everything after it - the menu bar, the
+ * command search, the drawing editor's own wiring - never ran. The visible
+ * symptom was the Engineering Drawing tab doing nothing when clicked, because
+ * the section switched but the editor it needs had not finished loading.
+ *
+ * So the name now states what the function does. The old name is still exported,
+ * because it is a public symbol other modules may hold and nothing is gained by
+ * breaking them.
+ */
 export function objectIntersectsSelection(
     object,
     selectionBox
@@ -1146,16 +1091,26 @@ export function objectIntersectsSelection(
      * what keeps a feature with no special case from becoming
      * unselectable.
      */
-    return objectPoints(
-        object
-    ).some(
-        point =>
-            pointInsideSelection(
-                point,
-                selectionBox
-            )
-    );
-}
+        return objectPoints(
+            object
+        ).some(
+            point =>
+                pointInsideSelection(
+                    point,
+                    selectionBox
+                )
+        );
+    }
+
+    /*
+     * THE PREVIOUS NAME, KEPT AS AN ALIAS.
+     *
+     * Any module or saved script that reached for the dispatcher under the old name
+     * keeps working. It is a thin forwarder rather than a second copy, so the two
+     * names can never drift into two behaviours.
+     */
+    export const coordinateSystemIntersectsSelection =
+        objectIntersectsSelection;
 
 /*
  * Whether any part of a distributed load's arrow field meets
@@ -1340,7 +1295,7 @@ function diagnosticFrame(geometry, renderer) {
         return null;
     }
 
-    let extents = null;
+    let extents;
 
     try {
         extents = renderer.analysisFrameExtents();
@@ -1414,7 +1369,7 @@ function annotationBoxIntersectsSelection(object, selectionBox) {
         return false;
     }
 
-    let bounds = null;
+    let bounds;
 
     try {
         bounds = model.annotationTextBounds(object, drawingState);
@@ -1458,7 +1413,7 @@ function dimensionIntersectsSelection(object, selectionBox) {
         );
     }
 
-    let graphics = null;
+    let graphics;
 
     try {
         graphics = model.graphicsFor(object, drawingState);

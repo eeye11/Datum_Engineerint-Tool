@@ -927,28 +927,6 @@ export function renderedPointsForObjects(objects, measuredAtZoom) {
 }
 
 /*
- * The document's name without its extension, which is what an image is
- * named after.
- *
- * An image of "Report.enggdraw" is "Report.png", not
- * "Report.enggdraw.png" - the image is a different kind of file of the
- * same drawing, not a second project file.
- */
-function exportBaseName() {
-    const current =
-        documentFile() || "drawing";
-
-    const suffix =
-        `.${enggDocumentFile.EXTENSION}`;
-
-    return current.toLowerCase().endsWith(
-        suffix.toLowerCase()
-    )
-        ? current.slice(0, -suffix.length)
-        : current;
-}
-
-/*
  * RENDER THE ACTIVE SHEET AS AN IMAGE, AS A BLOB.
  *
  * This is the one image producer in the application. Save As calls it

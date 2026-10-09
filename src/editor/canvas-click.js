@@ -462,10 +462,6 @@ function selectFromCanvasClick(
             rawPoint
         );
 
-    const selectedIds =
-        drawingState.selection
-            .selectedObjectIds;
-
     /*
      * Shift extends the selection: clicking an
      * unselected feature adds it, clicking an already

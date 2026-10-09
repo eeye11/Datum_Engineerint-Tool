@@ -460,7 +460,7 @@ function dimensionBoundsPoints(object) {
         return [];
     }
 
-    let graphics = null;
+    let graphics;
 
     try {
         graphics = model.graphicsFor(object, drawingState);

@@ -6,7 +6,7 @@ import { drawingComponentsBack, drawingProperties } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { featurePropertyMarkup } from "./feature-panel-markup.js";
 import { renderComponentTree, renderLoadBuildPanel } from "./feature-tree.js";
-import { LOAD_BUILD_PHASES, loadBuildInstruction } from "./load-tool.js";
+import { LOAD_BUILD_PHASES } from "./load-tool.js";
 import { bindFeaturePropertyControls } from "./property-binding.js";
 import { enhanceNumericInputs } from "./property-inputs.js";
 import { syncStyleControls } from "./style-controls.js";
@@ -30,11 +30,6 @@ export function renderProperties() {
      * "Specify load magnitude" something the student can DO rather than
      * something they are told to do and left to work out.
      */
-    const loadBuild =
-        loadBuildInstruction(
-            drawingState.interaction?.phase
-        );
-
     if (
         LOAD_BUILD_PHASES.has(
             drawingState.interaction?.phase

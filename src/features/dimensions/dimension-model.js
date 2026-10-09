@@ -92,8 +92,6 @@ const DEFAULT_PRECISION = 2;
  * ========================================================
  */
 
-let sequence = 0;
-
 /*
  * A fresh identity.
  *
@@ -104,8 +102,6 @@ let sequence = 0;
  * surprising thing for a file to be able to do.
  */
 function newDimensionId() {
-  sequence += 1;
-
   const random =
     typeof globalThis.crypto === "object" &&
     globalThis.crypto &&

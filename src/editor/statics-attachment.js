@@ -946,6 +946,8 @@ function cancelStaticsInteraction() {
     return wasAttaching;
 }
 
+export { cancelStaticsInteraction };
+
 /*
  * Move one truss joint and every member that meets it.
  *

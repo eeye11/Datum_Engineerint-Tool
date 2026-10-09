@@ -536,12 +536,6 @@ export function distributedLoadPointOnBody(
         return true;
     }
 
-    const tolerance =
-        8 / Math.max(
-            drawingState.camera.zoom,
-            0.25
-        );
-
     const start =
         body.geometry?.start;
     const end =
@@ -686,11 +680,6 @@ export function startDistributedLoadBuild(
     span,
     parentId
 ) {
-    const previous =
-        enggDrawingState.snapshotDrawing(
-            drawingState
-        );
-
     enggDrawingState.clearInteraction(
         drawingState
     );

@@ -4,7 +4,7 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggDrawingRenderer from "../rendering/renderer.js";
-import { COORDINATE_SYSTEM_TYPE, SVG_NAMESPACE } from "./constants.js";
+import { SVG_NAMESPACE } from "./constants.js";
 import { drawingCanvas, drawingProperties, drawingZoomValue } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
@@ -81,7 +81,7 @@ function appendArrowhead(
     );
 }
 
-function appendCoordinateSystemVisual(
+export function appendCoordinateSystemVisual(
     svg,
     object,
     isSelected = false
@@ -342,37 +342,6 @@ function appendCoordinateSystemVisual(
     svg.appendChild(
         group
     );
-}
-
-function renderCoordinateSystems() {
-    const svg =
-        drawingCanvas.querySelector(
-            ".drawing-renderer"
-        );
-
-    if (!svg) {
-        return;
-    }
-
-    drawingState.objects
-        .filter(
-            object =>
-                object.type ===
-                COORDINATE_SYSTEM_TYPE
-        )
-        .forEach(
-            object => {
-                appendCoordinateSystemVisual(
-                    svg,
-                    object,
-                    drawingState.selection
-                        .selectedObjectIds
-                        .includes(
-                            object.id
-                        )
-                );
-            }
-        );
 }
 
 export function renderCurrentDrawing() {

@@ -400,7 +400,7 @@ function renderClean(state, bounds) {
   host.appendChild(canvas);
   document.body.appendChild(host);
 
-  let svg = null;
+  let svg;
 
   try {
     enggDrawingRenderer.renderDrawing(

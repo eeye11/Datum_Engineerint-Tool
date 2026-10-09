@@ -1407,7 +1407,7 @@ function featureValueText(object, magnitudeKey, defaultLabel, unit) {
  * the force magnitudes use. Its POSITION is stored per value, keyed by the
  * value's id, so moving the vertical value never moves the horizontal one.
  */
-function derivedSupportAnnotation(object, value, state) {
+export function derivedSupportAnnotation(object, value, state) {
   const values = supportValueState(object, value);
 
   const annotation = {
@@ -1859,7 +1859,7 @@ function profileText(
    */
   const wantedId = annotation.anchorRef?.pointId;
 
-  let index = 0;
+  let index;
 
   if (wantedId) {
     const found = points.findIndex(

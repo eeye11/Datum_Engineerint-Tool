@@ -84,10 +84,6 @@ function setTopBarHidden(hidden) {
     renderCurrentDrawing();
 }
 
-function toggleTopBar() {
-    setTopBarHidden(!editorState.topBarHidden);
-}
-
 /*
  * The zoom percentage FIELD accepts a typed value.
  *

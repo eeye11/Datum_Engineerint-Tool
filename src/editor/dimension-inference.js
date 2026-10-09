@@ -178,9 +178,6 @@ export function dimensionReferenceAtClick(
     point,
     awaitingSecond
 ) {
-    const snapType =
-        resolution?.snapCandidate?.type;
-
     /*
      * A SNAP IS A POINT, BUT IT IS NOT ALWAYS WHAT WAS MEANT.
      *
@@ -475,28 +472,6 @@ export function twoPointSpanOf(object) {
     } catch (error) {
         return null;
     }
-}
-
-/*
- * The model direction of a straight feature, or null.
- */
-function directionOfFeature(object) {
-    const span = twoPointSpanOf(object);
-
-    if (!span) {
-        return null;
-    }
-
-    const deltaX = span.end.x - span.start.x;
-    const deltaY = span.end.y - span.start.y;
-
-    const length = Math.hypot(deltaX, deltaY);
-
-    if (length < 1e-9) {
-        return null;
-    }
-
-    return { x: deltaX / length, y: deltaY / length };
 }
 
 /*

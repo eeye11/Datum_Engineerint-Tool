@@ -174,10 +174,55 @@
     --datum-border: var(--precision-slate-200);
     --datum-border-strong: var(--precision-slate-300);
 
+    /*
+     * THE BRAND MARK. The DAETUM logo is drawn with `currentColor`, and this
+     * token is what feeds it. It is the interface's own INK, so the mark is
+     * high contrast on whatever surface it sits on - near-black on the ice-mint
+     * light interface, ice-white on the dark one - and it is declared in EVERY
+     * palette block so a new colour scheme cannot inherit it by accident.
+     *
+     * IT IS DELIBERATELY NOT THE ACCENT. `--datum-green` marks what is ACTIVE;
+     * a mark painted in it would read as a control. Keeping the brand on its own
+     * token is what lets the logo adapt to the theme while staying a logo.
+     */
+    --logo-color: #193335;
+
     --datum-page: var(--precision-slate-50);
     --datum-panel: var(--precision-slate-100);
     --datum-surface: #ffffff;
     --datum-raised: #ffffff;
+
+    /*
+     * ========================================================
+     * THE DRAWING SURFACE: CANVAS, GRID AND AXES
+     * ========================================================
+     *
+     * These are the colours of the SHEET, not of the interface chrome, and they
+     * are separated from `--datum-*` because the drawing has a different job: the
+     * canvas is a work surface, the grid is a guide BEHIND the work, and the axes
+     * mark the origin. Each needs its own contrast step against the canvas, and
+     * the three must not collapse into one another in either theme.
+     *
+     * THE NAMES DESCRIBE THE SURFACE, NOT THE COLOUR, so a palette change is a
+     * value change here rather than a rename everywhere the token is read.
+     *
+     * WHY THE GRID WAS INVISIBLE IN DARK MODE. The grid's colour was
+     * `--datum-panel`, which in the dark theme is `#1B3032` - and the DARK CANVAS
+     * IS ALSO `#1B3032`. The grid was being drawn in the exact colour of the paper
+     * it was drawn on. A token that happens to equal the background in one palette
+     * is a token doing two jobs; these do one each.
+     */
+    --canvas-background: var(--datum-surface);
+
+    /*
+     * A THREE-STEP HIERARCHY: minor lines are the quietest, major lines step up
+     * from them, and the axes step up again. In the light theme the grid is a
+     * soft slate so it sits UNDER black geometry without competing with it.
+     */
+    --grid-minor-color: var(--precision-slate-200);
+    --grid-major-color: var(--precision-slate-300);
+    --axis-x-color: var(--precision-slate-500);
+    --axis-y-color: var(--precision-slate-500);
 
     /*
      * THE INTERFACE LAYERS, named so each one is a decision rather than a
@@ -383,6 +428,31 @@
     --datum-border: #365052;
     --datum-border-strong: var(--precision-night-bd-strong);
 
+    /* The brand mark steps up to ice-white on the dark sheet. */
+    --logo-color: #E8F5F3;
+
+    /*
+     * ========================================================
+     * THE DRAWING SURFACE, RESTATED FOR THE DARK PALETTE
+     * ========================================================
+     *
+     * These MUST be declared here even though the light block already declares
+     * them: a token defined in only one palette is one the dark theme inherits BY
+     * ACCIDENT, which is exactly how the grid came to be drawn in the dark
+     * canvas's own colour.
+     *
+     * THE GRID LINES STEP UP TO A LIGHT SLATE, not down. On a charcoal sheet the
+     * guide has to be LIGHTER than the paper to be seen at all - the light theme's
+     * darker-than-paper relationship is inverted, and that inversion is the whole
+     * fix. They stay well short of white so the grid remains a background layer:
+     * geometry drawn in the dark theme's ice-white is still unmistakably brighter.
+     */
+    --canvas-background: #142426;
+    --grid-minor-color: #2C4A4C;
+    --grid-major-color: #3E6365;
+    --axis-x-color: #7FA3A1;
+    --axis-y-color: #7FA3A1;
+
     /* The deep teal-charcoal is stated once, here, and named for the palette. */
     --datum-page: #142426;
     --datum-panel: #1B3032;
@@ -575,6 +645,23 @@
         --datum-subtle: var(--precision-night-500);
         --datum-border: #365052;
         --datum-border-strong: var(--precision-night-bd-strong);
+
+        /* The OS-dark fallback needs the brand token too - ice-white on charcoal. */
+        --logo-color: #E8F5F3;
+
+        /*
+         * THE DRAWING SURFACE FOR THE OPERATING-SYSTEM DARK MODE.
+         *
+         * This is the no-attribute fallback - what applies before any script has
+         * chosen a theme - so it must carry the grid tokens too, or a machine
+         * whose OS is dark would show a grid styled for the light theme for the
+         * moment before the theme is applied.
+         */
+        --canvas-background: #142426;
+        --grid-minor-color: #2C4A4C;
+        --grid-major-color: #3E6365;
+        --axis-x-color: #7FA3A1;
+        --axis-y-color: #7FA3A1;
 
         --datum-page: #142426;
         --datum-panel: #1B3032;

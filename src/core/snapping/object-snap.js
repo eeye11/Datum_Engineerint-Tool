@@ -139,8 +139,6 @@ function getToolToleranceMultiplier(
     return DEFAULT_SNAP_TOLERANCE_MULTIPLIER;
 }
 
-const INFERENCE_DIRECTION_HYSTERESIS_PX = 1;
-
 const SNAP_PRIORITY = {
     endpoint: 1,
     intersection: 2,
@@ -198,13 +196,6 @@ const CONSTRUCTION_TYPES = new Set([
     "circle",
     "arc"
 ]);
-
-function point(x, y) {
-    return {
-        x,
-        y
-    };
-}
 
 function distance(first, second) {
     return Math.hypot(

@@ -19,8 +19,6 @@ import { setToolMessage } from "./toolbar-render.js";
 import { optimizeTrussStructure } from "./truss-optimizer.js";
 
 export function bindFeaturePropertyControls(object) {
-    const geometry = object.geometry || {};
-
     drawingProperties.querySelectorAll('[data-triangle-mode]').forEach(input => {
         input.addEventListener('click', () => {
             trianglePanelModes.set(

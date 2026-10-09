@@ -908,9 +908,6 @@ export function rectangleCorners(
 export function handleAtPoint(
     point
 ) {
-    const bounds =
-        drawingCanvas.getBoundingClientRect();
-
     const scale =
         enggDrawingState.BASE_PIXELS_PER_UNIT *
         drawingState.camera.zoom;

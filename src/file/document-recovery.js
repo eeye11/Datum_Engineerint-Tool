@@ -71,7 +71,7 @@ function read() {
     return null;
   }
 
-  let record = null;
+  let record;
 
   try {
     record = JSON.parse(raw);

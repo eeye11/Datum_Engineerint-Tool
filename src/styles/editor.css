@@ -2723,7 +2723,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
 }
 
 .drawing-canvas-area {
-    background: var(--datum-surface);
+    background: var(--canvas-background);
     min-height: 0;
     min-width: 0;
     padding: 0;
@@ -2797,7 +2797,6 @@ body.datum-topbar-hidden .drawing-topbar-show {
 
 .drawing-axis-x,
 .drawing-axis-y {
-    background: var(--datum-muted);
     position: absolute;
 }
 
@@ -5294,11 +5293,51 @@ body.datum-topbar-hidden .drawing-topbar-show {
     fill: var(--datum-green);
 }
 
+/*
+ * THE ENGINEERING GRID.
+ *
+ * IT USED TO BE `--datum-panel`, WHICH IS WHY IT VANISHED IN DARK MODE. In the
+ * dark theme `--datum-panel` resolves to the SAME VALUE as the canvas background -
+ * so the grid was drawn in the precise colour of the paper under it. A token
+ * serving two purposes (panel surface and grid ink) is a token that is correct in
+ * one palette and invisible in the other.
+ *
+ * It now reads a dedicated grid token, defined per theme in `tokens.css`, where
+ * the relationship is the point: darker than the paper in light mode, LIGHTER
+ * than the paper in dark mode. Neither is a literal here, so a new palette adds
+ * one block of values rather than a rule per colour.
+ */
 .drawing-engineering-grid {
     fill: none;
     pointer-events: none;
-    stroke: var(--datum-panel);
+    stroke: var(--grid-minor-color);
     stroke-width: 0.65px;
+}
+
+/*
+ * THE CANVAS IS A WORK SURFACE, not the panel it sits in, so it has its own
+ * token. It happens to resolve to the same colour today, which is deliberate -
+ * the canvas should look like the paper it is - but the two questions are now
+ * separate, so a palette can make the sheet differ from its surround.
+ */
+.drawing-canvas {
+    background-color: var(--canvas-background);
+}
+
+/*
+ * THE AXES, distinguishable from the ordinary grid.
+ *
+ * An axis is a REFERENCE, not a guide: it marks where the origin is, so it must
+ * read differently from the lines around it. It steps up from the major grid in
+ * both themes - `--axis-x-color` / `--axis-y-color` are separate names so the two
+ * axes can be told apart if a palette ever wants them to be.
+ */
+.drawing-axis-x {
+    background: var(--axis-x-color);
+}
+
+.drawing-axis-y {
+    background: var(--axis-y-color);
 }
 
 /*

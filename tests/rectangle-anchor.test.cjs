@@ -55,7 +55,7 @@ const MM_PER_UNIT = 4;
 drawingState.scale = { mmPerUnit: MM_PER_UNIT, unit: "mm" };
 
 const { updateFeatureProperty } = loadModule("property-update.js");
-const geometry = loadModule("feature-geometry.js");
+const geometry = loadModule("feature-geometry.js").default;
 
 /* A 200 mm x 100 mm rectangle whose top-left anchor sits at (400, 800) mm. */
 const makeRectangle = () => ({

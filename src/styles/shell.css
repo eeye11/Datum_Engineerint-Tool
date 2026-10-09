@@ -65,15 +65,22 @@ body {
 }
 
 /*
- * THE MARK TAKES THE ACCENT, and the wordmark takes the ink.
+ * THE MARK TAKES THE LOGO TOKEN, and the wordmark takes the ink.
  *
- * Two colours, not one: a mark and a word painted the same green read as a
- * logo printed in one ink, whereas a green mark beside near-black type reads as
- * a mark AND a name. In Dark Mode both tokens shift together, so the relation
- * is preserved without a second rule.
+ * A mark and a word painted the same colour read as a logo printed in one ink;
+ * giving the mark its own token lets it hold the right contrast on either sheet
+ * without the wordmark being dragged along with it. `--logo-color` resolves to
+ * the ink in every palette - near-black on the ice-mint light interface, ice-white
+ * on the deep teal-charcoal dark one - so the mark is high contrast wherever it
+ * appears, and it steps with the theme without a second rule here.
+ *
+ * The mark does NOT use the accent: the accent is the colour of buttons,
+ * selections and focus rings, so a mark painted in it reads as something to
+ * click. `--logo-color` exists precisely so the brand can be themed without
+ * taking the interaction colour.
  */
 .header-mark {
-    color: var(--datum-green);
+    color: var(--logo-color);
     display: inline-flex;
     flex: 0 0 auto;
 }

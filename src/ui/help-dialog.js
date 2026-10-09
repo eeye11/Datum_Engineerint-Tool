@@ -29,8 +29,6 @@
 
 let openDialog = null;
 
-let closeCurrent = null;
-
 /*
  * The content of each panel.
  *
@@ -241,8 +239,6 @@ function close() {
     openDialog.remove();
     openDialog = null;
   }
-
-  closeCurrent = null;
 }
 
 function isOpen() {
@@ -276,8 +272,6 @@ function open(pageId) {
   document.body.appendChild(dialog);
 
   openDialog = dialog;
-
-  closeCurrent = close;
 
   /* The version and the summary are filled from the live application. */
   const versionSlot = dialog.querySelector("#datumAboutVersion");

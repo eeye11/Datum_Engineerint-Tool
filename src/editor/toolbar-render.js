@@ -2,7 +2,6 @@
  * Rendering the tool list for a toolbar category, and the status message.
  */
 
-import enggDrawingState from "../core/model/drawing-state.js";
 import { disciplineToolGroups, drawingToolGroups, engineeringTools } from "./tools.js";
 import { ANALYSIS_DIAGRAM_TOOLS, STATICS_ANALYSIS_TOOLS, runStaticsAnalysis } from "./analysis-tools.js";
 import { renderCurrentDrawing } from "./canvas-render.js";

@@ -52,7 +52,7 @@
  * shows the work on the sheet while it is being done, exactly as the Plot
  * editor does, so Cancel genuinely cancels.
  */
-const SVG_NS = "http://www.w3.org/2000/svg";
+const SVG_NS = "http://www.w3.org/2000/svg"; // eslint-disable-line no-unused-vars -- namespace kept for future direct node creation
 
 /*
  * The drawing frame.
