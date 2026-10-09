@@ -11,7 +11,40 @@ import { drawingState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { STATICS_TOOL_MENUS, openAnalysisModeMenu, openCoordinateSystemMenu, openStaticsMenu } from "./statics-tools.js";
 import { activateTool } from "./tool-activation.js";
-import { activeCategory, openArcMenu, openPolygonMenu, renderToolButton, toolDefinitionForLabel } from "./tool-menus.js";
+import { ARC_CREATION_MODES, activateArcMode, activeCategory, openArcMenu, openPolygonMenu, renderToolButton, toolDefinitionForLabel } from "./tool-menus.js";
+
+// Keep inline sections open independently across toolbar redraws.
+const expandedToolbarSections = {
+    body: false,
+    load: false,
+    support: false,
+    connection: false,
+    "reference-arc": false
+};
+
+function renderToolbarTool(tool) {
+    if (!Object.hasOwn(expandedToolbarSections, tool.id)) {
+        return renderToolButton(tool);
+    }
+
+    const expanded = expandedToolbarSections[tool.id];
+    const sectionId = `statics-${tool.id}-tools`;
+    const button = renderToolButton(tool)
+        .replace(' aria-haspopup="menu"', '')
+        .replace('aria-expanded="false"', `aria-expanded="${expanded}" aria-controls="${sectionId}"`);
+
+    const children = tool.id === "reference-arc"
+        ? ARC_CREATION_MODES.map(mode => {
+            const active = drawingState.activeTool === "reference-arc" && drawingState.interaction.arcMode === mode.id;
+            return `<button type="button" class="drawing-tool${active ? " active" : ""}" data-reference-arc-mode="${mode.id}">${mode.label}</button>`;
+        }).join("")
+        : STATICS_TOOL_MENUS[tool.id].map(renderToolButton).join("");
+
+    return `${button}
+        <div id="${sectionId}" class="drawing-inline-tools"${expanded ? "" : " hidden"}>
+            ${children}
+        </div>`;
+}
 
 export function renderEngineeringTools(
     category
@@ -20,6 +53,11 @@ export function renderEngineeringTools(
         engineeringTools[category]
             ? category
             : "GEOMETRY";
+
+    toolList.closest(".drawing-panel-rail-left")?.classList.toggle(
+        "drawing-panel-rail-statics",
+        safeCategory === "STATICS"
+    );
 
     toolHeading.textContent =
         `${safeCategory} TOOLS`;
@@ -56,7 +94,7 @@ export function renderEngineeringTools(
 
                             ${group.tools
                                 .map(
-                                    renderToolButton
+                                    renderToolbarTool
                                 )
                                 .join("")}
                         </section>
@@ -106,6 +144,22 @@ export function renderEngineeringTools(
                         const toolId =
                             button.dataset
                                 .toolId;
+
+                        if (button.dataset.referenceArcMode) {
+                            event.preventDefault();
+                            activateArcMode("reference-arc", button.dataset.referenceArcMode);
+                            return;
+                        }
+
+                        if (Object.hasOwn(expandedToolbarSections, toolId)) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const expanded = !expandedToolbarSections[toolId];
+                            expandedToolbarSections[toolId] = expanded;
+                            button.setAttribute("aria-expanded", String(expanded));
+                            toolList.querySelector(`#statics-${toolId}-tools`).hidden = !expanded;
+                            return;
+                        }
 
                         if (
                             toolId ===
