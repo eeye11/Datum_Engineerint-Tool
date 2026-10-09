@@ -532,6 +532,22 @@ export function openPolygonMenu(button) {
         button;
 }
 
+export const ARC_CREATION_MODES = [
+    { id: "centrepoint", label: "Centrepoint Arc" },
+    { id: "three-point", label: "3-Point Arc" }
+];
+
+export function activateArcMode(toolId, mode) {
+    enggDrawingState.setActiveTool(
+        drawingState,
+        toolId === "reference-arc" ? "reference-arc" : "arc"
+    );
+    drawingState.interaction.arcMode = mode;
+    setToolMessage(mode === "three-point" ? "Specify first point" : "Specify arc centre");
+    renderEngineeringTools(activeCategory());
+    renderCurrentDrawing();
+}
+
 export function openArcMenu(button) {
     if (!button) {
         return;
@@ -559,25 +575,16 @@ export function openArcMenu(button) {
         "menu"
     );
 
-    menu.innerHTML = `
+    menu.innerHTML = ARC_CREATION_MODES.map(mode => `
         <button
             type="button"
             class="drawing-coordinate-submenu-item"
             role="menuitem"
-            data-arc-mode="centrepoint"
+            data-arc-mode="${mode.id}"
         >
-            Centrepoint Arc
+            ${mode.label}
         </button>
-
-        <button
-            type="button"
-            class="drawing-coordinate-submenu-item"
-            role="menuitem"
-            data-arc-mode="three-point"
-        >
-            3-Point Arc
-        </button>
-    `;
+    `).join("");
 
     document.body.appendChild(menu);
 
@@ -660,28 +667,7 @@ export function openArcMenu(button) {
                      */
                     const tool = button?.getAttribute?.("data-tool-id");
 
-                    enggDrawingState.setActiveTool(
-                        drawingState,
-                        tool === "reference-arc"
-                            ? "reference-arc"
-                            : "arc"
-                    );
-
-                    drawingState.interaction.arcMode =
-                        mode;
-
-                    setToolMessage(
-                        mode ===
-                            "three-point"
-                            ? "Specify first point"
-                            : "Specify arc centre"
-                    );
-
-                    renderEngineeringTools(
-                        activeCategory()
-                    );
-
-                    renderCurrentDrawing();
+                    activateArcMode(tool, mode);
                 }
             );
         }

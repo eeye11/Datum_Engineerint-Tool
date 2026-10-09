@@ -2626,6 +2626,18 @@ body.datum-topbar-hidden .drawing-topbar-show {
     opacity: 0.7;
 }
 
+.drawing-inline-tools {
+    border-left: 1px solid var(--datum-border);
+    margin: 2px 0 4px 9px;
+    padding-left: 5px;
+    min-width: 0;
+}
+
+.drawing-tool[aria-controls^="statics-"][aria-expanded="true"] .drawing-tool-caret {
+    display: inline-block;
+    transform: rotate(180deg);
+}
+
 .drawing-canvas-area {
     background: var(--datum-surface);
     min-height: 0;
