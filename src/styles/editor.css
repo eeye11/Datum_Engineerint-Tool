@@ -2329,6 +2329,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
  */
 .drawing-panel-toggle-text {
     font-size: 9px;
+    font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
     writing-mode: vertical-rl;
