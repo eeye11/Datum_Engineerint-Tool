@@ -232,7 +232,7 @@ body.datum-topbar-hidden .drawing-workspace {
     grid-column: 1 / -1;
     justify-self: end;
     align-self: end;
-    margin-right: 8px;
+    margin-right: 32px;
     transform: translateY(100%);
     z-index: 61;
     align-items: center;
@@ -322,7 +322,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
     width: auto;
     position: absolute;
     top: 100%;
-    right: 8px;
+    right: 32px;
 }
 
 .drawing-topbar-show:hover {
@@ -2298,16 +2298,16 @@ body.datum-topbar-hidden .drawing-topbar-show {
     width: 16px;
 }
 
-.drawing-panel-rail-statics > .drawing-panel-toggle {
+.drawing-panel-rail-left > .drawing-panel-toggle {
     order: 1;
 }
 
-.drawing-panel-rail-statics > .drawing-panel-toggle[aria-expanded="false"] svg {
+.drawing-panel-rail-left > .drawing-panel-toggle[aria-expanded="false"] svg {
     transform-origin: center;
     transform: rotate(180deg);
 }
 
-.drawing-panel-rail-statics > .drawing-panel-toggle[aria-expanded="true"] svg {
+.drawing-panel-rail-left > .drawing-panel-toggle[aria-expanded="true"] svg {
     transform: rotate(0deg);
 }
 
@@ -2329,6 +2329,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
  */
 .drawing-panel-toggle-text {
     font-size: 9px;
+    font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
     writing-mode: vertical-rl;
