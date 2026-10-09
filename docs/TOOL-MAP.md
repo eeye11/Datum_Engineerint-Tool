@@ -1,4 +1,4 @@
-# Datum — Tool Map
+# DAETUM — Tool Map
 
 Where each toolbar command's code lives. Paths are under `src/`.
 

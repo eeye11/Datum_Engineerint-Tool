@@ -172,7 +172,12 @@
 
 
         <!-- =================================================
-             WRITTEN SOLUTION TAB
+             WRITTEN SOLUTION WORKSPACE
+
+             LEFT organises the solution, CENTRE is where it is written,
+             RIGHT shows the typeset document. There is ONE source - what the
+             student types - and the outline and the preview are both derived
+             from it, so the three views cannot disagree.
         ================================================== -->
 
         <section
@@ -180,125 +185,265 @@
             class="review-content active"
         >
 
-            <div class="column-headings">
+            <div
+                class="solution-workspace"
+                id="solutionWorkspace"
+                data-layout="split"
+            >
 
-                <div class="column-heading">
-                    Submitted Written Solution
-                </div>
+                <!-- ==========================================
+                     THE DOCUMENT TOOLBAR
 
-                <div class="column-heading">
-                    LaTeX Source Code
-                </div>
+                     The CONTEXTUAL toolbar: the controls that belong to
+                     writing a solution, directly under the application header
+                     - document name, save state, editing actions, insertion,
+                     compiling, layout, zoom and export. The application header
+                     itself is untouched above it.
+                =========================================== -->
+                <div
+                    class="solution-toolbar"
+                    role="toolbar"
+                    aria-label="Solution document"
+                >
 
-                <div class="column-heading">
-                    Rendered Solution
-                </div>
+                    <div class="solution-toolbar-group solution-toolbar-document">
 
-            </div>
+                        <span class="solution-doc-label">Solution</span>
 
-            <div class="review-grid">
-
-
-                <!-- HANDWRITING -->
-
-                <div class="panel">
-
-                    <div class="handwritten-area">
-
-                        <img
-                            id="writingImage"
-                            alt="Uploaded handwritten solution"
-                            style="display: none;"
+                        <input
+                            id="solutionDocumentName"
+                            class="solution-doc-name"
+                            type="text"
+                            value="Untitled"
+                            aria-label="Solution name"
+                            autocomplete="off"
                         >
 
-                        <p id="writingImageMessage">
-                            Upload a handwritten solution
-                        </p>
+                        <span
+                            id="solutionSaveStatus"
+                            class="solution-save-status"
+                            aria-live="polite"
+                        ></span>
 
                     </div>
 
-                    <input
-                        type="file"
-                        id="writingImageUpload"
-                        accept="image/*"
-                    >
+                    <span class="solution-divider" aria-hidden="true"></span>
 
-                </div>
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool" id="solutionUndo" title="Undo" aria-label="Undo">Undo</button>
+                        <button type="button" class="solution-tool" id="solutionRedo" title="Redo" aria-label="Redo">Redo</button>
+                    </div>
 
-
-                <!-- CODE -->
-
-                <div class="panel">
-
-                    <textarea
-                        class="code-editor"
-                        id="writingCode"
-                    ></textarea>
-
-                    <button
-                        class="update-button"
-                        data-action="render-solution"
-                    >
-                        Update Output
-                    </button>
+                    <span class="solution-divider" aria-hidden="true"></span>
 
                     <!--
-                        Drawing Reference test interface.
+                        INSERTION TOOLS.
 
-                        A placeholder for the written-solution
-                        editor: it inserts a reference to a SHEET into
-                        the source and shows what that sheet currently
-                        contains. The sheet is chosen here by name for
-                        the user's benefit, but what is stored is its
-                        permanent id - which is why the figure keeps
-                        working after the sheet is renamed or moved.
+                        Each inserts a real LaTeX construct at the caret - the
+                        maths, fraction, Greek letter, matrix and table a
+                        student should not have to memorise. They are the SAME
+                        text a student could type, so what is inserted is
+                        editable rather than a special object.
                     -->
-                    <div class="reference-panel">
+                    <div
+                        class="solution-toolbar-group solution-insert-tools"
+                        id="solutionInsertTools"
+                    >
+                        <button type="button" class="solution-tool" data-insert="insert-inline-math" title="Inline maths">Maths</button>
+                        <button type="button" class="solution-tool" data-insert="insert-equation" title="Numbered equation">Equation</button>
+                        <button type="button" class="solution-tool" data-insert="insert-fraction" title="Fraction">Fraction</button>
+                        <button type="button" class="solution-tool" data-insert="insert-vector" title="Vector">Vector</button>
+                        <button type="button" class="solution-tool" data-insert="insert-matrix" title="Matrix">Matrix</button>
+                        <button type="button" class="solution-tool" data-insert="insert-cases" title="Piecewise">Cases</button>
+                        <button type="button" class="solution-tool" data-insert="insert-greek" title="Greek letter">Greek</button>
+                        <button type="button" class="solution-tool" data-insert="insert-section" title="Section">Section</button>
+                        <button type="button" class="solution-tool" data-insert="insert-problem" title="Problem">Problem</button>
+                        <button type="button" class="solution-tool" data-insert="insert-list" title="List">List</button>
+                        <button type="button" class="solution-tool" data-insert="insert-table" title="Table">Table</button>
+                        <button type="button" class="solution-tool" data-insert="insert-figure" title="Insert a drawing from a sheet" id="solutionInsertFigure">Drawing</button>
+                    </div>
 
-                        <h3 class="reference-panel-heading">
-                            Drawing Reference
-                        </h3>
+                    <span class="solution-divider" aria-hidden="true"></span>
 
-                        <label class="reference-field">
-                            Sheet
-                            <select id="referenceSheetSelect"></select>
-                        </label>
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool solution-tool-primary" id="solutionCompile" title="Compile the preview now">Compile</button>
+                    </div>
 
-                        <label class="reference-field">
-                            Caption
-                            <input
-                                id="referenceCaption"
-                                type="text"
-                                placeholder="Free Body Diagram"
-                                autocomplete="off"
-                            >
-                        </label>
+                    <div class="solution-toolbar-spacer"></div>
+
+                    <!--
+                        LAYOUT MODES.
+
+                        Split, Write and Read are three ways of looking at the
+                        SAME document; switching never touches the source, the
+                        caret or an unsaved change.
+                    -->
+                    <div
+                        class="solution-toolbar-group solution-modes"
+                        id="solutionLayoutModes"
+                        role="group"
+                        aria-label="Layout"
+                    >
+                        <button type="button" class="solution-tool" data-layout-mode="split" aria-pressed="true" title="Editor and preview">Split</button>
+                        <button type="button" class="solution-tool" data-layout-mode="write" aria-pressed="false" title="Editor only">Write</button>
+                        <button type="button" class="solution-tool" data-layout-mode="read" aria-pressed="false" title="Preview only">Read</button>
+                    </div>
+
+                    <span class="solution-divider" aria-hidden="true"></span>
+
+                    <div class="solution-toolbar-group solution-zoom">
+                        <button type="button" class="solution-tool solution-tool-icon" id="solutionZoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+                        <span id="solutionZoomValue" class="solution-zoom-value" aria-live="polite">100%</span>
+                        <button type="button" class="solution-tool solution-tool-icon" id="solutionZoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+                    </div>
+
+                    <span class="solution-divider" aria-hidden="true"></span>
+
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool" id="solutionExportPdf" title="Export the compiled document as PDF">Export PDF</button>
+                    </div>
+
+                </div>
+
+                <!-- ==========================================
+                     LEFT: THE SOLUTION STRUCTURE
+                =========================================== -->
+                <aside
+                    class="solution-nav"
+                    id="solutionNavPanel"
+                    aria-label="Solution structure"
+                >
+
+                    <div class="solution-panel-head">
+                        <span class="solution-panel-title">Structure</span>
 
                         <button
-                            id="referenceInsert"
-                            class="update-button reference-insert"
                             type="button"
+                            class="solution-panel-toggle"
+                            id="solutionNavToggle"
+                            aria-expanded="true"
+                            title="Collapse the structure panel"
                         >
-                            Insert Reference
+                            Hide
                         </button>
+                    </div>
+
+                    <div class="solution-panel-body" id="solutionNavBody">
+
+                        <div class="solution-tree" id="solutionStructureTree"></div>
+
+                        <!--
+                            FILES, kept distinct from DOCUMENT STRUCTURE.
+
+                            A drawing sheet is a file; a section is a heading.
+                            They are listed apart on purpose, so "Beam" in this
+                            panel can only ever mean one of them.
+                        -->
+                        <div class="solution-section-head">Drawings</div>
+
+                        <div class="solution-tree" id="solutionFilesTree"></div>
+
+                    </div>
+
+                </aside>
+
+                <!-- The left divider. A real draggable separator, and a
+                     `separator` role so it is reachable and resizable by
+                     keyboard as well as by pointer. -->
+                <div
+                    class="solution-splitter"
+                    id="solutionSplitterNav"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize the structure panel"
+                    tabindex="0"
+                ></div>
+
+                <!-- ==========================================
+                     CENTRE: THE EDITOR
+                =========================================== -->
+                <div class="solution-editor-panel">
+
+                    <div class="solution-panel-head solution-editor-head">
+                        <span class="solution-panel-title">Source</span>
+
+                        <span class="solution-editor-hint">
+                            LaTeX \u2014 compile with the button, or let the preview catch up
+                        </span>
+                    </div>
+
+                    <div class="solution-editor-body">
+
+                        <pre
+                            class="solution-gutter"
+                            id="solutionEditorGutter"
+                            aria-hidden="true"
+                        ></pre>
+
+                        <textarea
+                            class="solution-editor"
+                            id="solutionEditor"
+                            spellcheck="false"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            aria-label="Solution source"
+                        ></textarea>
 
                     </div>
 
                 </div>
 
+                <!-- The right divider. -->
+                <div
+                    class="solution-splitter"
+                    id="solutionSplitterPreview"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize the preview panel"
+                    tabindex="0"
+                ></div>
 
-                <!-- OUTPUT -->
+                <!-- ==========================================
+                     RIGHT: THE TYPESET DOCUMENT
+                =========================================== -->
+                <div class="solution-preview-panel" id="solutionPreviewPanel">
 
-                <div class="panel">
+                    <div class="solution-panel-head">
+                        <span class="solution-panel-title">Preview</span>
 
-                    <div
-                        class="output"
-                        id="writingOutput"
-                    >
+                        <span
+                            class="solution-compile-state"
+                            id="solutionPreviewState"
+                            aria-live="polite"
+                            hidden
+                        ></span>
+                    </div>
+
+                    <div class="solution-preview-scroll">
+
+                        <div
+                            class="solution-preview-stage"
+                            id="solutionPreviewStage"
+                        >
+                            <!--
+                                THE PAPER.
+
+                                The rendered document keeps its OWN page
+                                background and typography - it is the finished
+                                sheet, not a themed panel - while everything
+                                around it follows the DAETUM theme. See the CSS
+                                for why the paper is light in both themes.
+                            -->
+                            <article
+                                class="solution-paper"
+                                id="solutionPreview"
+                            ></article>
+
+                        </div>
+
                     </div>
 
                 </div>
-
 
             </div>
 

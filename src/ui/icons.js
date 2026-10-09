@@ -75,6 +75,23 @@ const ICONS = {
   "file-pen": `<path ${STROKE} d="M4 3h6l3 3v5"/><path ${STROKE} d="M4 3v14h5"/><path ${STROKE} d="M12 17l1-3 4-4 2 2-4 4z"/>`,
   printer: `<path ${STROKE} d="M6 7V3h8v4"/><path ${STROKE} d="M4 7h12v6h-2"/><path ${STROKE} d="M6 13H4V7"/><path ${STROKE} d="M6 11h8v6H6z"/>`,
 
+  /*
+   * DOWNLOAD: an arrow into a tray - "take this out of the application". The
+   * same shape every browser and file manager uses for a download, so it needs
+   * no learning, and the tray is what distinguishes it from a plain arrow.
+   */
+  download: `<path ${STROKE} d="M10 3v9"/><path ${STROKE} d="M6.5 8.5L10 12l3.5-3.5"/><path ${STROKE} d="M4 14v3h12v-3"/>`,
+
+  /* A PDF's own mark: a page with folded corner and a text rule. */
+  "file-text": `<path ${STROKE} d="M5 3h6l4 4v10H5z"/><path ${STROKE} d="M11 3v4h4"/><path ${STROKE} d="M8 11h4M8 13.5h4"/>`,
+
+  /*
+   * THE SUBMENU CHEVRON. A right-pointing caret that means "open me for more".
+   * It is used ONLY on a menu row that has children - the six top-level menu
+   * labels stay plain, because they are already a nested level.
+   */
+  "chevron-right": `<path ${STROKE} d="M8 5l5 5-5 5"/>`,
+
   /* ---------------------------------------------------- Edit */
   "undo-2": `<path ${STROKE} d="M7 6L3 10l4 4"/><path ${STROKE} d="M4 10h7a4 4 0 0 1 4 4v1"/>`,
   "redo-2": `<path ${STROKE} d="M13 6l4 4-4 4"/><path ${STROKE} d="M16 10H9a4 4 0 0 0-4 4v1"/>`,
@@ -83,6 +100,15 @@ const ICONS = {
   "clipboard-paste": `<path ${STROKE} d="M7 4H5v13h10V4h-2"/><rect ${STROKE} x="8" y="2.5" width="4" height="3" rx="1"/><path ${STROKE} d="M7 10h6M7 13h4"/>`,
   selection: `<path ${STROKE} stroke-dasharray="2.5 2" d="M4 4h12v12H4z"/>`,
   "trash-2": `<path ${STROKE} d="M4 6h12"/><path ${STROKE} d="M8 6V4h4v2"/><path ${STROKE} d="M6 6l1 11h6l1-11"/><path ${STROKE} d="M9 9v5M11 9v5"/>`,
+
+  /* PENCIL: a nib over a rule - the conventional "rename / edit the name" mark. */
+  pencil: `<path ${STROKE} d="M13.5 4.5l2 2L7 15l-2.5.5.5-2.5z"/><path ${STROKE} d="M12 6l2 2"/>`,
+
+  /*
+   * SHARE: three nodes joined by two links - the standard share mark, and the
+   * one that says "pass this on" rather than "upload" or "send".
+   */
+  "share-2": `<circle ${STROKE} cx="14" cy="5.5" r="2"/><circle ${STROKE} cx="6" cy="10" r="2"/><circle ${STROKE} cx="14" cy="14.5" r="2"/><path ${STROKE} d="M7.8 9l4.4-2.5M7.8 11l4.4 2.5"/>`,
 
   /* ---------------------------------------------------- Insert */
   image: `<rect ${STROKE} x="3" y="4" width="14" height="12" rx="1"/><circle ${STROKE} cx="7" cy="8" r="1.3"/><path ${STROKE} d="M4 14l4-4 3 3 2-2 3 3"/>`,

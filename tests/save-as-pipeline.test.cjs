@@ -106,8 +106,8 @@ console.log("\n  the native panel is offered Datum, PNG and JPG\n");
   const types = saved(calls).types;
 
   check(
-    "the panel is asked for three file types",
-    Array.isArray(types) && types.length === 3,
+    "the panel is asked for the four file types",
+    Array.isArray(types) && types.length === 4,
     JSON.stringify(types),
   );
 

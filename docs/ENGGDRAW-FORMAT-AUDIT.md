@@ -1,9 +1,9 @@
-# Datum — `.enggdraw` File Format Audit
+# DAETUM — `.enggdraw` File Format Audit
 
 **Scope.** The native `.enggdraw` format and the code that saves, loads,
 serializes, deserializes and migrates it. The question the audit answers:
 
-> Could Datum delete the entire in-memory document, reopen only the `.enggdraw`
+> Could DAETUM delete the entire in-memory document, reopen only the `.enggdraw`
 > file, and reconstruct the complete editable engineering drawing with all
 > relationships intact?
 

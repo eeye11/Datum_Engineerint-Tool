@@ -127,13 +127,100 @@ const fileMenu = () => ({
     id: "file",
     label: "File",
     items: [
+        /* Create and open. */
         { id: "new", label: "New", icon: "file-plus", shortcut: KEYS.new, run: FILE_ACTIONS.new },
         { id: "open", label: "Open", icon: "folder-open", run: FILE_ACTIONS.open },
+
         { separator: true },
+
+        /* Save. */
         { id: "save", label: "Save", icon: "save", shortcut: KEYS.save, run: FILE_ACTIONS.save },
         { id: "save-as", label: "Save As", icon: "file-pen", shortcut: KEYS.saveAs, run: FILE_ACTIONS["save-as"] },
+
         { separator: true },
-        { id: "print", label: "Print", icon: "printer", shortcut: KEYS.print, run: FILE_ACTIONS.print }
+
+        /*
+         * THE DOCUMENT AND WHERE IT IS KEPT.
+         *
+         * Rename changes the document's name; Share offers the two ways this
+         * application can really pass a drawing on; Download takes a copy; and
+         * Details reads back what is recorded. They sit together because they
+         * are all about the FILE rather than about what is drawn on it.
+         */
+        { id: "rename", label: "Rename", icon: "pencil", run: FILE_ACTIONS.rename },
+        { id: "share", label: "Share", icon: "share-2", run: FILE_ACTIONS.share },
+
+        /*
+         * DOWNLOAD IS A SUBMENU, NOT A COMMAND.
+         *
+         * It used to download one fixed format. It now offers the four the
+         * application really supports, so the row opens a nested list rather
+         * than acting - which is what the chevron on its right says. Each child
+         * is a real export of the document as it stands, including unsaved
+         * changes, and each is the same format the corresponding Save As or
+         * Print route produces.
+         *
+         * THE NATIVE ENTRY IS THE ACTUAL EXTENSION. It is read from the format
+         * module rather than typed here, so the label cannot name a format the
+         * serializer does not write.
+         */
+        {
+            id: "download",
+            label: "Download",
+            icon: "download",
+            submenu: [
+                {
+                    id: "download-pdf",
+                    label: "PDF",
+                    icon: "file-text",
+                    run: () => FILE_ACTIONS.download("pdf")
+                },
+                {
+                    id: "download-jpg",
+                    label: "JPG",
+                    icon: "image",
+                    run: () => FILE_ACTIONS.download("jpg")
+                },
+                {
+                    id: "download-png",
+                    label: "PNG",
+                    icon: "image",
+                    run: () => FILE_ACTIONS.download("png")
+                },
+                {
+                    id: "download-enggdraw",
+                    label: "ENGGDraw",
+                    icon: "file-pen",
+                    run: () => FILE_ACTIONS.download("enggdraw")
+                }
+            ]
+        },
+
+        { id: "details", label: "Details", icon: "info", run: FILE_ACTIONS.details },
+
+        { separator: true },
+
+        /* Print. */
+        { id: "print", label: "Print", icon: "printer", shortcut: KEYS.print, run: FILE_ACTIONS.print },
+
+        { separator: true },
+
+        /*
+         * THE DESTRUCTIVE ACTION, LAST AND ALONE.
+         *
+         * It sits below a divider, at the bottom of the menu, because that is
+         * where a command that cannot be undone by pressing Back belongs - away
+         * from the routine ones, so it is never reached by a slip of the
+         * pointer. Its icon is the trash can, and the confirmation it opens is
+         * where the warning treatment lives; a permanently red menu row would be
+         * decoration rather than a warning.
+         */
+        {
+            id: "move-to-trash",
+            label: "Move to Trash",
+            icon: "trash-2",
+            run: FILE_ACTIONS["move-to-trash"]
+        }
     ]
 });
 

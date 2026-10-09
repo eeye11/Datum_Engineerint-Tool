@@ -46,8 +46,27 @@ import { onDatumEvent } from "./events.js";
  */
 export const API_VERSION = 1;
 
+/*
+ * THE WRITTEN SOLUTION'S EDITOR.
+ *
+ * It used to be the `writingCode` textarea in the three-column panel. The
+ * workspace redesign made it `solutionEditor`, and this is the ONE line that
+ * changes for the public API - the callers of `getSolution` and `setSolution`
+ * see exactly the same shape of result as before.
+ */
 function solutionSource() {
-    return document.getElementById("writingCode");
+    return document.getElementById("solutionEditor");
+}
+
+/*
+ * The workspace's own "load this source" path, if the workspace is installed.
+ * Undefined in a page that has the API but not the solution tab, which is why
+ * the call site checks for it.
+ */
+let setSolutionSource = null;
+
+export function attachSolutionSourceLoader(loader) {
+    setSolutionSource = typeof loader === "function" ? loader : null;
 }
 
 /* The whole document, exactly as Save would write it. */
@@ -135,6 +154,21 @@ function setSolution(latex) {
     }
 
     source.value = String(latex ?? "");
+
+    /*
+     * THE WORKSPACE IS TOLD, SO ITS VIEWS FOLLOW.
+     *
+     * Writing `value` alone would leave the outline, the line numbers and the
+     * saved draft showing the previous source. The workspace's own loader is
+     * called instead of dispatching an `input` event, because `input` is what
+     * means "the STUDENT changed something" - and loading a document through the
+     * API is not the student typing. Raising the student's own event here would
+     * report a change that the API call already reports, which is one too many.
+     */
+    if (typeof setSolutionSource === "function") {
+        setSolutionSource(source.value);
+    }
+
     renderSolution();
 
     return { ok: true };

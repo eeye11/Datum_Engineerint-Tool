@@ -142,7 +142,7 @@ check(
 
 check(
   "the window title names the drawing, not the file",
-  /document\.title = `\$\{shown\} - Datum`/.test(commands),
+  /document\.title = `\$\{shown\} - DAETUM`/.test(commands),
 );
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

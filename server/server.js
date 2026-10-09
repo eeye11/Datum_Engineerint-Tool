@@ -1,7 +1,7 @@
 /*
- * The optional Datum server.
+ * The optional DAETUM server.
  *
- * Datum itself is a static site: `npm run build` produces dist/, which any
+ * DAETUM itself is a static site: `npm run build` produces dist/, which any
  * web host can serve, and the editor needs nothing else. This server adds
  * one thing a static host cannot: rendering TikZ to SVG (POST
  * /api/render-tikz). It also serves the site, so one command runs both.
@@ -9,6 +9,10 @@
  *   npm run build && npm start        serve dist/ with TikZ rendering
  *   PORT=8080 npm start               on another port
  *   DATUM_DEBUG=1 npm start           log TikZ sources and TeX output
+ *
+ *   (The debug env var keeps its original name so an existing script or shell
+ *   profile does not silently stop enabling it - the rename is about the
+ *   product's name, not about breaking a documented switch.)
  *
  * Without a build it serves the source tree (index.html + src/), which
  * modern browsers can run directly; `npm run dev` is the better way to
@@ -74,7 +78,7 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Datum is running at http://localhost:${PORT}`);
+    console.log(`DAETUM is running at http://localhost:${PORT}`);
 });
 
 loadTikz()

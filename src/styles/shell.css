@@ -550,3 +550,752 @@ body {
     min-height: 0;
     overflow: hidden;
 }
+
+/* =========================================================================
+   THE WRITTEN SOLUTION WORKSPACE
+   =========================================================================
+
+   FOUR REGIONS, ONE DOCUMENT:
+
+     toolbar   the controls that belong to writing a solution
+     left      the structure and files, parsed from the source
+     centre    the source
+     right     the typeset page
+
+   THE LAYOUT IS A GRID WHOSE COLUMN WIDTHS ARE CUSTOM PROPERTIES, so a divider
+   drag writes ONE number and the whole arrangement follows. Nothing is measured
+   in JavaScript and no element is absolutely positioned, which is what keeps the
+   layout correct when the window narrows.
+
+   THE THREE MODES ARE A `data-layout` ATTRIBUTE ON THE ROOT. Split, Write and
+   Read change which columns take space - they do not add or remove the DOM, so
+   switching cannot lose the caret, the scroll position or an unsaved change.
+
+   EVERY COLOUR IS A THEME TOKEN. The one deliberate exception is the PAPER in
+   the preview, which keeps its own light page in both themes: it is the finished
+   document, and a document that turned dark because the tool around it did would
+   not be the sheet the student hands in. That is the same rule the drawing
+   canvas follows.
+   ========================================================================= */
+
+.solution-workspace {
+    /* The dividers' values, written here as the defaults a drag overwrites. */
+    --solution-nav-width: 19%;
+    --solution-preview-width: 42%;
+    --solution-toolbar-height: 38px;
+
+    background: var(--datum-page);
+    border-top: 1px solid var(--datum-border);
+    color: var(--datum-ink);
+    display: grid;
+
+    /*
+     * SIX COLUMNS: nav | divider | editor | divider | preview.
+     *
+     * The two dividers are thin fixed tracks and the other three are the
+     * variable ones, which is what lets a drag change exactly one of them.
+     */
+    grid-template-columns:
+        var(--solution-nav-width)
+        6px
+        minmax(0, 1fr)
+        6px
+        var(--solution-preview-width);
+
+    grid-template-rows: var(--solution-toolbar-height) minmax(0, 1fr);
+
+    /* The workspace owns the height under the header, so the editor scrolls
+       inside it rather than the page scrolling behind it. */
+    height: calc(100vh - 96px);
+    min-height: 360px;
+    overflow: hidden;
+}
+
+/* The toolbar spans every column. */
+.solution-toolbar {
+    grid-column: 1 / -1;
+}
+
+.solution-nav {
+    grid-column: 1;
+}
+
+#solutionSplitterNav {
+    grid-column: 2;
+}
+
+.solution-editor-panel {
+    grid-column: 3;
+}
+
+#solutionSplitterPreview {
+    grid-column: 4;
+}
+
+.solution-preview-panel {
+    grid-column: 5;
+}
+
+/* -------------------------------------------------------------------------
+   THE MODES
+   ------------------------------------------------------------------------- */
+
+/*
+ * WRITE hides the preview and gives its room to the editor; READ does the
+ * opposite. The dividers go with the panel they resize, so a hidden panel
+ * cannot leave a draggable edge behind pointing at nothing.
+ */
+.solution-workspace[data-layout="write"] {
+    grid-template-columns:
+        var(--solution-nav-width)
+        6px
+        minmax(0, 1fr)
+        0px
+        0px;
+}
+
+.solution-workspace[data-layout="write"] .solution-preview-panel,
+.solution-workspace[data-layout="write"] #solutionSplitterPreview {
+    display: none;
+}
+
+.solution-workspace[data-layout="read"] {
+    grid-template-columns:
+        0px
+        0px
+        0px
+        0px
+        minmax(0, 1fr);
+}
+
+.solution-workspace[data-layout="read"] .solution-nav,
+.solution-workspace[data-layout="read"] .solution-editor-panel,
+.solution-workspace[data-layout="read"] #solutionSplitterNav {
+    display: none;
+}
+
+/* The structure panel can also be collapsed on its own, from its header. */
+.solution-workspace.solution-nav-collapsed {
+    --solution-nav-width: 0px !important;
+}
+
+.solution-workspace.solution-nav-collapsed .solution-nav {
+    display: none;
+}
+
+/*
+ * WHILE A DIVIDER IS BEING DRAGGED THE POINTER MUST NOT SELECT TEXT.
+ *
+ * A drag across the workspace would otherwise paint a text selection through the
+ * editor and the preview, which is both ugly and destructive - the next keystroke
+ * would replace whatever got selected.
+ */
+body.solution-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* -------------------------------------------------------------------------
+   THE TOOLBAR
+   ------------------------------------------------------------------------- */
+
+.solution-toolbar {
+    align-items: center;
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    gap: 8px;
+    min-height: var(--solution-toolbar-height);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 10px;
+}
+
+.solution-toolbar-group {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.solution-toolbar-document {
+    gap: 8px;
+}
+
+.solution-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+/* A group boundary. A hairline, not a heavy rule. */
+.solution-divider {
+    background: var(--datum-border);
+    flex: 0 0 auto;
+    height: 18px;
+    width: 1px;
+}
+
+.solution-doc-label {
+    color: var(--datum-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+/*
+ * THE DOCUMENT NAME IS AN INPUT, because it is editable - and it looks like a
+ * name until the pointer is over it, so the row does not read as a form.
+ */
+.solution-doc-name {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 120px;
+    padding: 4px 6px;
+    width: 190px;
+}
+
+.solution-doc-name:hover {
+    border-color: var(--datum-border);
+}
+
+.solution-doc-name:focus {
+    background: var(--datum-input);
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.solution-save-status {
+    color: var(--datum-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.solution-save-status[data-state="dirty"] {
+    color: var(--datum-warning);
+}
+
+/*
+ * A TOOLBAR BUTTON.
+ *
+ * The same box in every group: the input surface, a hairline, the ink. Hover
+ * lifts the border to the accent; the ACTIVE state is the accent tint, used by
+ * the layout modes to say which of the three is showing.
+ */
+.solution-tool {
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: var(--datum-font);
+    font-size: 11.5px;
+    line-height: 1;
+    padding: 6px 9px;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    white-space: nowrap;
+}
+
+.solution-tool:hover {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.solution-tool:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.solution-tool.active {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+    font-weight: 600;
+}
+
+.solution-tool-primary {
+    background: var(--datum-green);
+    border-color: var(--datum-green);
+    color: var(--datum-surface);
+    font-weight: 600;
+}
+
+.solution-tool-primary:hover {
+    background: var(--datum-green-hover);
+    border-color: var(--datum-green-hover);
+    color: var(--datum-surface);
+}
+
+.solution-tool-icon {
+    font-size: 14px;
+    padding: 5px 9px;
+}
+
+.solution-zoom-value {
+    color: var(--datum-muted);
+    font-family: var(--datum-font-mono);
+    font-size: 11px;
+    min-width: 38px;
+    text-align: center;
+}
+
+/* -------------------------------------------------------------------------
+   A PANEL HEADER, SHARED BY ALL THREE REGIONS
+   ------------------------------------------------------------------------- */
+
+.solution-panel-head {
+    align-items: center;
+    background: var(--datum-panel);
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 28px;
+    padding: 0 10px;
+}
+
+.solution-panel-title {
+    color: var(--datum-muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.solution-panel-toggle,
+.solution-panel-hint {
+    background: transparent;
+    border: 0;
+    color: var(--datum-muted);
+    cursor: pointer;
+    font-family: var(--datum-font);
+    font-size: 10.5px;
+    padding: 2px 6px;
+}
+
+.solution-panel-toggle:hover {
+    color: var(--datum-green-ink);
+}
+
+.solution-editor-hint {
+    color: var(--datum-subtle);
+    font-size: 10.5px;
+}
+
+/* -------------------------------------------------------------------------
+   LEFT: THE STRUCTURE PANEL
+   ------------------------------------------------------------------------- */
+
+.solution-nav,
+.solution-editor-panel,
+.solution-preview-panel {
+    background: var(--datum-surface);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.solution-nav {
+    border-right: 1px solid var(--datum-border);
+}
+
+.solution-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 0 14px;
+}
+
+.solution-tree {
+    display: flex;
+    flex-direction: column;
+}
+
+.solution-tree-row {
+    align-items: baseline;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    color: var(--datum-ink);
+    cursor: pointer;
+    display: flex;
+    font-family: var(--datum-font);
+    font-size: 12px;
+    gap: 7px;
+    padding: 4px 8px;
+    text-align: left;
+    width: 100%;
+}
+
+.solution-tree-row:hover {
+    background: var(--datum-menu-hover);
+}
+
+.solution-tree-row:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
+}
+
+/*
+ * THE NUMBER COLUMN IS FIXED, so every title starts at the same x and the tree
+ * reads as a contents list rather than as ragged text.
+ */
+.solution-tree-number {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 10.5px;
+    min-width: 26px;
+}
+
+.solution-tree-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.solution-tree-heading .solution-tree-label {
+    font-weight: 600;
+}
+
+.solution-tree-figure .solution-tree-label,
+.solution-tree-equation .solution-tree-label,
+.solution-tree-file .solution-tree-label {
+    color: var(--datum-muted);
+}
+
+.solution-tree-group,
+.solution-section-head {
+    color: var(--datum-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-top: 10px;
+    padding: 0 10px 3px;
+    text-transform: uppercase;
+}
+
+.solution-section-head {
+    border-top: 1px solid var(--datum-border);
+    margin-top: 14px;
+    padding-top: 10px;
+}
+
+.solution-tree-empty {
+    color: var(--datum-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0;
+    padding: 6px 10px;
+}
+
+/* -------------------------------------------------------------------------
+   THE DIVIDERS
+   ------------------------------------------------------------------------- */
+
+.solution-splitter {
+    background: var(--datum-border);
+    cursor: col-resize;
+    position: relative;
+}
+
+/*
+ * THE HIT AREA IS WIDER THAN THE LINE. A 6px track is easy to see and hard to
+ * grab, so the visible line stays 1px and the grab area is the whole track -
+ * which is what makes a divider feel like a divider rather than a target.
+ */
+.solution-splitter::before {
+    background: transparent;
+    content: "";
+    inset: 0 -3px;
+    position: absolute;
+}
+
+.solution-splitter:hover,
+.solution-splitter.dragging,
+.solution-splitter:focus-visible {
+    background: var(--datum-green);
+}
+
+.solution-splitter:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/* -------------------------------------------------------------------------
+   CENTRE: THE EDITOR
+   ------------------------------------------------------------------------- */
+
+.solution-editor-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+/*
+ * THE GUTTER AND THE EDITOR SHARE ONE LINE BOX.
+ *
+ * Both are monospaced at the same size and line-height, so a number and the line
+ * it belongs to sit on the same baseline. That sameness is the whole trick -
+ * change one and the numbers drift off their lines.
+ */
+.solution-gutter {
+    background: var(--datum-panel);
+    border-right: 1px solid var(--datum-border);
+    color: var(--datum-subtle);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    margin: 0;
+    min-width: 44px;
+    overflow: hidden;
+    padding: 10px 8px 10px 10px;
+    text-align: right;
+    user-select: none;
+}
+
+.solution-gutter-line {
+    display: block;
+    height: 20px;
+}
+
+.solution-editor {
+    background: var(--datum-surface);
+    border: 0;
+    color: var(--datum-ink);
+    flex: 1 1 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    min-width: 0;
+    outline: none;
+    overflow: auto;
+    padding: 10px 14px;
+    resize: none;
+    tab-size: 2;
+    white-space: pre;
+}
+
+.solution-editor::placeholder {
+    color: var(--datum-placeholder);
+}
+
+.solution-editor:focus-visible {
+    box-shadow: inset 2px 0 0 var(--datum-green);
+}
+
+/* -------------------------------------------------------------------------
+   RIGHT: THE TYPESET DOCUMENT
+   ------------------------------------------------------------------------- */
+
+.solution-preview-panel {
+    border-left: 1px solid var(--datum-border);
+}
+
+.solution-preview-scroll {
+    background: var(--datum-panel);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+    text-align: center;
+}
+
+/*
+ * THE STAGE CARRIES THE ZOOM, and it is `transform` rather than a font-size -
+ * so the maths, the margins and the figure widths all scale together, exactly
+ * as they would on a photocopier. `transform-origin: top center` keeps the
+ * scaled page centred rather than drifting to one side.
+ */
+.solution-preview-stage {
+    display: inline-block;
+    text-align: left;
+    transform-origin: top center;
+    transition: transform 120ms ease;
+}
+
+/*
+ * THE PAPER.
+ *
+ * A page, not a panel: its own white sheet, its own margin, its own type. It is
+ * light in BOTH themes on purpose - it is the finished document, and it is what
+ * the PDF export and a print of the solution will look like. The tokens around
+ * it still follow the theme, so a dark DAETUM shows a dark workspace with a
+ * sheet of paper in it, which is what a word processor does and what a reader
+ * expects.
+ */
+.solution-paper {
+    /*
+     * THE PAPER USES ITS OWN SHEET TOKENS, NOT THE INTERFACE ONES.
+     *
+     * `--datum-paper` and `--datum-paper-ink` are defined in every theme block
+     * as a WHITE page with DARK type, so the finished document looks the same in
+     * Light and Dark Mode - which is what a document editor must do, since the
+     * page is what will be exported and printed. They are separate from the
+     * canvas tokens on purpose: `--datum-canvas-ink` is the default DRAWING LINE
+     * colour and changes with the theme, so reusing it here would have put
+     * near-white type on a white page in Dark Mode.
+     */
+    background: var(--datum-paper);
+    border: 1px solid var(--datum-border);
+    box-shadow: var(--datum-shadow-soft);
+    color: var(--datum-paper-ink);
+    font-family: "Segoe UI", system-ui, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 0 auto;
+    max-width: 100%;
+    min-height: 400px;
+    padding: 34px 40px;
+    text-align: left;
+    width: 640px;
+}
+
+.solution-paper figure {
+    margin: 16px 0;
+    text-align: center;
+}
+
+.solution-paper figcaption {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    margin-top: 6px;
+}
+
+.solution-paper table {
+    border-collapse: collapse;
+    margin: 12px 0;
+}
+
+.solution-paper th,
+.solution-paper td {
+    border: 1px solid var(--datum-border);
+    padding: 4px 9px;
+}
+
+/* -------------------------------------------------------------------------
+   THE COMPILE STATE
+   ------------------------------------------------------------------------- */
+
+/*
+ * THE STATE IS ALWAYS VISIBLE, and it never pretends.
+ *
+ *   working  a compile is running
+ *   stale    the source has moved on
+ *   error    the compile failed - and it says so rather than showing a blank page
+ */
+.solution-compile-state {
+    font-size: 10.5px;
+    white-space: nowrap;
+}
+
+.solution-compile-state[data-state="working"],
+.solution-compile-state[data-state="stale"] {
+    color: var(--datum-muted);
+}
+
+.solution-compile-state[data-state="error"] {
+    color: var(--datum-error);
+    font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   THE GREEK MENU
+   ------------------------------------------------------------------------- */
+
+/*
+ * A small anchored popup, like the colour picker: the same raised surface, the
+ * same border, the same shadow as every other floating surface in DAETUM, so it
+ * follows the theme without a rule naming a theme.
+ */
+.solution-greek-menu {
+    background: var(--datum-menu);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--datum-shadow);
+    display: grid;
+    gap: 2px;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 6px;
+    position: fixed;
+    z-index: var(--z-popover);
+}
+
+.solution-greek-item {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    padding: 5px 9px;
+    text-align: center;
+}
+
+.solution-greek-item:hover {
+    background: var(--datum-green-tint);
+    color: var(--datum-green-ink);
+}
+
+.solution-greek-item:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/* -------------------------------------------------------------------------
+   NARROW WINDOWS
+   -------------------------------------------------------------------------
+
+   Below this the three columns cannot all be usable at once, so the layout
+   BECOMES two of them - the preview goes, and the editor keeps the room. It is
+   not a scaled-down three-column layout, because three columns squeezed into a
+   laptop's width is three unusable columns.
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+    .solution-workspace,
+    .solution-workspace[data-layout="split"] {
+        grid-template-columns:
+            var(--solution-nav-width)
+            6px
+            minmax(0, 1fr)
+            0px
+            0px;
+    }
+
+    .solution-workspace .solution-preview-panel,
+    .solution-workspace #solutionSplitterPreview {
+        display: none;
+    }
+
+    /* Read mode still shows the preview on its own, which is the whole point. */
+    .solution-workspace[data-layout="read"] .solution-preview-panel {
+        display: flex;
+    }
+}
+
+@media (max-width: 720px) {
+    .solution-workspace,
+    .solution-workspace[data-layout="split"] {
+        grid-template-columns: 0px 0px minmax(0, 1fr) 0px 0px;
+    }
+
+    .solution-workspace .solution-nav,
+    .solution-workspace #solutionSplitterNav {
+        display: none;
+    }
+}

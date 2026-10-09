@@ -88,12 +88,32 @@ function buildDropdown(menu, onRun) {
 
     const disabled = item.disabled === true;
 
+    /*
+     * AN ITEM WITH CHILDREN IS A SUBMENU, not a command.
+     *
+     * `submenu` is an array built the same way a menu's own `items` is, so a
+     * nested command has the same icon, label and disabled state as a top-level
+     * one and there is no second item format to keep in step. The item itself
+     * opens the panel rather than running a command - see the click handler.
+     */
+    const hasSubmenu = Array.isArray(item.submenu) && item.submenu.length > 0;
+
     const button = document.createElement("button");
 
     button.type = "button";
     button.className = "datum-menu-item";
     button.setAttribute("role", "menuitem");
     button.dataset.menuItem = item.id;
+
+    if (hasSubmenu) {
+        /*
+         * `aria-haspopup` states the nesting to a screen reader, and the row
+         * carries `datum-menu-item-submenu` so the style can reserve the column
+         * the indicator sits in.
+         */
+        button.setAttribute("aria-haspopup", "true");
+        button.classList.add("datum-menu-item-submenu");
+    }
 
     if (disabled) {
         /*
@@ -130,10 +150,74 @@ function buildDropdown(menu, onRun) {
         ? `<span class="datum-menu-item-shortcut">${item.shortcut}</span>`
         : "";
 
+    /*
+     * THE SUBMENU INDICATOR IS A CHEVRON IN ITS OWN COLUMN, so a nested command
+     * reads as nested at a glance and the six TOP-LEVEL menu labels stay plain -
+     * the indicator means "there is more under this row", which is true of
+     * Download and false of File, Edit and the rest.
+     */
+    const indicator = hasSubmenu
+        ? '<span class="datum-menu-item-chevron">' + menuIcon("chevron-right") + "</span>"
+        : "";
+
     button.innerHTML =
         icon +
         `<span class="datum-menu-item-label">${item.label}</span>` +
-        accelerator;
+        accelerator +
+        indicator;
+
+    if (hasSubmenu) {
+        /*
+         * OPEN ON HOVER, FOCUS OR CLICK, and keep it open while the pointer is
+         * anywhere in the item-plus-panel area. The panel is a CHILD of the
+         * row, so moving the pointer from the row into the panel never leaves
+         * the area, and the panel cannot close under the hand that just opened
+         * it.
+         */
+        const sub = buildDropdown(
+            { id: `${item.id}-submenu`, label: item.label, items: item.submenu },
+            (child) => {
+                closeMenu();
+                onRun(child);
+            },
+        );
+
+        sub.classList.add("datum-menu-subpanel");
+
+        button.appendChild(sub);
+
+        const openSubmenu = () => {
+            if (!disabled) {
+                button.classList.add("datum-menu-item-submenu-open");
+            }
+        };
+
+        button.addEventListener("mouseenter", openSubmenu);
+        button.addEventListener("focus", openSubmenu);
+
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (disabled) {
+                setToolMessage(
+                    item.disabledReason || `${item.label} is not available`,
+                );
+
+                return;
+            }
+
+            /*
+             * A CLICK TOGGLES IT, so a keyboard user who cannot hover still has
+             * a way in; a pointer user gets the submenu from the hover alone.
+             */
+            button.classList.toggle("datum-menu-item-submenu-open");
+        });
+
+        panel.appendChild(button);
+
+        return;
+    }
 
     button.addEventListener("click", (event) => {
       event.preventDefault();

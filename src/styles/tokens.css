@@ -273,6 +273,18 @@
      */
     --datum-canvas: #ffffff;
     --datum-canvas-ink: #193335;
+
+    /*
+     * THE WRITTEN SOLUTION'S PAPER.
+     *
+     * A second "sheet" pair, for the SAME reason the canvas has one: the paper
+     * is the finished document, so it keeps a light page and dark type in BOTH
+     * themes. It is deliberately separate from `--datum-canvas-ink`, which is the
+     * default DRAWING LINE colour and therefore changes with the theme - reusing
+     * it here would have put near-white type on a white page in Dark Mode.
+     */
+    --datum-paper: #ffffff;
+    --datum-paper-ink: #193335;
 }
 
 /*
@@ -465,6 +477,10 @@
      */
     --datum-canvas: #ffffff;
     --datum-canvas-ink: #E8F5F3;
+
+    /* The paper stays a white sheet with dark type - see the light block. */
+    --datum-paper: #ffffff;
+    --datum-paper-ink: #193335;
 }
 
 /*
@@ -620,5 +636,8 @@
 
         --datum-canvas: #ffffff;
         --datum-canvas-ink: #E8F5F3;
+
+        --datum-paper: #ffffff;
+        --datum-paper-ink: #193335;
     }
 }

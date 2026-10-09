@@ -135,15 +135,24 @@ async function openWithPicker() {
 /* ---------------------------------------------------------- */
 
 /*
- * The three representations, in the order the panel should offer
- * them: the editable document first, because it is the one that keeps
- * the work, then the two images.
+ * The representations, in the order the panel should offer them: the editable
+ * document first, because it is the one that keeps the work, then the images,
+ * then PDF.
  *
- * `extensions` is what the native picker filters on. `mime` is what a
- * system that knows the type will show. Both are given for each,
- * because a picker showing an unfamiliar type with no extension is
- * confusing and one showing only an extension cannot be filtered
- * properly.
+ * `extensions` is what the native picker filters on. `mime` is what a system
+ * that knows the type will show. Both are given for each, because a picker
+ * showing an unfamiliar type with no extension is confusing and one showing
+ * only an extension cannot be filtered properly.
+ *
+ * PDF IS A DIFFERENT KIND OF ENTRY, and the `pdf: true` flag says so.
+ *
+ * Every other format is BYTES THE APPLICATION PRODUCES: text for a document, a
+ * canvas blob for an image. A PDF is not - there is no PDF writer in this
+ * application, and the browser's own is reached through its print dialog rather
+ * than through a file handle. So a `pdf` entry is an EXPORT ROUTE rather than a
+ * writable blob, and `saveAs` sends it to the print-to-PDF path instead of
+ * asking `contentFor` for bytes it cannot produce. That is what stops a Save As
+ * to "Beam.pdf" from writing JSON into a file with a .pdf name.
  */
 function formatTable() {
   const file = enggDocumentFile;
@@ -179,6 +188,20 @@ function formatTable() {
       extensions: [".jpg", ".jpeg"],
       mime: "image/jpeg",
       image: true
+    },
+    {
+      id: "pdf",
+      label: "PDF document (*.pdf)",
+      extensions: [".pdf"],
+      mime: "application/pdf",
+      image: false,
+
+      /*
+       * NOT WRITABLE BYTES. A PDF is produced by the browser's print-to-PDF,
+       * so this entry is an export route the caller runs rather than a blob
+       * `contentFor` can build. See the note on the table above.
+       */
+      pdf: true
     }
   ];
 }
@@ -450,7 +473,47 @@ async function save(documentBody) {
 async function saveAs(documentBody, suggestedName, options = {}) {
   const renderImage = options.renderImage;
 
+  /*
+   * THE PDF EXPORT ROUTE, SUPPLIED BY THE CALLER.
+   *
+   * A PDF is not bytes this module can build - it is the browser's print-to-PDF,
+   * and only the editor knows how to compose the page for it. So the editor
+   * passes the function in, and `saveAs` calls it when the chosen format is a
+   * PDF rather than pretending to write one.
+   *
+   * `exportPdf` returns the suggested filename, or null when there was nothing
+   * to export - which the caller reports rather than claiming a save.
+   */
+  const exportPdf = options.exportPdf;
+
   const fallbackFormat = formatTable()[0];
+
+  /*
+   * A SAVE AS TO PDF IS THE EXPORT, NOT A DOCUMENT SAVE.
+   *
+   * It is handled BEFORE the picker, for two reasons. The native panel cannot
+   * write a PDF, so offering it there would produce a file the application did
+   * not really create; and a PDF must never adopt the document's file handle,
+   * or a later Save would write JSON into a .pdf. The editable document's
+   * identity is therefore left exactly as it was.
+   */
+  const wantsPdf = options.format
+    ? options.format === "pdf"
+    : formatForName(suggestedName || "").id === "pdf";
+
+  if (wantsPdf) {
+    if (typeof exportPdf !== "function") {
+      return { error: "PDF export is not available here" };
+    }
+
+    const name = exportPdf();
+
+    if (!name) {
+      return { error: "could not render the drawing" };
+    }
+
+    return { name, format: "pdf", image: false, pdf: true };
+  }
 
   if (supportsNativePicker()) {
     let handle = null;

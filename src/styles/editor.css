@@ -620,6 +620,83 @@ body.datum-topbar-hidden .drawing-topbar-show {
     padding-left: 16px;
 }
 
+/*
+ * =========================================================
+ * A SUBMENU: A MENU INSIDE A MENU ROW
+ * =========================================================
+ *
+ * Download is a row with children. The row opens a nested panel beside itself,
+ * and every surface, border, radius, shadow and row height is the SAME as the
+ * top-level panel's - a submenu that looked different would read as a different
+ * kind of object rather than as more of the same menu.
+ *
+ * THE ROW IS THE POSITIONING CONTEXT, and the panel is a CHILD of it. That is
+ * what makes the hover work with no JavaScript timers: moving the pointer from
+ * the row down into the panel never leaves the element the open state is on, so
+ * the submenu cannot close under the hand that just opened it.
+ */
+.datum-menu-item-submenu {
+    position: relative;
+}
+
+/*
+ * THE INDICATOR SITS IN ITS OWN COLUMN AT THE RIGHT, after the shortcut, so a
+ * nested row lines up with a plain one instead of shifting its label.
+ */
+.datum-menu-item-chevron {
+    align-items: center;
+    color: var(--datum-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 16px;
+    justify-content: center;
+    margin-left: 4px;
+    width: 16px;
+}
+
+.datum-menu-item-submenu:hover .datum-menu-item-chevron {
+    color: var(--datum-green);
+}
+
+/*
+ * THE NESTED PANEL.
+ *
+ * Hidden until the row is open, then placed just past its right edge so it
+ * reads as growing out of the row rather than floating somewhere near it. It
+ * takes the same theme surfaces as the panel it lives in, so both themes work
+ * without a rule naming either.
+ */
+.datum-menu-subpanel {
+    display: none;
+    left: calc(100% + 4px);
+    min-width: 172px;
+    position: absolute;
+    top: -6px;
+}
+
+.datum-menu-item-submenu-open .datum-menu-subpanel,
+.datum-menu-item-submenu:hover .datum-menu-subpanel,
+.datum-menu-item-submenu:focus-within .datum-menu-subpanel {
+    display: block;
+}
+
+/*
+ * AN OPEN ROW KEEPS THE HOVER TREATMENT, so the pointer leaving the row for the
+ * panel does not make the row look closed while the panel is still open.
+ */
+.datum-menu-item-submenu-open,
+.datum-menu-item-submenu:hover {
+    background: var(--datum-menu-hover);
+}
+
+/*
+ * THE CHILD ROWS ARE INDENTED past the parent's own icon, so the nesting is
+ * visible as a hierarchy rather than as a second flat list.
+ */
+.datum-menu-subpanel .datum-menu-item {
+    padding-left: 14px;
+}
+
 .datum-icon {
     flex: 0 0 auto;
     display: block;
@@ -5671,6 +5748,125 @@ body.datum-topbar-hidden .drawing-topbar-show {
 
 /*
  * =========================================================
+ * A DESTRUCTIVE DIALOG BUTTON
+ * =========================================================
+ *
+ * The warning treatment, and it is the DIALOG's job rather than the menu row's.
+ * A permanently red "Move to Trash" in the File menu would be decoration; the
+ * red belongs on the button that is one click from the act, where it is a
+ * warning. It uses the theme's own error tokens, so it is legible in Light Mode
+ * and lifted for Dark Mode without a rule naming either.
+ */
+.engg-dialog-button-destructive {
+    background: var(--datum-surface);
+    border-color: var(--datum-error);
+    color: var(--datum-error);
+}
+
+.engg-dialog-button-destructive:hover {
+    background: var(--datum-error-tint);
+    border-color: var(--datum-error);
+    color: var(--datum-error);
+}
+
+.engg-dialog-button-destructive:focus-visible {
+    outline: 2px solid var(--datum-error);
+    outline-offset: 1px;
+}
+
+/*
+ * =========================================================
+ * DOCUMENT DETAILS: A READ-ONLY LABEL/VALUE TABLE
+ * =========================================================
+ *
+ * Two columns, so every value starts at the same x and the panel reads as a
+ * table rather than as sentences. The labels take the muted ink and the values
+ * the primary ink, which is what makes the pairs scannable.
+ */
+.datum-document-details {
+    display: grid;
+    gap: 0;
+}
+
+.datum-document-details-row {
+    align-items: baseline;
+    border-bottom: 1px solid var(--datum-border);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 104px minmax(0, 1fr);
+    padding: 7px 0;
+}
+
+.datum-document-details-row:last-child {
+    border-bottom: 0;
+}
+
+.datum-document-details-label {
+    color: var(--datum-muted);
+    font-size: 11px;
+}
+
+.datum-document-details-value {
+    color: var(--datum-ink);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+/*
+ * =========================================================
+ * SHARE: THE TWO REAL ACTIONS, AND THE NOTE THAT EXPLAINS THEM
+ * =========================================================
+ */
+.datum-share-dialog {
+    display: grid;
+    gap: 12px;
+}
+
+.datum-share-note {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.datum-share-filename {
+    color: var(--datum-ink);
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.datum-share-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.datum-share-action {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11.5px;
+    padding: 7px 12px;
+}
+
+.datum-share-action:hover {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.datum-share-action:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: 1px;
+}
+
+/*
+ * =========================================================
  * A CONTEXT MENU
  * =========================================================
  *
@@ -5829,7 +6025,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
 }
 
 /*
- * THE MENU BUTTON IS A DATUM PANEL BUTTON.
+ * THE MENU BUTTON IS A DAETUM PANEL BUTTON.
  *
  * It is the same control as `.drawing-property-action` - a white button, a thin
  * border, the accent colour, a 3px radius - so a control in the Open popup and
@@ -6059,7 +6255,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
 }
 
 /*
- * ADD TEMPLATE IS A DATUM BUTTON, NOT A DASHED OUTLINE.
+ * ADD TEMPLATE IS A DAETUM BUTTON, NOT A DASHED OUTLINE.
  *
  * It was a dashed box, which reads as a placeholder - "something goes here" -
  * rather than as a control that does something. It is now the same button as
@@ -6177,7 +6373,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
  * THE SELECT CONTROL AND ITS BULK ACTIONS
  * =========================================================
  *
- * "Select" is the ordinary way into multi-selection, so it is an ordinary Datum
+ * "Select" is the ordinary way into multi-selection, so it is an ordinary DAETUM
  * button - the same white, thin-bordered control as Add Template and the menu
  * buttons, so the row of controls at the head of Recent reads as one family.
  */

@@ -259,10 +259,12 @@ check(
 );
 
 check(
-  "and it is NOT labelled Datum Drawing or Datum File",
+  "and it is NOT labelled with the product name",
   !fileSave.includes("Datum drawing") &&
     !fileSave.includes("Datum Drawing") &&
-    !fileSave.includes("Datum File"),
+    !fileSave.includes("Datum File") &&
+    !fileSave.includes("DAETUM Drawing") &&
+    !fileSave.includes("DAETUM File"),
   "the software is Datum; the format is EnggDraw",
 );
 

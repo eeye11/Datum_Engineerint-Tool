@@ -36,7 +36,6 @@
 import { enggDrawingSheets } from "../editor/index.js";
 import enggDrawingReference from "../references/drawing-reference.js";
 import enggErrorLog from "../app/error-log.js";
-import { emitDatumEvent } from "../api/events.js";
 
 const DEFAULT_WIDTH = 760;
 const DEFAULT_HEIGHT = 460;
@@ -84,18 +83,31 @@ function attach() {
     document.getElementById(
       "referenceInsert"
     );
+  /*
+   * THE PREVIEW AND THE EDITOR ARE THE WORKSPACE'S OWN ELEMENTS.
+   *
+   * The written solution was a three-column panel with its own `writingCode`
+   * textarea and `writingOutput` div. It is now the solution workspace, whose
+   * editor is `solutionEditor` and whose rendered page is `solutionPreview` -
+   * so this renderer draws into the workspace's preview rather than into a
+   * panel that no longer exists. Everything else about it is unchanged.
+   */
   const output =
-    document.getElementById("writingOutput");
+    document.getElementById("solutionPreview");
   const code =
-    document.getElementById("writingCode");
+    document.getElementById("solutionEditor");
 
-  if (
-    !sheetSelect ||
-    !captionInput ||
-    !insertButton ||
-    !output ||
-    !code
-  ) {
+  /*
+   * THE DRAWING-REFERENCE CONTROLS ARE OPTIONAL.
+   *
+   * The old panel carried its own sheet picker and caption field. The workspace
+   * inserts a figure from its own toolbar and takes the caption from the sheet,
+   * so these may legitimately be absent - and the renderer must still work, since
+   * rendering the written solution is its primary job and the reference picker
+   * was only ever a way to INSERT one. The picker's wiring below is skipped when
+   * it is not there.
+   */
+  if (!output || !code) {
     return;
   }
 
@@ -111,6 +123,10 @@ function attach() {
    * happens to be second after the user reorders the tabs.
    */
   function refreshSheetList() {
+    if (!sheetSelect) {
+      return;
+    }
+
     const sheets = enggDrawingSheets.all();
 
     const previous = sheetSelect.value;
@@ -513,24 +529,29 @@ function attach() {
     refreshAll();
   }
 
-  insertButton.addEventListener(
-    "click",
-    insertReference
-  );
+  /* The reference picker may be absent in the workspace; see the guard above. */
+  if (insertButton && sheetSelect) {
+    insertButton.addEventListener("click", insertReference);
 
-  sheetSelect.addEventListener(
-    "change",
-    () => {
+    sheetSelect.addEventListener("change", () => {
       captionInput.value =
-        sheetSelect.selectedOptions[0]
-          ?.textContent || "";
-    }
-  );
+        sheetSelect.selectedOptions[0]?.textContent || "";
+    });
+  }
 
-  code.addEventListener("input", () => {
-    refreshAll();
-    emitDatumEvent("solutionchange");
-  });
+  /*
+   * THE EDITOR'S INPUT IS NOT HANDLED HERE ANY MORE.
+   *
+   * The line below used to re-render the whole solution on EVERY keystroke.
+   * The workspace now owns that: it updates the document's source, records an
+   * unsaved change and schedules a DEBOUNCED compile, calling this renderer once
+   * the typing pauses. Rendering here as well would both defeat the debounce -
+   * running MathJax on every character - and render from a source this module
+   * read a moment earlier. The workspace is the one place a change is noticed.
+   *
+   * The event that told the host a solution had changed now comes from the
+   * workspace too, for the same reason: one notifier, not two.
+   */
 
   /*
    * The drawing side tells us when something changed that a figure

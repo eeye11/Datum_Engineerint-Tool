@@ -1,11 +1,11 @@
 import { defineConfig } from "vite";
 
 /*
- * Datum is a static site: `npm run build` writes plain files to dist/ that
+ * DAETUM is a static site: `npm run build` writes plain files to dist/ that
  * any web server (GitHub Pages, a university web host) can serve.
  *
  * base "./" makes every asset URL relative, so the build works from a
- * sub-path such as https://example.github.io/datum/ without being told
+ * sub-path such as https://example.github.io/daetum/ without being told
  * where it will live.
  *
  * The /api requests (TikZ rendering) are only available when the optional

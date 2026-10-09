@@ -159,7 +159,8 @@ check(
 
 check(
   "Save As is the one entry point",
-  /"save-as"\(\)/.test(code) && /saveDrawingAs\(\);/.test(code),
+  /"save-as"\(options\)/.test(code) && /saveDrawingAs\(options\);/.test(code),
+  "it takes an optional format so Download and Save As share one path",
 );
 
 console.log("\n  the document format is the only editable output\n");
