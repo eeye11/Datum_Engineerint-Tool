@@ -287,7 +287,28 @@ function open(options = {}) {
      */
     const sheetUnit = options.unit || "mm";
 
-    const apply = () => {
+    /*
+     * =========================================================
+     * A DRAFT, SO WHAT IS TYPED CAN BE SEEN BEFORE IT IS COMMITTED
+     * =========================================================
+     *
+     * The dialog used to collect its fields and hand them over ONLY on Apply, so
+     * a student editing a size saw nothing change until they confirmed - and on a
+     * sheet that is not yet calibrated the number is the only evidence of what it
+     * means, which made the field a guess rather than a decision.
+     *
+     * The SAME `changes` object is built here and reported through `onPreview` as
+     * the fields are edited, so the caller can draw the proposed result. Nothing
+     * is committed by previewing: `onApply` remains the ONE commit, and `onCancel`
+     * - which runs for every way out, Escape included - is what takes the preview
+     * back off the canvas.
+     *
+     * AN INVALID INTERMEDIATE VALUE IS SIMPLY NOT REPORTED. A half-typed "1" on
+     * the way to "100" is a real, usable 1, so it IS reported; an empty field or a
+     * non-finite one is not, and the preview keeps its previous state rather than
+     * collapsing the geometry to zero.
+     */
+    const collectChanges = () => {
         const changes = {};
 
         if (!angular) {
@@ -367,10 +388,39 @@ function open(options = {}) {
             }
         }
 
+        return changes;
+    };
+
+    /*
+     * THE COMMIT. It reports what the fields currently hold and closes; the
+     * preview that has been showing those same values is replaced by the real
+     * edit, so the drawing does not flicker between two identical states.
+     */
+    const apply = () => {
+        const changes = collectChanges();
+
         close();
 
         options.onApply?.(changes);
     };
+
+    /*
+     * THE PREVIEW. Fired as the fields are edited, and only when the caller asked
+     * for one - a dialog opened purely to read a value has nothing to preview and
+     * pays nothing for this.
+     */
+    const preview = () => {
+        if (typeof options.onPreview !== "function") {
+            return;
+        }
+
+        options.onPreview(collectChanges());
+    };
+
+    dialog.querySelectorAll("input, select").forEach((control) => {
+        control.addEventListener("input", preview);
+        control.addEventListener("change", preview);
+    });
 
     dialog
         .querySelector("[data-dim-apply]")
