@@ -312,6 +312,23 @@ const scalar = ({
   state = "",
   classes = "",
   unitExtra = "",
+
+  /**
+   * A CONTROL FOR THE UNIT ITSELF.
+   *
+   * A unit-bearing field may offer a selector so the student can read (and
+   * enter) the value in another unit of the same quantity - mm or inches, a
+   * force in N or kN. It belongs to the UNIT, so it shares that cell rather
+   * than taking a track of its own; a selector in the wrong track pushes the
+   * row out of line.
+   *
+   * It is merged into `unitExtra` because that slot exists for precisely this
+   * - a control belonging to the value or its unit, on the value's own line -
+   * and a second slot with the same meaning would be a second thing to place
+   * correctly. When both are given, the unit control comes last so it sits
+   * against the number it describes.
+   */
+  unitControl = "",
 }) => {
   if (!key) {
     return null;
@@ -351,7 +368,7 @@ const scalar = ({
     label,
     control,
     unit,
-    unitExtra,
+    unitExtra: `${unitExtra || ""}${unitControl || ""}`,
     state: disabled ? state || "" : state,
     classes,
   });

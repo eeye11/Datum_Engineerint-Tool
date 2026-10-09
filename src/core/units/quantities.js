@@ -356,7 +356,64 @@ const QUANTITY_UNITS = {
       "mm²": { label: "mm²", factor: 1 },
       "cm²": { label: "cm²", factor: 100 },
       "m²": { label: "m²", factor: 1e6 },
-      "in²": { label: "in²", factor: 645.16, customary: true }
+      "in²": { label: "in²", factor: 645.16, customary: true },
+      "ft²": { label: "ft²", factor: 92903.04, customary: true }
+    }
+  },
+
+  /*
+   * VOLUME, as the CUBE of the length units.
+   *
+   * The factors are the length factors cubed, written out rather than computed,
+   * so a reader can check them against the length table above - a cubed factor
+   * derived at load time would be one more place for the two to disagree.
+   */
+  volume: {
+    base: "mm³",
+    units: {
+      "mm³": { label: "mm³", factor: 1 },
+      "cm³": { label: "cm³", factor: 1000 },
+      "m³": { label: "m³", factor: 1e9 },
+      "in³": { label: "in³", factor: 16387.064, customary: true },
+      "ft³": { label: "ft³", factor: 28316846.592, customary: true }
+    }
+  },
+
+  mass: {
+    base: "kg",
+    units: {
+      /*
+       * THE BASE COMES FIRST, in every quantity here.
+       *
+       * `unitsFor` returns these in insertion order and a panel takes the first
+       * as its default, so the base being first IS the convention - the unit the
+       * model stores is the unit a field starts in. `g` before `kg` broke that
+       * silently, which is why it is pinned by a test rather than left to care.
+       */
+      kg: { label: "kg", factor: 1 },
+      g: { label: "g", factor: 0.001 },
+      t: { label: "t", factor: 1000 },
+      lb: { label: "lb", factor: 0.45359237, customary: true },
+      slug: { label: "slug", factor: 14.593902937206364, customary: true }
+    }
+  },
+
+  /*
+   * DENSITY IS MASS PER VOLUME, so its factors are the mass factors divided by
+   * the volume factors of the same row - `kg/m³` is the base and the rest are
+   * derived from it consistently.
+   */
+  density: {
+    base: "kg/m³",
+    units: {
+      "kg/m³": { label: "kg/m³", factor: 1 },
+      "g/cm³": { label: "g/cm³", factor: 1000 },
+      "t/m³": { label: "t/m³", factor: 1000 },
+      "lb/ft³": {
+        label: "lb/ft³",
+        factor: 0.45359237 / 0.028316846592,
+        customary: true
+      }
     }
   },
 
@@ -366,23 +423,73 @@ const QUANTITY_UNITS = {
       Pa: { label: "Pa", factor: 1 },
       kPa: { label: "kPa", factor: 1000 },
       MPa: { label: "MPa", factor: 1e6 },
+      GPa: { label: "GPa", factor: 1e9 },
       psi: { label: "psi", factor: 6894.757293168, customary: true }
     }
   },
 
   /*
-   * AN ANGLE IS NOT A LENGTH AND HAS NO CONVERSION.
+   * TEMPERATURE IS AN OFFSET SCALE, AND THE FACTOR MODEL CANNOT EXPRESS IT.
    *
-   * Degrees and radians name the same angle at different scale, but a drawing
-   * states an angle in degrees and nothing in the model is stored in radians,
-   * so offering a choice would add a conversion nobody asked for. It is listed
-   * with its one unit so a caller asking "what units does an angle have" gets
-   * an answer rather than null.
+   * Every other quantity here is a plain multiple of a base - which is why a
+   * single `factor` is enough. Celsius and Fahrenheit do not work that way:
+   * 0 °C is not 0 K, so converting needs an OFFSET as well as a factor, and
+   * pretending otherwise would turn 20 °C into 20 K rather than 293.15 K.
+   *
+   * So this entry carries `offset` too, and `convertValue` applies it. Kelvin is
+   * the base because that is the one scale that is a plain multiple. A caller
+   * that ignores the offset would be wrong by 273.15, which is why the arithmetic
+   * lives in the conversion function rather than in each tool.
+   */
+  temperature: {
+    base: "K",
+    units: {
+      K: { label: "K", factor: 1, offset: 0 },
+      "°C": { label: "°C", factor: 1, offset: 273.15 },
+      /*
+       * HOW MUCH OF THE BASE ONE FAHRENHEIT DEGREE IS, and where it starts.
+       *
+       * A Fahrenheit degree is 5/9 of a kelvin, and its zero sits at 255.372 K
+       * (-459.67 °F). Together: 32 °F -> 32*(5/9) + 255.372 = 273.15 K = 0 °C.
+       */
+      "°F": { label: "°F", factor: 5 / 9, offset: 255.3722222222222 }
+    }
+  },
+
+  /*
+   * AN ANGLE IS NOT A LENGTH, AND IT HAS ITS OWN TWO UNITS.
+   *
+   * Degrees and radians name the same angle at different scale. The line is the
+   * BASE: it is what the model stores and what a drawing states, so it is listed
+   * first and remains every panel's default. Radians are a DISPLAY choice,
+   * converted at the boundary exactly as millimetres convert to inches.
    */
   angle: {
     base: "°",
     units: {
-      "°": { label: "°", factor: 1 }
+      "°": { label: "°", factor: 1 },
+
+      /*
+       * RADIANS ARE OFFERED, and this replaces the earlier note that said they
+       * were not.
+       *
+       * The reasoning for withholding them was that nothing is STORED in
+       * radians. That is still true - the model holds degrees, and it is not
+       * changing - but it is a fact about storage rather than about the reader.
+       * A student solving a trigonometric problem is often working in radians,
+       * and being unable to READ an angle in the unit they are using is the
+       * limitation, so radians are a display choice converted at the boundary
+       * like every other unit here. Nothing in the model moves.
+       */
+      /*
+       * HOW MANY DEGREES ONE RADIAN IS - 57.2958, NOT pi/180.
+       *
+       * `factor` means "how much of the BASE one of this unit is", and the base
+       * here is the degree. Writing the reciprocal would convert 180° to 10313
+       * "radians" - the two readings differ by a factor of 3283, so the direction
+       * is worth stating rather than leaving to be inferred from the other rows.
+       */
+      rad: { label: "rad", factor: 180 / Math.PI }
     }
   }
 };
@@ -417,6 +524,17 @@ function conversionFactor(quantityType, unit) {
 }
 
 /*
+ * THE OFFSET OF A UNIT FROM THE BASE, or 0 for the quantities that have none.
+ *
+ * Almost every quantity here is a plain multiple of its base, so the offset is
+ * zero and this reads as a no-op. Temperature is why it exists: 0 °C is 273.15 K,
+ * and a conversion that applied only the factor would answer 0 K.
+ */
+function unitOffset(quantityType, unit) {
+  return QUANTITY_UNITS[quantityType]?.units?.[unit]?.offset ?? 0;
+}
+
+/*
  * A VALUE CONVERTED FROM ONE UNIT TO ANOTHER.
  *
  *     convertValue(250, "force", "N", "kN")  ->  0.25
@@ -446,7 +564,19 @@ function convertValue(value, quantityType, fromUnit, toUnit) {
     return numeric;
   }
 
-  return (numeric * from) / to;
+  /*
+   * TO THE BASE AND OUT AGAIN, offset included.
+   *
+   * Writing it as two steps rather than one ratio is what lets temperature be
+   * expressed at all: the value is brought to the base scale (multiply, add the
+   * offset), and then taken from the base to the target (subtract its offset,
+   * divide). For every other quantity both offsets are zero, so this reduces
+   * exactly to the single ratio it used to be - the arithmetic is the same
+   * number either way.
+   */
+  const base = numeric * from + unitOffset(quantityType, fromUnit);
+
+  return (base - unitOffset(quantityType, toUnit)) / to;
 }
 
 const enggQuantities = {
@@ -466,6 +596,7 @@ const enggQuantities = {
   QUANTITY_UNITS,
   unitsFor,
   conversionFactor,
+  unitOffset,
   convertValue,
   isUnitFor,
 };

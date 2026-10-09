@@ -143,8 +143,16 @@ const updateSource = require("fs").readFileSync(
 
 check(
   "the writer converts a typed coordinate to world units",
-  /isLengthCoordinate[\s\S]{0,200}worldLengthOf\(value\)/.test(updateSource),
-  "the writer stores the typed number as world units",
+  /*
+   * THROUGH THE DISPLAY UNIT FIRST. A coordinate can be READ in mm, cm, m, inches
+   * or feet, so the typed number is converted from the field's own unit into
+   * millimetres before the scale turns it into world units - otherwise typing
+   * "1" in a field showing inches would be read as 1 mm.
+   */
+  /isLengthCoordinate[\s\S]{0,600}?convertValue\(\s*value,\s*'length',\s*displayUnit,\s*'mm'\s*\)[\s\S]{0,200}?worldLengthOf\(millimetres\)/.test(
+    updateSource,
+  ),
+  "the writer converts the field's unit to mm, then the mm to world units",
 );
 
 check(

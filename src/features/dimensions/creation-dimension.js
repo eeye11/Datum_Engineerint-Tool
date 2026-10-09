@@ -181,6 +181,16 @@ let closeCurrent = null;
 let pointerListener = null;
 
 /*
+ * AND THE OPEN POPUP'S ESCAPE LISTENER, held for the same reason.
+ *
+ * Escape is caught on the DOCUMENT so it works whether or not anything inside
+ * the popup has focus; a listener on the document outlives the popup unless it
+ * is removed, so `close()` takes this one off by the same reference the pointer
+ * listener uses.
+ */
+let escapeListener = null;
+
+/*
  * A confirmation that has just happened, and whether the keyboard
  * event that caused it has finished travelling.
  *
@@ -706,6 +716,37 @@ function open(options = {}) {
     advance();
   });
 
+  /*
+   * ESCAPE CANCELS FROM ANYWHERE IN THE POPUP, FOCUSED OR NOT.
+   *
+   * The number's own handler above catches Escape only while the INPUT holds
+   * focus. Clicking any part of the popup that cannot take focus - its padding,
+   * its label, a blank corner - blurs the input, and from that moment there is no
+   * focused element inside the popup for a keydown to reach it through. Escape
+   * then did nothing at all, which is how "the popup will not close" happens to
+   * a student who simply clicked the wrong few pixels first.
+   *
+   * So Escape is also caught ON THE DOCUMENT, for as long as this popup is the
+   * open one. It is the same close the input's handler performs, into the same
+   * single `closeIt`, so the two paths cannot behave differently - and the
+   * listener is removed by `close()` with the popup.
+   */
+  const onDocumentKeyDown = (event) => {
+    if (event.key !== "Escape" || openPopup !== popup) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    closeIt();
+  };
+
+  document.addEventListener("keydown", onDocumentKeyDown, true);
+
+  /* Registered on the document, so it must come off with the popup. */
+  escapeListener = onDocumentKeyDown;
+
   renderStep();
 
   return popup;
@@ -735,6 +776,12 @@ function close() {
     document.removeEventListener("pointerdown", pointerListener, true);
 
     pointerListener = null;
+  }
+
+  if (escapeListener) {
+    document.removeEventListener("keydown", escapeListener, true);
+
+    escapeListener = null;
   }
 
   closeCurrent = null;
