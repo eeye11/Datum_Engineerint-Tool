@@ -54,6 +54,11 @@ export function renderEngineeringTools(
             ? category
             : "GEOMETRY";
 
+    toolList.closest(".drawing-panel-rail-left")?.classList.toggle(
+        "drawing-panel-rail-statics",
+        safeCategory === "STATICS"
+    );
+
     toolHeading.textContent =
         `${safeCategory} TOOLS`;
 

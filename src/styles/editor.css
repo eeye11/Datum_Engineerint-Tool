@@ -2177,15 +2177,7 @@ body.datum-topbar-hidden .drawing-topbar-show {
 .drawing-panel-rail-right {
     border-left: 1px solid var(--cad-border);
 
-    /*
-     * The right panel's outer edge is the WINDOW's right, so the button goes
-     * LAST - which is `row` with the button already last in the markup, not
-     * `row-reverse`.
-     *
-     * `row-reverse` reverses EVERYTHING, which is what moved the button to the
-     * inside. Leaving the direction alone and ordering the markup is the same
-     * rule as the left rail: the button is always on the outside.
-     */
+    /* The Features control sits on the panel's left edge, beside the canvas. */
     flex-direction: row;
 }
 
@@ -2251,6 +2243,31 @@ body.datum-topbar-hidden .drawing-topbar-show {
     flex: 0 0 auto;
     height: 16px;
     width: 16px;
+}
+
+.drawing-panel-rail-statics > .drawing-panel-toggle {
+    order: 1;
+}
+
+.drawing-panel-rail-statics > .drawing-panel-toggle[aria-expanded="false"] svg {
+    transform-origin: center;
+    transform: rotate(180deg);
+}
+
+.drawing-panel-rail-statics > .drawing-panel-toggle[aria-expanded="true"] svg {
+    transform: rotate(0deg);
+}
+
+.drawing-panel-rail-right > .drawing-panel-toggle {
+    order: -1;
+}
+
+.drawing-panel-rail-right > .drawing-panel-toggle[aria-expanded="false"] svg {
+    transform: rotate(180deg);
+}
+
+.drawing-panel-rail-right > .drawing-panel-toggle[aria-expanded="true"] svg {
+    transform: rotate(0deg);
 }
 
 /*
@@ -2633,9 +2650,13 @@ body.datum-topbar-hidden .drawing-topbar-show {
     min-width: 0;
 }
 
-.drawing-tool[aria-controls^="statics-"][aria-expanded="true"] .drawing-tool-caret {
+.drawing-tool[aria-controls^="statics-"] .drawing-tool-caret {
     display: inline-block;
-    transform: rotate(180deg);
+    transform: rotate(-90deg);
+}
+
+.drawing-tool[aria-controls^="statics-"][aria-expanded="true"] .drawing-tool-caret {
+    transform: rotate(0deg);
 }
 
 .drawing-canvas-area {
