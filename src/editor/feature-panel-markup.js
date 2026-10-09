@@ -893,12 +893,26 @@ export function featurePropertyMarkup(object) {
      * hierarchy: it is naming, not engineering, and putting it at the
      * top would give it a prominence the other rows do not have.
      */
+    /*
+     * THE LABEL FIELD.
+     *
+     * IT SHOWS `object.label`, NOT `object.name`. The field used to display the
+     * feature's NAME while being labelled "Label" - so it looked like it was
+     * editing a label and was really editing the schedule name, and the drawing
+     * showed nothing either way. The two are different pieces of information and
+     * now have different fields, side by side: the header's Name, and this.
+     *
+     * `data-object-label` is the hook the text handler binds to. It is
+     * deliberately NOT `data-property`, because that handler is for NUMERIC
+     * fields - it runs every value through `Number()` and refuses anything that
+     * is not finite, which would silently discard every label a student typed.
+     */
     const labelRow = object => {
         if (!panels || !panels.row) {
             return "";
         }
 
-        const name = panels.text(object.name);
+        const label = panels.text(object.label);
 
         return panels.row({
             label: "Label",
@@ -906,7 +920,8 @@ export function featurePropertyMarkup(object) {
                 data-object-label
                 class="drawing-property-input"
                 aria-label="Label"
-                value="${escapeHtmlText(name === null ? "" : name)}">`,
+                placeholder="Text shown beside the feature"
+                value="${escapeHtmlText(label === null ? "" : label)}">`,
         });
     };
 
@@ -1118,6 +1133,26 @@ export function featurePropertyMarkup(object) {
         rows.push(section("END POINT"));
         rows.push(coordinate("X", "end.x", geometry.end.x, "mm", true));
         rows.push(coordinate("Y", "end.y", geometry.end.y, "mm", true));
+
+        /*
+         * A LINE CAN BE LOCKED, LIKE A POINT AND A BEAM.
+         *
+         * The MECHANISM was already shared and already covered Lines: `locked`
+         * is a property of the feature, and `drag.js` refuses to begin ANY
+         * manipulation drag on a locked object, checking in the one place every
+         * drag passes through. The panel row is the only thing that was missing -
+         * so a Line could be locked in the model and there was no control to do
+         * it, which is why the panel appeared to lack the feature entirely.
+         *
+         * IT IS `lockRow()`, NOT A NEW CONTROL. The same row the Point panel
+         * uses means the wording, the tooltip, the checkbox and the enforcement
+         * are one behaviour rather than two that can drift - and there is no
+         * second control called "Fix" duplicating it.
+         *
+         * IT SITS WITH THE POSITION CONTROLS, because that is what it constrains.
+         */
+        rows.push(lockRow());
+
         rows.push(section("MEASUREMENTS"));
         rows.push(
             scalar(

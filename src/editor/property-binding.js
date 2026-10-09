@@ -162,6 +162,56 @@ export function bindFeaturePropertyControls(object) {
         });
     });
 
+    /*
+     * =========================================================
+     * THE FEATURE'S LABEL
+     * =========================================================
+     *
+     * The text drawn BESIDE a feature on the sheet - "AB", "x", "C" - which is a
+     * different thing from its NAME (what it is called in a schedule). This field
+     * had NO HANDLER AT ALL: the input was rendered in the panel and nothing ever
+     * read it, for Line or for Point, so typing in it did nothing. That is the
+     * whole of the reported fault, and this is the whole of the fix.
+     *
+     * IT IS A TEXT FIELD, so it follows the SAME shape as the feature name below:
+     * commit on `change` (blur or Enter), snapshot first so one edit is one step
+     * back, then repaint the canvas and the panel. Committing on `change` rather
+     * than on every keystroke is deliberate - a label is a word, not a number,
+     * and re-rendering the drawing per letter would be both noisy and slow.
+     *
+     * AN EMPTY VALUE IS A REAL EDIT. Clearing the field REMOVES the label and
+     * keeps the feature - which is why this does not return early on a blank the
+     * way the name field does (a feature must keep a name; it need not keep a
+     * label).
+     */
+    drawingProperties.querySelectorAll('[data-object-label]').forEach(input => {
+        input.addEventListener('change', () => {
+            const previous =
+                enggDrawingState.snapshotDrawing(
+                    drawingState
+                );
+
+            const changed = updateFeatureProperty(
+                object,
+                'label',
+                input.value
+            );
+
+            if (!changed) {
+                renderProperties();
+                return;
+            }
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previous
+            );
+
+            renderCurrentDrawing();
+            renderProperties();
+        });
+    });
+
     drawingProperties.querySelectorAll('[data-feature-name]').forEach(input => {
         input.addEventListener('change', () => {
             const name =

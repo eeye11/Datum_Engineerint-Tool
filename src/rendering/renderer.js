@@ -18,6 +18,17 @@ import enggVariableDimension from "../features/dimensions/variable-dimension.js"
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
     /*
+     * HOW FAR A FEATURE'S LABEL SITS FROM ITS ANCHOR, in screen pixels.
+     *
+     * A few pixels up and to the right, so the text clears the marker it
+     * belongs to without drifting far enough to look like it labels something
+     * else. It is a SCREEN offset - not a world one - so a label stays the same
+     * readable distance from its feature at every zoom, and zooming in does not
+     * walk the text away from the point.
+     */
+    const LABEL_OFFSET_PX = 7;
+
+    /*
      * ========================================================
      * TEXT SCALES WITH THE ZOOM; NOTHING ELSE DOES
      * ========================================================
@@ -9022,6 +9033,30 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         }
 
         /*
+         * ========================================================
+         * THE FEATURE'S OWN LABEL
+         * ========================================================
+         *
+         * A second pass, over the SAME objects, drawing the label a student gave
+         * a feature in the Features panel. It is deliberately not drawn inside
+         * `appendEntity`: a label sits ON TOP of everything (so a line's label is
+         * not clipped by the line), and keeping it in its own pass is what makes
+         * "every feature's label" one behaviour rather than a branch per type -
+         * which is exactly the branch that was missing for Line and Point.
+         */
+        state.objects.forEach((entity) => {
+            try {
+                appendFeatureLabel(svg, entity, state, bounds);
+            } catch (error) {
+                renderFailures.push({
+                    id: entity && entity.id,
+                    type: entity && entity.type,
+                    error
+                });
+            }
+        });
+
+        /*
          * Live construction preview
          *
          * Must be rendered before snap feedback so that
@@ -9060,6 +9095,106 @@ function appendAnnotationEntity(svg, entity, state, toScreen, style) {
         );
 
         renderSelectionHandles(svg, state, bounds);
+    }
+
+    /*
+     * ========================================================
+     * A FEATURE'S LABEL, DRAWN BESIDE IT
+     * ========================================================
+     *
+     * THE LABEL IS THE FEATURE'S OWN DATA. It is stored on the feature
+     * (`object.label`), saved with it, cloned with it and undone with it, so it
+     * follows the feature when it moves and cannot drift away from it - which is
+     * what rules out drawing it as a detached text object somewhere near the
+     * shape.
+     *
+     * WHERE IT SITS is the anchor of the shape: a point's position, a line's
+     * midpoint, a circle's centre. That is a property of the GEOMETRY, so the
+     * label moves with the feature for free, and every type is answered by one
+     * function rather than by a per-type placement rule.
+     *
+     * AN EMPTY LABEL DRAWS NOTHING. "Carries no label" and "carries an empty
+     * label" look the same on the sheet, and neither should leave a stray mark.
+     */
+    function labelAnchorFor(entity, toScreen) {
+        const geometry = entity.geometry || {};
+
+        const point =
+            geometry.position ||
+            geometry.point ||
+            geometry.center ||
+            null;
+
+        if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+            return toScreen(point);
+        }
+
+        if (
+            geometry.start &&
+            geometry.end &&
+            Number.isFinite(geometry.start.x) &&
+            Number.isFinite(geometry.end.x)
+        ) {
+            return toScreen({
+                x: (geometry.start.x + geometry.end.x) / 2,
+                y: (geometry.start.y + geometry.end.y) / 2
+            });
+        }
+
+        return null;
+    }
+
+    function appendFeatureLabel(svg, entity, state, bounds) {
+        const text = typeof entity?.label === "string" ? entity.label.trim() : "";
+
+        if (!text) {
+            return;
+        }
+
+        /*
+         * The SAME projection every other mark uses, so a label lands exactly
+         * where the drawing says it should at any zoom, pan or window size.
+         */
+        const toScreen = (point) =>
+            enggDrawingState.engineeringToScreen(point, bounds, state);
+
+        const anchor = labelAnchorFor(entity, toScreen);
+
+        if (!anchor) {
+            return;
+        }
+
+        /*
+         * THE LABEL TAKES THE FEATURE'S OWN COLOUR, so it reads as part of the
+         * drawing rather than as interface furniture, and a student who
+         * colour-coded a line gets a label to match.
+         */
+        const colour =
+            entity.style && typeof entity.style.stroke === "string"
+                ? entity.style.stroke
+                : "#000000";
+
+        const label = createSvgElement("text", {
+            x: anchor.x + LABEL_OFFSET_PX,
+            y: anchor.y - LABEL_OFFSET_PX,
+            fill: colour,
+            "font-size": zoomedFontHere(11),
+            "font-family": "Arial, sans-serif",
+            "text-anchor": "start",
+
+            /*
+             * A LABEL MUST NOT SWALLOW THE POINTER. It is drawing, not a
+             * handle: a click on the text should select the FEATURE underneath,
+             * and snap candidates, dimension targets and handles all sit in the
+             * same few pixels. `none` is what keeps the label from becoming an
+             * invisible obstruction over its own feature.
+             */
+            "pointer-events": "none"
+        });
+
+        label.textContent = text;
+
+        svg.appendChild(label);
     }
 
     /*

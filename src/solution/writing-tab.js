@@ -423,9 +423,27 @@ export function installWritingTab() {
     });
 }
 
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", installWritingTab);
-} else {
+/*
+ * INSTALL AT START-UP, AND AGAIN WHEN THE TAB IS OPENED.
+ *
+ * The first attempt may run before the workspace's markup is in the document -
+ * `main.js` imports this module early, and on a cold load the section may not
+ * have been parsed yet. The installer returns WITHOUT marking itself installed
+ * in that case, so a later call is a real retry rather than a no-op.
+ *
+ * The tab click is the second, guaranteed attempt: the student cannot open the
+ * solution without the markup being there. It runs through the SAME installer, so
+ * there is one wiring path rather than two that could drift apart.
+ */
+document.addEventListener("DOMContentLoaded", installWritingTab);
+
+document.addEventListener("click", (event) => {
+    if (event.target.closest?.('.tab[data-tab="writing"]')) {
+        installWritingTab();
+    }
+});
+
+if (document.readyState !== "loading") {
     installWritingTab();
 }
 

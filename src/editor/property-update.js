@@ -19,6 +19,65 @@ export function updateFeatureProperty(object, key, value) {
 
     /*
      * ========================================================
+     * THE FEATURE'S LABEL, WHICH IS NOT ITS NAME
+     * ========================================================
+     *
+     * A feature has TWO pieces of text, and they mean different things:
+     *
+     *   `name`   what it is called in a schedule - "Line 3", "Beam 1"
+     *   `label`  what is WRITTEN BESIDE IT ON THE SHEET - "AB", "x", "datum"
+     *
+     * The Features panel's Label field was bound to `name`, so typing in it
+     * silently renamed the feature and the drawing never changed - the field
+     * accepted text and did nothing visible, which is exactly the fault
+     * reported. This is the branch that makes the field write a LABEL, which the
+     * renderer then draws.
+     *
+     * IT IS HANDLED BEFORE EVERY TYPE BRANCH, so it applies to Line, Point and
+     * every other feature through one rule rather than a branch each - the same
+     * shape as the name itself.
+     *
+     * IT IS NOT BLOCKED BY A LOCK. Locking is a constraint on GEOMETRY, and a
+     * locked feature must still be labelable: a student fixes a point in place
+     * precisely so they can annotate it without moving it. Returning `true` here
+     * regardless of `fixed(...)` is that decision, made once.
+     */
+    if (key === "label") {
+        object.label = String(value ?? "");
+        return true;
+    }
+
+    /*
+     * ========================================================
+     * A LOCKED FEATURE'S POSITION CANNOT BE TYPED EITHER
+     * ========================================================
+     *
+     * `object.locked` is what the Features panel's Locked checkbox writes, and
+     * `drag.js` already refuses to begin a drag on a locked feature. That covers
+     * the POINTER, but not the PANEL: a coordinate field wrote straight to the
+     * geometry and would happily move a feature the student had locked, so the
+     * one control that is supposed to hold it in place could be bypassed by
+     * typing - the very thing the lock exists to prevent.
+     *
+     * NOTHING ELSE IS AFFECTED. A lock is a constraint on POSITION, so only a
+     * key that names a point is refused: the label, the line width, the colour
+     * and the line type are all independent of where the feature is, and a
+     * student locks a feature precisely so they can keep annotating and styling
+     * it. The three length keys are included because on a line each of them
+     * MOVES an endpoint - a Length edit without the lock would slide the end of
+     * a "fixed" line.
+     */
+    const POSITION_KEYS = /^(start|end|center|centre|origin|position)\.(x|y)$/;
+
+    if (
+        object.locked === true &&
+        (POSITION_KEYS.test(key) || key === "length" || key === "angle")
+    ) {
+        return false;
+    }
+
+    /*
+     * ========================================================
      * A COORDINATE THE PANEL SHOWS IN MILLIMETRES
      * ========================================================
      *
