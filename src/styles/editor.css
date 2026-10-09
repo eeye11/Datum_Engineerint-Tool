@@ -1508,6 +1508,67 @@ body.datum-topbar-hidden .drawing-topbar-show {
     row-gap: 4px;
 }
 
+.drawing-line-type-trigger {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+.drawing-line-type-trigger:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
+}
+
+.drawing-line-type-menu {
+    position: fixed;
+    z-index: 1000;
+    width: 150px;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 12px #0002;
+    color: #263b32;
+}
+
+.drawing-line-type-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 6px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.drawing-line-type-menu button[aria-checked="true"] {
+    background: #e4f2e8;
+    color: #245d3b;
+}
+
+.drawing-line-type-menu button:hover,
+.drawing-line-type-menu button:focus-visible {
+    background: #e4f2e8;
+    color: #245d3b;
+    outline: 1px solid #a3cbb0;
+}
+
+.drawing-line-type-menu svg {
+    width: 30px;
+    height: 12px;
+    flex: 0 0 30px;
+}
+
 /*
  * A control PAIR - the label and the input it names - is one flex item.
  *
