@@ -908,6 +908,34 @@ export function featurePropertyMarkup(object) {
     };
 
     /*
+     * THE SQUARED FORM OF A LENGTH UNIT.
+     *
+     * An Area is a squared length, so its unit is the length unit squared - "mm"
+     * becomes "mm²". The shared quantity table already spells its area units that
+     * way, so the two agree by construction rather than by a second list being
+     * kept in step by hand.
+     *
+     * A unit that is already a power, or that carries a suffix the table does not
+     * use, is squared as it stands: the caption is then merely odd rather than
+     * wrong, and a measurement is never silently captioned with the wrong power.
+     */
+    const squaredUnitOf = (unit = "") => {
+        const text = String(unit || "");
+
+        if (text === "") {
+            return "";
+        }
+
+        /*
+         * A unit is written as a symbol and a power - "mm", "m²". Only the SYMBOL
+         * is squared, so "mm" becomes "mm²" rather than "mm²²".
+         */
+        const match = /^([^\u00b2\u00b3\^]+)/.exec(text);
+
+        return `${match ? match[1] : text}²`;
+    };
+
+    /*
      * A COUNT, WHICH IS NOT A MEASUREMENT.
      *
      * Joint Count, Member Count, Segment Count, how many supports a beam
@@ -1965,18 +1993,87 @@ export function featurePropertyMarkup(object) {
             mmOf(Number(geometry.axisLength) || 25).value,
             mmOf(Number(geometry.axisLength) || 25).unit));
     } else if (object.type === "rectangle") {
-        const center = {
-            x: geometry.position.x + geometry.width / 2,
-            y: geometry.position.y - geometry.height / 2
-        };
+        /*
+         * ========================================================
+         * A RECTANGLE IS POSITIONED BY AN ANCHOR CORNER
+         * ========================================================
+         *
+         * The panel used to lead with Centre X / Centre Y. A student laying out a
+         * drawing does not know where the centre of a rectangle is - they know
+         * where its corner goes, because that is the point they click and the
+         * point they dimension to. So the panel states the ANCHOR CORNER.
+         *
+         * THE TOP-LEFT CORNER IS THE ANCHOR, and it is the corner the model
+         * ALREADY stores. `geometry.position` is the top-left of the unrotated
+         * rectangle in world space (see `rectangleCorners` in
+         * feature-geometry.js, which derives the centre as
+         * `position + (width/2, -height/2)`). So Position X / Position Y are read
+         * and written DIRECTLY - no derivation, no rounding, and no change to the
+         * geometry engine.
+         *
+         * THIS IS ALSO WHAT MAKES IT BACKWARD COMPATIBLE. A document saved with
+         * the old panel stores the same `position`, so every existing rectangle
+         * shows its true corner and does not move by so much as a rounding step.
+         * The old `centre.*` keys are still accepted by the setter, so a rectangle
+         * edited through a stale binding cannot be left unpainted either.
+         *
+         * ROTATED RECTANGLES. Width and Height are measured along the rectangle's
+         * OWN axes, and Rotation turns it about this anchor - so the anchor corner
+         * is the one point that does not move when the shape is turned. That is
+         * what makes it a stable reference for a rotated rectangle, and it is why
+         * the centre-based view was ambiguous for one.
+         */
         rows.push(section("GEOMETRY"));
-        rows.push(coordinate("Centre X", "centre.x", center.x, "mm", true));
-        rows.push(coordinate("Centre Y", "centre.y", center.y, "mm", true));
+        rows.push(coordinate("Position X", "position.x", geometry.position.x, "mm", true));
+        rows.push(coordinate("Position Y", "position.y", geometry.position.y, "mm", true));
         rows.push(scalar("Width", "width",
                 mmOf(geometry.width).value, mmOf(geometry.width).unit));
         rows.push(scalar("Height", "height",
                 mmOf(geometry.height).value, mmOf(geometry.height).unit));
         rows.push(scalar("Rotation", "rotation", geometry.rotation || 0, "°"));
+
+        /*
+         * ========================================================
+         * MEASUREMENTS: CALCULATED, NOT DRIVING
+         * ========================================================
+         *
+         * Area and Perimeter are derived from the physical Width and Height, so
+         * they are read-only rows: offering an input would invite the student to
+         * type a number that the next repaint would immediately overwrite.
+         *
+         * THE PHYSICAL DIMENSIONS ARE USED, NOT THE DISPLAYED ONES. `mmOf`
+         * resolves the stored world size to millimetres through the document
+         * scale, so a 500 mm rectangle reads 250000 mm2 whatever the panel happens
+         * to be captioned in. Reading the rounded display value instead would
+         * make the area drift as the unit changed.
+         *
+         * THE UNITS ARE THE SHARED TABLES'. Area is a SQUARED length and goes
+         * through the `area` quantity (mm2 / cm2 / m2 / in2 / ft2); Perimeter is a
+         * length and goes through `length`. Neither is a formatted string built
+         * here, so a unit added to either table appears in this panel too.
+         *
+         * AN INCOMPLETE RECTANGLE FABRICATES NOTHING. `derived` refuses a
+         * non-finite value, so a rectangle whose size is not yet known shows no
+         * measurement rather than a confident zero.
+         */
+        const widthMM = mmOf(geometry.width);
+        const heightMM = mmOf(geometry.height);
+
+        rows.push(section("MEASUREMENTS"));
+        rows.push(
+            derived(
+                "Area",
+                Math.abs(widthMM.value * heightMM.value),
+                squaredUnitOf(widthMM.unit)
+            )
+        );
+        rows.push(
+            derived(
+                "Perimeter",
+                2 * (Math.abs(widthMM.value) + Math.abs(heightMM.value)),
+                widthMM.unit
+            )
+        );
     } else if (object.type === "polyline") {
         rows.push(section("GEOMETRY"));
         (geometry.points || []).forEach((p, index) => {

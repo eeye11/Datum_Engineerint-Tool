@@ -144,15 +144,33 @@ const updateSource = require("fs").readFileSync(
 check(
   "the writer converts a typed coordinate to world units",
   /*
-   * THROUGH THE DISPLAY UNIT FIRST. A coordinate can be READ in mm, cm, m, inches
-   * or feet, so the typed number is converted from the field's own unit into
-   * millimetres before the scale turns it into world units - otherwise typing
-   * "1" in a field showing inches would be read as 1 mm.
+   * THE DISPLAY UNIT IS PASSED THROUGH, NOT PRE-CONVERTED.
+   *
+   * `worldLengthOf(typed, unit)` is the ONE conversion entry point and already
+   * forwards the unit to `dimensions.fromEngineering(state, typed, unit)`. So the
+   * typed number and the field's unit go in together, and the length crosses the
+   * scale EXACTLY ONCE.
+   *
+   * THIS TEST USED TO PIN THE OPPOSITE, AND THE OPPOSITE IS THE BUG. It demanded
+   * a double conversion - `convertValue(value, 'length', displayUnit, 'mm')`
+   * followed by `worldLengthOf(millimetres)` - which converted the typed value to
+   * millimetres and then handed those millimetres to the scale with no unit, so
+   * the scale read them BACK as the display unit and the second pass undid the
+   * first. On a field showing inches, typing 2 produced 2 mm instead of 50.8 mm.
+   *
+   * A test that pins a defect PASSES while the defect is present and fails once it
+   * is repaired, which is what happened here. The behavioural checks further down
+   * drive the real writer and read the geometry back, so they cannot be satisfied
+   * by a plausible-looking call.
    */
-  /isLengthCoordinate[\s\S]{0,600}?convertValue\(\s*value,\s*'length',\s*displayUnit,\s*'mm'\s*\)[\s\S]{0,200}?worldLengthOf\(millimetres\)/.test(
+  /isLengthCoordinate[\s\S]{0,2500}?worldLengthOf\(\s*value,\s*displayUnit\s*\)/.test(
     updateSource,
-  ),
-  "the writer converts the field's unit to mm, then the mm to world units",
+  ) &&
+    !/worldLengthOf\(\s*millimetres\s*\)/.test(updateSource) &&
+    !/convertValue\(\s*value,\s*'length',\s*displayUnit,\s*'mm'\s*\)/.test(
+      updateSource,
+    ),
+  "the writer must pass the display unit straight to worldLengthOf, converting once",
 );
 
 check(
@@ -180,6 +198,97 @@ check(
   "the analysis plot Range is converted as well",
   /Range[\s\S]{0,300}enggDimensions\.toEngineering/.test(staticsSource),
   "the plot range prints raw world units",
+);
+
+/*
+ * ========================================================
+ * AND THE ROUND TRIP IS PROVEN THROUGH THE REAL WRITER
+ * ========================================================
+ *
+ * A source-level assertion can only show that the writer is SHAPED correctly.
+ * These checks drive `updateFeatureProperty` itself, on a calibrated sheet, and
+ * read the geometry back - so a double conversion cannot hide behind a
+ * plausible-looking call. This is the exact defect that was found: entering 2
+ * in a field reading INCHES produced 2 mm instead of 50.8 mm.
+ */
+const { updateFeatureProperty } = loadModule("property-update.js");
+
+const INCH_IN_MM = 25.4;
+
+const point = () => ({
+  id: "p1",
+  type: "point",
+  geometry: { position: { x: 0, y: 0 } },
+});
+
+/* One sheet, one unit, one typed number: the geometry is the only output. */
+const typedInUnit = (unit, typed) => {
+  const object = point();
+
+  if (unit) {
+    updateFeatureProperty(object, "lengthUnit", unit);
+  }
+
+  updateFeatureProperty(object, "position.x", typed);
+
+  /* Back to millimetres through the panel's own reader, to compare like with like. */
+  return object.geometry.position.x * MM_PER_UNIT;
+};
+
+check(
+  "typing 2 in a field reading inches is 50.8 mm on the sheet",
+  Math.abs(typedInUnit("in", 2) - 2 * INCH_IN_MM) < 1e-6,
+  `got ${typedInUnit("in", 2)} mm, expected ${2 * INCH_IN_MM} mm`,
+);
+
+check(
+  "the panel's own unit is applied to the entry as well",
+  Math.abs(typedInUnit("cm", 2) - 20) < 1e-6 &&
+    Math.abs(typedInUnit("m", 2) - 2000) < 1e-6,
+  `cm: ${typedInUnit("cm", 2)} mm, m: ${typedInUnit("m", 2)} mm`,
+);
+
+check(
+  "and with no unit chosen the millimetres go straight through",
+  Math.abs(typedInUnit("", 2) - 2) < 1e-6,
+  `got ${typedInUnit("", 2)} mm, expected 2 mm`,
+);
+
+/*
+ * A UNIT THE LENGTH QUANTITY DOES NOT HAVE IS REFUSED, so a coordinate can never
+ * be left claiming to be read in a force. The write returns false and the stored
+ * unit is untouched.
+ */
+const refused = point();
+const accepted = updateFeatureProperty(refused, "lengthUnit", "kN");
+
+check(
+  "a dimensionally incompatible unit is refused",
+  accepted === false && !refused.lengthUnit,
+  `accepted=${accepted}, stored unit=${refused.lengthUnit}`,
+);
+
+/*
+ * AN ANGLE IS NOT A LENGTH. Typing a rotation must not cross the scale, or a
+ * 45-degree turn would become a 180-degree one on a 4 mm sheet.
+ */
+const angled = {
+  id: "r1",
+  type: "rectangle",
+  geometry: {
+    position: { x: 0, y: 0 },
+    width: 10,
+    height: 10,
+    rotation: 0,
+  },
+};
+
+updateFeatureProperty(angled, "rotation", 45);
+
+check(
+  "rotation is stored in degrees and never converted",
+  angled.geometry.rotation === 45,
+  `rotated to ${angled.geometry.rotation}, expected 45`,
 );
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

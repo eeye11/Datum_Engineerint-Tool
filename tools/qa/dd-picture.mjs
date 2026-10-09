@@ -22,7 +22,12 @@ export default async function run(page) {
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
     return {
-      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+      rect: {
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      },
       fontSize: cs.fontSize,
       lineHeight: cs.lineHeight,
       minWidth: cs.minWidth,

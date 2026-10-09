@@ -164,12 +164,28 @@ export function updateFeatureProperty(object, key, value) {
             ? object.lengthUnit
             : 'mm';
 
-    const millimetres = isLengthCoordinate
-        ? enggQuantities.convertValue(value, 'length', displayUnit, 'mm')
-        : value;
-
+    /*
+     * ========================================================
+     * A TYPED LENGTH CROSSES THE SCALE EXACTLY ONCE
+     * ========================================================
+     *
+     * `worldLengthOf(typed, unit)` forwards straight to
+     * `dimensions.fromEngineering(state, typed, unit)`, which is the ONE
+     * conversion from a typed length to world units and ALREADY understands the
+     * unit it is handed. So the typed number and the field's unit go in together
+     * and nothing else is done to them:
+     *
+     *     typed (in the field's unit) -> fromEngineering -> world units
+     *
+     * CONVERTING TO MILLIMETRES FIRST AND THEN CALLING `worldLengthOf` WOULD
+     * CONVERT TWICE. The millimetre figure would be handed back to the scale with
+     * no unit of its own, so the scale would read those millimetres AS THOUGH THEY
+     * WERE THE DISPLAY UNIT - the second pass undoing the first, and the value
+     * landing at the wrong physical position. On a field showing inches, typing
+     * "2" must be 50.8 mm on the sheet, not 2 mm.
+     */
     const worldValue = isLengthCoordinate
-        ? worldLengthOf(millimetres)
+        ? worldLengthOf(value, displayUnit)
         : value;
 
     /*
@@ -1357,7 +1373,19 @@ export function updateFeatureProperty(object, key, value) {
         const target = g.position || g.point || g;
         const [part, axis] = key.split('.');
         if (part !== 'position') return false;
-        target[axis] = value;
+
+        /*
+         * `worldValue`, NOT the raw typed number.
+         *
+         * Every other coordinate branch writes the converted value; this one
+         * wrote what the student typed straight into the geometry. On a
+         * calibrated sheet that put the point in the wrong place by the scale
+         * factor, and with a display unit chosen it ignored the unit as well -
+         * so typing "2" in a field reading inches stored 2 world units instead
+         * of 2 inches. `worldValue` is the typed number in the field's own unit,
+         * already converted to world units through the document scale.
+         */
+        target[axis] = worldValue;
         return true;
     }
 
@@ -1406,6 +1434,43 @@ export function updateFeatureProperty(object, key, value) {
     }
 
     if (object.type === 'rectangle') {
+        /*
+         * ========================================================
+         * THE ANCHOR CORNER IS THE STORED POSITION
+         * ========================================================
+         *
+         * `geometry.position` IS the top-left corner of the rectangle in world
+         * space - the same point the panel now labels Position X / Position Y. So
+         * this is a direct write: no halving, no re-derivation, and no dependency
+         * on `width` or `height`, which is why resizing cannot move the anchor.
+         *
+         * `fixed('position')` is the engineering constraint check, and the shared
+         * lock check at the top of this function already refuses a `position.x`
+         * write on a LOCKED rectangle. The two are deliberately different gates:
+         * locked means "cannot be moved through any editing operation", fixed
+         * means "this quantity is prescribed within the constraint model".
+         */
+        if (key.startsWith('position.')) {
+            if (fixed('position')) return false;
+
+            const axis = key.split('.')[1];
+
+            if (!g.position) return false;
+
+            g.position[axis] = worldValue;
+
+            return true;
+        }
+
+        /*
+         * THE CENTRE KEYS ARE KEPT SO OLDER BINDINGS STILL WRITE.
+         *
+         * The panel no longer shows a centre, but a document or a binding saved
+         * against the previous panel can still send one. Answering it keeps a
+         * rectangle editable rather than silently refusing an edit - the same
+         * backward-compatibility rule the centre-based geometry representation
+         * already follows everywhere else.
+         */
         if (key.startsWith('centre.')) {
             if (fixed('centre')) return false;
             const axis = key.split('.')[1];

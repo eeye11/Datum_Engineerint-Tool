@@ -46,7 +46,10 @@ export default async function run(page, ui) {
     const engg = state.default;
     engg.setThemeLineColour(theme.defaultLineColour());
     const line = engg.geometryFactories.line({ x: 0, y: 0 }, { x: 10, y: 0 });
-    return { stroke: line.style.stroke, defaultLineColour: theme.defaultLineColour() };
+    return {
+      stroke: line.style.stroke,
+      defaultLineColour: theme.defaultLineColour(),
+    };
   });
 
   /* --- DARK --- */
@@ -59,7 +62,10 @@ export default async function run(page, ui) {
     const engg = state.default;
     engg.setThemeLineColour(theme.defaultLineColour());
     const line = engg.geometryFactories.line({ x: 0, y: 0 }, { x: 10, y: 0 });
-    return { stroke: line.style.stroke, defaultLineColour: theme.defaultLineColour() };
+    return {
+      stroke: line.style.stroke,
+      defaultLineColour: theme.defaultLineColour(),
+    };
   });
 
   /* --- EXISTING GEOMETRY IS NEVER RECOLOURED --- */
@@ -80,7 +86,9 @@ export default async function run(page, ui) {
     themePref.applyThemePreference("dark");
     const strokeAfter = before.style.stroke;
 
-    const onSheet = drawing.drawingState.objects.find((o) => o.id === before.id);
+    const onSheet = drawing.drawingState.objects.find(
+      (o) => o.id === before.id,
+    );
 
     return {
       strokeBefore,
@@ -117,7 +125,8 @@ export default async function run(page, ui) {
       darkAccentIs4DD0C5: dark.accent.toLowerCase() === "#4dd0c5",
       lightDefaultLine: lightLine.stroke.toLowerCase() === "#193335",
       darkDefaultLine: darkLine.stroke.toLowerCase() === "#e8f5f3",
-      accentSeparateFromLine: light.accent.toLowerCase() !== lightLine.stroke.toLowerCase(),
+      accentSeparateFromLine:
+        light.accent.toLowerCase() !== lightLine.stroke.toLowerCase(),
       existingNotRecoloured: preserved.strokeBefore === preserved.strokeAfter,
       sheetObjectNotRecoloured:
         preserved.onSheetStroke === preserved.strokeBefore,

@@ -236,11 +236,11 @@ body.datum-topbar-hidden .drawing-workspace {
     transform: translateY(100%);
     z-index: 61;
     align-items: center;
-    background: #fff;
+    background: var(--datum-surface);
     border: 1px solid var(--cad-border);
     border-top: 0;
     border-radius: 0 0 5px 5px;
-    color: #333;
+    color: var(--datum-ink);
     cursor: pointer;
     display: inline-flex;
     flex: 0 0 auto;
@@ -255,8 +255,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-topbar-hide:hover {
-    background: #f3f3f3;
-    color: #111;
+    background: var(--datum-menu-hover);
+    color: var(--datum-ink);
 }
 
 .drawing-topbar-hide:focus-visible {
@@ -290,11 +290,11 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 .drawing-topbar-show {
     align-items: center;
-    background: #fff;
+    background: var(--datum-surface);
     border: 1px solid var(--cad-border);
     border-top: 0;
     border-radius: 0 0 5px 5px;
-    color: #333;
+    color: var(--datum-ink);
     cursor: pointer;
     display: flex;
     flex: 0 0 auto;
@@ -326,8 +326,8 @@ body.datum-topbar-hidden .drawing-topbar-show {
 }
 
 .drawing-topbar-show:hover {
-    background: #f3f3f3;
-    color: #111;
+    background: var(--datum-menu-hover);
+    color: var(--datum-ink);
 }
 
 .drawing-topbar-show:focus-visible {

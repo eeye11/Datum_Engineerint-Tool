@@ -52,7 +52,8 @@ export default async function run(page) {
       fileStaysValid: readBack.ok === true,
       carriedInFile: readBack.ok && readBack.document[key] === MARK,
       cleared,
-      restoredInEditor: document.getElementById("solutionEditor").value === MARK,
+      restoredInEditor:
+        document.getElementById("solutionEditor").value === MARK,
       restoredInState: sol.getSource() === MARK,
     };
   });
