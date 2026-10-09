@@ -1,20 +1,20 @@
 /*
  * ============================================================
- * THE DATUM INTEGRATION API
+ * THE DAETUM INTEGRATION API
  * ============================================================
  *
  * This is the one supported way for other tools - the OCR pipeline, the
- * autograder, a course platform - to work with Datum. Everything else in
+ * autograder, a course platform - to work with DAETUM. Everything else in
  * src/ is internal and may change without notice; this module is versioned
  * (API_VERSION) and documented in docs/INTEGRATION.md.
  *
- * WHAT DATUM HOLDS
+ * WHAT DAETUM HOLDS
  * ----------------
  * A student's submission has two halves:
  *
  *   - the WRITTEN SOLUTION, a LaTeX source (typically produced by the OCR
  *     tool from the handwritten page and corrected by the student), and
- *   - the DRAWINGS, one per sheet of the Datum document.
+ *   - the DRAWINGS, one per sheet of the DAETUM document.
  *
  * The written solution places a drawing with a reference token,
  * [DRAWING_REFERENCE:<sheetId>]. The token names a sheet, not a picture,
@@ -46,8 +46,27 @@ import { onDatumEvent } from "./events.js";
  */
 export const API_VERSION = 1;
 
+/*
+ * THE WRITTEN SOLUTION'S EDITOR.
+ *
+ * It used to be the `writingCode` textarea in the three-column panel. The
+ * workspace redesign made it `solutionEditor`, and this is the ONE line that
+ * changes for the public API - the callers of `getSolution` and `setSolution`
+ * see exactly the same shape of result as before.
+ */
 function solutionSource() {
-    return document.getElementById("writingCode");
+    return document.getElementById("solutionEditor");
+}
+
+/*
+ * The workspace's own "load this source" path, if the workspace is installed.
+ * Undefined in a page that has the API but not the solution tab, which is why
+ * the call site checks for it.
+ */
+let setSolutionSource = null;
+
+export function attachSolutionSourceLoader(loader) {
+    setSolutionSource = typeof loader === "function" ? loader : null;
 }
 
 /* The whole document, exactly as Save would write it. */
@@ -59,7 +78,7 @@ function getDocument() {
 
 /*
  * Replace the document with a .enggdraw file: the parsed object, or its
- * JSON text. Older file versions are migrated; a file that is not a Datum
+ * JSON text. Older file versions are migrated; a file that is not a DAETUM
  * document is refused and the current document is left as it was.
  */
 function loadDocument(file) {
@@ -135,6 +154,21 @@ function setSolution(latex) {
     }
 
     source.value = String(latex ?? "");
+
+    /*
+     * THE WORKSPACE IS TOLD, SO ITS VIEWS FOLLOW.
+     *
+     * Writing `value` alone would leave the outline, the line numbers and the
+     * saved draft showing the previous source. The workspace's own loader is
+     * called instead of dispatching an `input` event, because `input` is what
+     * means "the STUDENT changed something" - and loading a document through the
+     * API is not the student typing. Raising the student's own event here would
+     * report a change that the API call already reports, which is one too many.
+     */
+    if (typeof setSolutionSource === "function") {
+        setSolutionSource(source.value);
+    }
+
     renderSolution();
 
     return { ok: true };

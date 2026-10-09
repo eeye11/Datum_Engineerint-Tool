@@ -77,7 +77,7 @@ function storage() {
  * Everything stored, oldest first, as the module keeps it.
  *
  * A damaged or unreadable record is reported as an empty list rather than
- * thrown, because a broken recents list must never be the reason Datum will
+ * thrown, because a broken recents list must never be the reason DAETUM will
  * not start.
  */
 function readAll() {
@@ -166,7 +166,7 @@ function writeAll(entries) {
 
 function report(message, error) {
   if (typeof console !== "undefined" && console.warn) {
-    console.warn(`[Datum] ${message}`, error || "");
+    console.warn(`[DAETUM] ${message}`, error || "");
   }
 }
 

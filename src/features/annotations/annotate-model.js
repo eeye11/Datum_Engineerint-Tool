@@ -278,14 +278,25 @@ export function createAnnotate({
   rows = 3,
   columns = 3,
   cells = null,
+  bends = null,
   style = {},
   name
 } = {}) {
   const definition = ANNOTATE_KINDS[kind] || ANNOTATE_KINDS.note;
 
+  /*
+   * THE STORED TEXT STARTS EMPTY, NOT AS A PLACEHOLDER.
+   *
+   * `definition.text` used to be seeded here as the content - "Note",
+   * "Leader", "±0.00" - which put a word on the drawing the student never
+   * chose and made "has the student written anything yet?" unanswerable. What
+   * an empty annotation DISPLAYS is now its placeholder (see displayTextOf),
+   * and what it STORES is the empty string. A caller that supplies real text
+   * still gets it stored.
+   */
   const resolvedText =
     text === null || text === undefined
-      ? definition.text
+      ? ""
       : text;
 
   const geometry = {
@@ -314,6 +325,30 @@ export function createAnnotate({
       x: Number(end.x) || 0,
       y: Number(end.y) || 0
     };
+
+    /*
+     * A LEADER OR CALLOUT MAY CARRY BENDS - the ordered intermediate points
+     * between attachment and endpoint. They are stored on the geometry rather
+     * than derived, so they save, load, undo and copy with the feature like every
+     * other part of it. An arrow carries none: it is a straight mark.
+     */
+    if (
+      (kind === "leader" || kind === "callout") &&
+      Array.isArray(bends) &&
+      bends.length
+    ) {
+      geometry.bends = bends
+        .filter(
+          (bend) =>
+            bend &&
+            Number.isFinite(Number(bend.x)) &&
+            Number.isFinite(Number(bend.y))
+        )
+        .map((bend) => ({
+          x: Number(bend.x),
+          y: Number(bend.y)
+        }));
+    }
   }
 
   if (kind === "symbol") {
@@ -399,6 +434,186 @@ function normaliseCells(cells, rows, columns) {
 }
 
 /*
+ * ========================================================
+ * THE PLACEHOLDER SYSTEM
+ * ========================================================
+ *
+ * A text-bearing annotation created without content is a VALID FEATURE that
+ * says what the student still has to write. The prompt is a PLACEHOLDER: it is
+ * drawn so the empty annotation is visible and legible on the sheet, but it is
+ * NOT the student's content and is never stored as such.
+ *
+ *     content = ""                    the truth
+ *     placeholder = "Enter note"      what is shown until there is content
+ *
+ * NOT the other way round:
+ *
+ *     content = "Enter note"          a word the student never chose,
+ *                                     saved, searched and exported as theirs
+ *
+ * The distinction matters for saving, searching, exporting, editing and for
+ * answering "has the student actually written anything here yet?" - which is a
+ * question `hasContent` answers and "is the text non-empty" would answer wrong,
+ * because a placeholder makes the stored text non-empty while the content is
+ * still empty.
+ *
+ * EVERY PROMPT IS CONTEXTUAL. "Enter note", "Enter label", "Enter datum" -
+ * never a generic "Text"/"Value"/"Input" where a more useful word is possible.
+ * A new text-bearing kind follows the same pattern: "Enter <what the student is
+ * expected to provide>".
+ */
+export const PLACEHOLDERS = {
+  note: "Enter note",
+  label: "Enter label",
+  leader: "Enter text",
+  callout: "Enter callout",
+  symbol: "Enter value",
+  tolerance: "Enter tolerance",
+  table: "Enter text"
+};
+
+/*
+ * The prompt for one annotation, which for a symbol depends on WHAT the
+ * symbol needs: a datum carries an identifier, a value-carrying symbol a
+ * value, and a reference a reference. The kind alone is not always enough.
+ */
+export function placeholderOf(annotation) {
+  if (!annotation) {
+    return PLACEHOLDERS.note;
+  }
+
+  const kind = annotation.annotateKind;
+
+  if (kind === "symbol") {
+    const symbol = SYMBOL_BY_ID[annotation.geometry?.symbolId];
+
+    if (symbol?.placeholder) {
+      return symbol.placeholder;
+    }
+
+    return PLACEHOLDERS.symbol;
+  }
+
+  return PLACEHOLDERS[kind] || "Enter text";
+}
+
+/*
+ * IS THERE ANY CONTENT, as against a placeholder?
+ *
+ * The stored text and the drawn content are two different questions: a
+ * tolerance's content is composed from its values and a symbol's from its
+ * symbol, so neither reads `annotation.text` at all. This asks the same
+ * question `displayTextOf` answers, without drawing anything.
+ */
+export function hasContent(annotation) {
+  if (!annotation) {
+    return false;
+  }
+
+  const kind = annotation.annotateKind;
+  const geometry = annotation.geometry || {};
+
+  if (kind === "tolerance") {
+    const mode =
+      TOLERANCE_MODES[geometry.toleranceMode] ||
+      TOLERANCE_MODES.symmetric;
+
+    const values = geometry.toleranceValues || {};
+
+    /*
+     * A tolerance has content once every field its mode needs is a real
+     * value. A symmetric tolerance with no value, or limits with no upper,
+     * is still waiting for the student.
+     */
+    return mode.fields.every(
+      (field) =>
+        values[field] !== undefined &&
+        values[field] !== null &&
+        String(values[field]).trim() !== ""
+    );
+  }
+
+  if (kind === "symbol") {
+    const symbol = SYMBOL_BY_ID[geometry.symbolId];
+
+    /*
+     * A symbol WITH a symbol id always has something to draw - the glyph
+     * itself - so it is never "empty" in the sense a note can be. Its
+     * placeholder applies only to the extra value it may carry.
+     */
+    return Boolean(symbol && String(annotation.text || "").trim() !== "");
+  }
+
+  if (kind === "arrow") {
+    return true;
+  }
+
+  return String(annotation.text || "").trim() !== "";
+}
+
+/*
+ * WHAT TO DRAW.
+ *
+ * The real content when there is any, and the contextual placeholder when
+ * there is not - so an empty note is still a visible, editable thing on the
+ * sheet rather than nothing at all. The placeholder is returned for DISPLAY
+ * only; nothing here writes it back onto the feature.
+ */
+export function displayTextOf(annotation) {
+  if (hasContent(annotation)) {
+    return textOf(annotation);
+  }
+
+  /*
+   * AN ARROW HAS NO TEXT AT ALL, so it never gets a placeholder - there is
+   * nothing the student was ever going to type.
+   */
+  if (annotation.annotateKind === "arrow") {
+    return "";
+  }
+
+  /*
+   * A TABLE'S CONTENT IS ITS CELLS, so a bare table is not "waiting for text"
+   * in the way a note is - its empty cells are edited individually and the
+   * grid itself is the content. It draws no table-level placeholder.
+   */
+  if (annotation.annotateKind === "table") {
+    return "";
+  }
+
+  /*
+   * A SYMBOL ALWAYS DRAWS ITS GLYPH. Its placeholder belongs to the value it
+   * may carry, which the symbol renderer draws beneath the glyph - so the
+   * glyph is still returned here, not replaced.
+   */
+  if (annotation.annotateKind === "symbol") {
+    return textOf(annotation);
+  }
+
+  return placeholderOf(annotation);
+}
+
+/*
+ * Whether what is being drawn is a PLACEHOLDER rather than the student's
+ * content. The renderer uses this to draw it in a muted style, so the sheet
+ * distinguishes "not written yet" from "written, and it says this".
+ */
+export function isPlaceholder(annotation) {
+  if (!annotation || annotation.annotateKind === "arrow") {
+    return false;
+  }
+
+  if (
+    annotation.annotateKind === "table" ||
+    annotation.annotateKind === "symbol"
+  ) {
+    return false;
+  }
+
+  return !hasContent(annotation);
+}
+
+/*
  * What an annotation SAYS, as drawn.
  *
  * A tolerance and a symbol render from their own data rather than from
@@ -428,6 +643,121 @@ export function textOf(annotation) {
   }
 
   return annotation.text || "";
+}
+
+/*
+ * ========================================================
+ * THE LEADER PATH: ATTACHMENT -> BENDS -> ENDPOINT
+ * ========================================================
+ *
+ * A leader or a callout is a PEN: an attachment point, zero or more bends, and
+ * an endpoint. The bends are the whole reason a leader is useful - they carry
+ * the pen around the drawing so it reaches the text without crossing the thing
+ * it is annotating - and they are ONE ordered list, not a collection of
+ * unrelated segments.
+ *
+ *     attachment  ->  bend 1  ->  bend 2  ->  endpoint
+ *
+ * Each consecutive pair is one straight segment, which is why the list is the
+ * authoritative shape: inserting a bend and moving a bend are both edits to the
+ * SAME list, and the rendered line is always exactly the list joined up. There
+ * is deliberately no per-segment object to keep in step.
+ */
+export function leaderPathPoints(annotation) {
+  const geometry = annotation?.geometry;
+
+  if (!geometry?.start || !geometry?.end) {
+    return [];
+  }
+
+  const bends = Array.isArray(geometry.bends) ? geometry.bends : [];
+
+  return [
+    geometry.start,
+    ...bends.filter(
+      (bend) => bend && Number.isFinite(bend.x) && Number.isFinite(bend.y)
+    ),
+    geometry.end
+  ];
+}
+
+/*
+ * Insert a bend into a leader's path.
+ *
+ * The new bend is placed at the MIDPOINT of the segment it splits, so the
+ * drawn line does not move when the bend is added - the student then drags it
+ * where they want it. Inserting at the segment's midpoint rather than at an
+ * index the caller guesses keeps the path CONTINUOUS by construction: the
+ * segments either side of it still join the same points they did.
+ *
+ * `segmentIndex` names the segment whose midpoint is used: 0 is the first
+ * segment (attachment -> first bend or endpoint).
+ */
+export function addLeaderBend(annotation, segmentIndex = 0) {
+  const path = leaderPathPoints(annotation);
+
+  if (path.length < 2) {
+    return -1;
+  }
+
+  const index = Math.min(
+    Math.max(0, Math.trunc(Number(segmentIndex)) || 0),
+    path.length - 2
+  );
+
+  const from = path[index];
+  const to = path[index + 1];
+
+  const midpoint = {
+    x: (from.x + to.x) / 2,
+    y: (from.y + to.y) / 2
+  };
+
+  const geometry = annotation.geometry;
+
+  if (!Array.isArray(geometry.bends)) {
+    geometry.bends = [];
+  }
+
+  /*
+   * The bend's index in the STORED list is its index in the path minus the
+   * attachment point, which is not stored among the bends.
+   */
+  geometry.bends.splice(index, 0, midpoint);
+
+  return index;
+}
+
+/*
+ * Remove a bend and RECONNECT its neighbours.
+ *
+ * Deleting from the ordered list reconnects the two segments that met at the
+ * bend automatically - the segments either side simply become a straight line
+ * between the points that remain - so the path can never be left broken.
+ */
+export function removeLeaderBend(annotation, index) {
+  const geometry = annotation?.geometry;
+
+  if (!geometry || !Array.isArray(geometry.bends)) {
+    return false;
+  }
+
+  const at = Math.trunc(Number(index));
+
+  if (!Number.isFinite(at) || at < 0 || at >= geometry.bends.length) {
+    return false;
+  }
+
+  geometry.bends.splice(at, 1);
+
+  return true;
+}
+
+/*
+ * Whether this annotation's kind carries a bendable path.
+ */
+export function hasLeaderPath(kind) {
+  return kind === "leader" || kind === "callout";
 }
 
 /*
@@ -476,6 +806,20 @@ export function translateAnnotation(annotation, dx, dy) {
       y: geometry.end.y + dy
     };
   }
+
+  /*
+   * A LEADER'S BENDS MOVE WITH IT.
+   *
+   * Every point of the path is translated by the same delta, so the whole pen
+   * relocates and keeps its shape - which is what dragging a leader means. A
+   * bend left behind would tear the path apart.
+   */
+  if (Array.isArray(geometry.bends)) {
+    geometry.bends = geometry.bends.map((bend) => ({
+      x: bend.x + dx,
+      y: bend.y + dy
+    }));
+  }
 }
 
 /*
@@ -499,6 +843,19 @@ export function boundsOf(annotation) {  if (!annotation || !annotation.geometry)
 
   if (geometry.end) {
     points.push(geometry.end);
+  }
+
+  /*
+   * AND EVERY BEND, so Fit, box selection and the selection box all cover the
+   * pen the student can actually see - a leader swept up by a box that crosses
+   * one of its bends must be selected.
+   */
+  if (Array.isArray(geometry.bends)) {
+    geometry.bends.forEach((bend) => {
+      if (bend && Number.isFinite(bend.x) && Number.isFinite(bend.y)) {
+        points.push(bend);
+      }
+    });
   }
 
   if (annotation.annotateKind === "table") {
@@ -538,7 +895,16 @@ const enggAnnotate = {
   TOLERANCE_MODES,
   createAnnotate,
   textOf,
+  PLACEHOLDERS,
+  placeholderOf,
+  hasContent,
+  displayTextOf,
+  isPlaceholder,
   isGeometricKind,
+  leaderPathPoints,
+  addLeaderBend,
+  removeLeaderBend,
+  hasLeaderPath,
   translateAnnotation,
   boundsOf,
   tableWidthOf,

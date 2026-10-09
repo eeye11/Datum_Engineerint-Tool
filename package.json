@@ -1,7 +1,7 @@
 {
-  "name": "datum",
+  "name": "daetum",
   "version": "1.0.0",
-  "description": "Datum - engineering drawing and statics tool for written solutions (geometry, statics, dimensions, analysis, sheets).",
+  "description": "DAETUM - engineering drawing and statics tool for written solutions (geometry, statics, dimensions, analysis, sheets).",
   "private": true,
   "type": "module",
   "engines": {

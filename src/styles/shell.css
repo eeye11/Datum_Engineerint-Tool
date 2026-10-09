@@ -15,65 +15,99 @@ body {
     margin: 0;
     font-family: var(--app-ui-font);
     background: var(--datum-page);
-    color: #222;
+    color: var(--datum-ink);
 }
 
 /* =========================
-   HEADER
+   BAND 1: APPLICATION AND DOCUMENT
 ========================= */
 
 .header {
-    background: #ffffff;
-    border-bottom: 1px solid #d9dce1;
-    padding: 22px 40px;
+    /*
+     * THE HEADER IS ITS OWN LAYER, one step off the page behind it.
+     *
+     * It carries the identity, so it is the most-established surface in the
+     * application - a raised white in Light Mode, a slate panel in Dark Mode.
+     * Every colour here is a token, so the header follows the theme like
+     * everything else rather than being pinned to the light palette.
+     */
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    color: var(--datum-ink);
+    padding: 0 16px;
 
     /*
-     * THREE COLUMNS: BRAND, DOCUMENT, SPACE.
+     * THREE AREAS, LEFT TO RIGHT: BRAND, DOCUMENT, WORKSPACE TABS.
      *
-     * The middle column is what CENTRES the document name - not a margin, and
-     * not a flex gap. A margin would put the name wherever "Datum" happened to
-     * end, so a longer brand would push it right and a shorter filename would
-     * leave it stranded; and with flex the name's position would depend on
-     * everything beside it.
+     * `minmax(0, 1fr) auto` rather than three equal columns. The document name
+     * gets ALL the slack between the brand and the tabs, which is what lets a
+     * long filename use the room - and its own `min-width: 0` plus an ellipsis
+     * is what stops it ever reaching across into the tabs. Equal columns would
+     * cap the name at a third of the bar whatever was free beside it.
      *
-     * Equal outer columns (`1fr auto 1fr`) mean the middle sits at the true
-     * centre of the header whatever the two sides contain, so neither the brand
-     * nor the filename can move the other.
+     * The brand and the tabs are `auto`, so they take exactly what they need.
      */
     display: grid;
     align-items: center;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 16px;
+    min-height: 40px;
 }
 
-.header h1 {
-    margin: 0;
-    font-size: 28px;
+.header-identity {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
 
     /* The brand owns the left column. */
     justify-self: start;
+    min-width: 0;
 }
 
 /*
- * THE CURRENT DOCUMENT'S NAME.
+ * THE MARK TAKES THE ACCENT, and the wordmark takes the ink.
+ *
+ * Two colours, not one: a mark and a word painted the same green read as a
+ * logo printed in one ink, whereas a green mark beside near-black type reads as
+ * a mark AND a name. In Dark Mode both tokens shift together, so the relation
+ * is preserved without a second rule.
+ */
+.header-mark {
+    color: var(--datum-green);
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.header-wordmark {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--datum-ink);
+}
+
+/*
+ * THE DOCUMENT NAME IS THE SECOND VOICE, not a smaller heading.
+ *
+ * It sits between the brand and the workspace tabs, in secondary type, so the
+ * bar reads brand -> document -> workspace without any of the three competing.
  *
  * SECONDARY TO THE BRAND, deliberately: smaller, not bold, muted. It names the
- * drawing, not the application, and it must not compete with the heading for
- * attention.
- *
- * It is one line with an ellipsis rather than a wrapping block, so a very long
- * filename cannot make the header taller - the full name is available in the
- * tooltip, which is where a truncated name belongs.
+ * drawing, not the application. It is one line with an ellipsis rather than a
+ * wrapping block, so a very long filename cannot make the header taller - the
+ * full name is available in the tooltip, which is where a truncated name
+ * belongs.
  */
 .header-document {
-    align-items: baseline;
+    align-items: center;
     color: var(--datum-muted);
     display: flex;
-    font-size: 14px;
-    gap: 4px;
-    justify-self: center;
+    font-size: 13px;
+    gap: 6px;
+    justify-self: start;
     max-width: 100%;
     min-width: 0;
+    overflow: hidden;
 }
 
 .header-document-name {
@@ -85,17 +119,120 @@ body {
 /*
  * THE UNSAVED MARK.
  *
- * A single asterisk beside the name, in the accent colour so it is noticed
- * without being loud. It is hidden with the `hidden` attribute rather than
- * emptied, so the element is always there and only its visibility changes.
+ * A small filled dot beside the name, in the accent colour so it is noticed
+ * without being loud, and hidden with the `hidden` attribute rather than
+ * emptied - so the element is always there and only its visibility changes.
+ * The `<span>` is empty in the markup; the dot is drawn, so it cannot be
+ * confused with a character in the filename.
  */
 .header-document-dirty {
-    color: var(--datum-green);
-    font-weight: 700;
+    background: var(--datum-green);
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 7px;
+    width: 7px;
 }
 
 .header-document-dirty[hidden] {
     display: none;
+}
+
+/*
+ * THE WORKSPACE TABS: WRITTEN SOLUTION | ENGINEERING DRAWING.
+ *
+ * TWO TABS, ONE NAVIGATION GROUP, at the far right of Band 1. They are not in
+ * the menu bar and they are not the toolset selector - this chooses which half
+ * of the submission is open, which is a different question from which toolset
+ * is armed.
+ *
+ * A SEGMENTED CONTROL, NOT TWO SEPARATE LABELS.
+ *
+ * The group carries a recessed "well" - the input surface, a hairline border
+ * and a small radius - and the active tab is a RAISED segment inside it: the
+ * raised surface, its own subtle edge and shadow, and the accent ink. That is
+ * what makes the pair read as ONE control with two positions rather than two
+ * words with a coloured one, and it is what looks deliberate in both themes
+ * without needing a different treatment in each.
+ *
+ * THE WELL IS THE INPUT TOKEN in Light Mode (white on a white bar still reads
+ * as a recess, because its border and the segment inside it give it an edge)
+ * and the DEEPEST NIGHT surface in Dark Mode, where a well genuinely is darker
+ * than the bar around it. The raised segment is `--datum-raised`, which is white
+ * in Light and the lightest slate in Dark - so "raised" means the same thing in
+ * both.
+ */
+.tabs {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    gap: 2px;
+    justify-self: end;
+    min-width: 0;
+    padding: 3px;
+}
+
+.tab {
+    /*
+     * 12px, NOT 17px.
+     *
+     * These are the two halves of the submission, sitting in a 40px application
+     * bar. A tab is navigation, and navigation in a compact bar is set at the
+     * size of the other labels around it - 17px here read as a page heading and
+     * made the bar itself want to be 60px tall.
+     */
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--datum-muted);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    min-height: 26px;
+    padding: 0 14px;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    white-space: nowrap;
+}
+
+/*
+ * AN INACTIVE SEGMENT LIFTS ITS INK ON HOVER ONLY - it never takes the raised
+ * surface itself, so "hovered" and "selected" cannot be confused.
+ */
+.tab:hover {
+    color: var(--datum-ink);
+}
+
+/*
+ * THE ACTIVE SEGMENT: RAISED SURFACE, ACCENT INK, HAIRLINE EDGE.
+ *
+ * The ink is the accent's deep green rather than a tinted background, because
+ * the SEGMENT already carries the elevation - two surfaces on top of one another
+ * would be a heavy chip inside a chip. In Dark Mode the accent ink is the lifted
+ * green, so the same rule reads correctly on charcoal with no second declaration.
+ *
+ * THE WEIGHT CARRIES THE STATE AS WELL AS THE COLOUR: the active label is 700
+ * against the inactive 600, so which half is open is legible in a monochrome
+ * screenshot or to a student who cannot distinguish the green.
+ */
+.tab.active {
+    background: var(--datum-raised);
+    border-color: var(--datum-border-strong);
+    box-shadow: var(--datum-shadow-soft);
+    color: var(--datum-green-ink);
+    font-weight: 700;
+}
+
+.tab.active:hover {
+    color: var(--datum-green);
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
 }
 
 
@@ -106,47 +243,19 @@ body {
 .page {
     max-width: 1500px;
     margin: 0 auto;
-    padding: 30px 40px;
+    padding: 0 40px 16px;
 }
 
 
-/* =========================
-   TABS
-========================= */
-
-.tabs {
-    display: flex;
-    gap: 5px;
-
-    border-bottom: 1px solid #cfd3d8;
-
-    margin-bottom: 25px;
-}
-
-.tab {
-    padding: 14px 30px;
-
-    border: none;
-    background: transparent;
-
-    font-size: 17px;
-    font-weight: 600;
-
-    color: #666;
-
-    cursor: pointer;
-
-    border-bottom: 3px solid transparent;
-}
-
-.tab:hover {
-    color: #222;
-}
-
-.tab.active {
-    color: var(--datum-green);
-    border-bottom: 3px solid var(--datum-green);
-}
+/*
+ * THE TAB STRIP IS NO LONGER HERE.
+ *
+ * `.tabs` / `.tab` are styled in the BAND 1 section above, because the workspace
+ * tabs are the right-hand third of the application and document bar now. The
+ * rules that used to live here - a full-width strip with its own border and
+ * margin - would have turned the tabs back into a separate row, so they are
+ * gone rather than left to fight the header's layout.
+ */
 
 
 /* =========================
@@ -181,7 +290,7 @@ body {
     font-size: 16px;
     font-weight: 600;
 
-    color: #555;
+    color: var(--datum-muted);
 
     padding-left: 5px;
 }
@@ -206,18 +315,17 @@ body {
 ========================= */
 
 .panel {
-    background: #ffffff;
+    background: var(--datum-raised);
 
-    border: 1px solid #d8dce1;
+    border: 1px solid var(--datum-border);
 
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 
     min-height: 430px;
 
     padding: 15px;
 
-    box-shadow:
-        0 2px 6px rgba(0,0,0,0.05);
+    box-shadow: var(--datum-shadow-soft);
 }
 
 
@@ -234,9 +342,15 @@ body {
     justify-content: center;
     align-items: center;
 
-    background: #fafafa;
+    /*
+     * A SKETCH PAD, NOT A RAISED PANEL - so it sits a shade below the panel it
+     * is inside rather than one step above it. The dashed border is what says
+     * "this is a place to put something".
+     */
+    background: var(--datum-input);
+    border: 2px dashed var(--datum-input-border);
 
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 
     overflow: hidden;
 }
@@ -265,6 +379,21 @@ body {
 
     padding: 18px;
 
+    /*
+     * A CODE EDITOR IS DARK IN BOTH THEMES, DELIBERATELY.
+     *
+     * These are the only hardcoded colours outside `tokens.css`, and they are
+     * hardcoded on purpose: this is where the student writes the LaTeX that
+     * produces the solution, and a monospaced source pane is conventionally
+     * dark whatever the surrounding application does. The two are unlike
+     * anything else in the interface and the contrast between them is
+     * deliberate, not an oversight.
+     *
+     * Both themes keep it identical, so the code reads the same whichever
+     * appearance is chosen - and unlike the interface inputs, it is already
+     * light-on-dark, so it cannot become the "white field on a dark interface"
+     * fault this pass exists to remove.
+     */
     background: #1e1e1e;
 
     color: #e6e6e6;
@@ -291,8 +420,17 @@ body {
     height: 395px;
     padding: 20px;
     overflow: auto;
-    background: #ffffff;
-    border-radius: 6px;
+
+    /*
+     * THE RENDERED SOLUTION IS DOCUMENT CONTENT, so it is a raised sheet in both
+     * themes - `--datum-raised` is white in Light Mode and the lightest dark
+     * surface in Dark Mode. It is deliberately NOT the input colour: this is
+     * where the writing appears, not where it is typed.
+     */
+    background: var(--datum-raised);
+    color: var(--datum-ink);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
 }
 
 #writingOutput mjx-container[display="true"] {
@@ -311,11 +449,11 @@ body {
 
     background: var(--datum-green);
 
-    color: white;
+    color: var(--datum-raised);
 
     border: none;
 
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 
     cursor: pointer;
 
@@ -324,6 +462,11 @@ body {
 
 .update-button:hover {
     background: var(--datum-green-hover);
+}
+
+.update-button:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: 2px;
 }
 
 
@@ -360,11 +503,16 @@ body {
 
 .header {
     flex: 0 0 auto;
-    padding: 10px 20px;
+    padding: 0 20px;
 }
 
+/*
+ * THE WORDMARK IS THE HEADER'S OWN SIZE, set on the element rather than on an
+ * `h1` alone - the bar is 40px tall and the type has to fit inside it without
+ * the layout having to be told twice.
+ */
 .header h1 {
-    font-size: 20px;
+    font-size: 16px;
     line-height: 1.2;
 }
 
@@ -378,9 +526,14 @@ body {
     width: 100%;
 }
 
+/*
+ * THE TABS ARE IN THE HEADER NOW, so this rule only says they never shrink to
+ * make room for a long document name - the NAME is the thing that may truncate,
+ * because a clipped filename is readable in its tooltip and a clipped tab is
+ * not readable at all.
+ */
 .tabs {
     flex: 0 0 auto;
-    margin-bottom: 6px;
 }
 
 .review-content.active {
@@ -396,4 +549,753 @@ body {
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+}
+
+/* =========================================================================
+   THE WRITTEN SOLUTION WORKSPACE
+   =========================================================================
+
+   FOUR REGIONS, ONE DOCUMENT:
+
+     toolbar   the controls that belong to writing a solution
+     left      the structure and files, parsed from the source
+     centre    the source
+     right     the typeset page
+
+   THE LAYOUT IS A GRID WHOSE COLUMN WIDTHS ARE CUSTOM PROPERTIES, so a divider
+   drag writes ONE number and the whole arrangement follows. Nothing is measured
+   in JavaScript and no element is absolutely positioned, which is what keeps the
+   layout correct when the window narrows.
+
+   THE THREE MODES ARE A `data-layout` ATTRIBUTE ON THE ROOT. Split, Write and
+   Read change which columns take space - they do not add or remove the DOM, so
+   switching cannot lose the caret, the scroll position or an unsaved change.
+
+   EVERY COLOUR IS A THEME TOKEN. The one deliberate exception is the PAPER in
+   the preview, which keeps its own light page in both themes: it is the finished
+   document, and a document that turned dark because the tool around it did would
+   not be the sheet the student hands in. That is the same rule the drawing
+   canvas follows.
+   ========================================================================= */
+
+.solution-workspace {
+    /* The dividers' values, written here as the defaults a drag overwrites. */
+    --solution-nav-width: 19%;
+    --solution-preview-width: 42%;
+    --solution-toolbar-height: 38px;
+
+    background: var(--datum-page);
+    border-top: 1px solid var(--datum-border);
+    color: var(--datum-ink);
+    display: grid;
+
+    /*
+     * SIX COLUMNS: nav | divider | editor | divider | preview.
+     *
+     * The two dividers are thin fixed tracks and the other three are the
+     * variable ones, which is what lets a drag change exactly one of them.
+     */
+    grid-template-columns:
+        var(--solution-nav-width)
+        6px
+        minmax(0, 1fr)
+        6px
+        var(--solution-preview-width);
+
+    grid-template-rows: var(--solution-toolbar-height) minmax(0, 1fr);
+
+    /* The workspace owns the height under the header, so the editor scrolls
+       inside it rather than the page scrolling behind it. */
+    height: calc(100vh - 96px);
+    min-height: 360px;
+    overflow: hidden;
+}
+
+/* The toolbar spans every column. */
+.solution-toolbar {
+    grid-column: 1 / -1;
+}
+
+.solution-nav {
+    grid-column: 1;
+}
+
+#solutionSplitterNav {
+    grid-column: 2;
+}
+
+.solution-editor-panel {
+    grid-column: 3;
+}
+
+#solutionSplitterPreview {
+    grid-column: 4;
+}
+
+.solution-preview-panel {
+    grid-column: 5;
+}
+
+/* -------------------------------------------------------------------------
+   THE MODES
+   ------------------------------------------------------------------------- */
+
+/*
+ * WRITE hides the preview and gives its room to the editor; READ does the
+ * opposite. The dividers go with the panel they resize, so a hidden panel
+ * cannot leave a draggable edge behind pointing at nothing.
+ */
+.solution-workspace[data-layout="write"] {
+    grid-template-columns:
+        var(--solution-nav-width)
+        6px
+        minmax(0, 1fr)
+        0px
+        0px;
+}
+
+.solution-workspace[data-layout="write"] .solution-preview-panel,
+.solution-workspace[data-layout="write"] #solutionSplitterPreview {
+    display: none;
+}
+
+.solution-workspace[data-layout="read"] {
+    grid-template-columns:
+        0px
+        0px
+        0px
+        0px
+        minmax(0, 1fr);
+}
+
+.solution-workspace[data-layout="read"] .solution-nav,
+.solution-workspace[data-layout="read"] .solution-editor-panel,
+.solution-workspace[data-layout="read"] #solutionSplitterNav {
+    display: none;
+}
+
+/* The structure panel can also be collapsed on its own, from its header. */
+.solution-workspace.solution-nav-collapsed {
+    --solution-nav-width: 0px !important;
+}
+
+.solution-workspace.solution-nav-collapsed .solution-nav {
+    display: none;
+}
+
+/*
+ * WHILE A DIVIDER IS BEING DRAGGED THE POINTER MUST NOT SELECT TEXT.
+ *
+ * A drag across the workspace would otherwise paint a text selection through the
+ * editor and the preview, which is both ugly and destructive - the next keystroke
+ * would replace whatever got selected.
+ */
+body.solution-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* -------------------------------------------------------------------------
+   THE TOOLBAR
+   ------------------------------------------------------------------------- */
+
+.solution-toolbar {
+    align-items: center;
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    gap: 8px;
+    min-height: var(--solution-toolbar-height);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 10px;
+}
+
+.solution-toolbar-group {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.solution-toolbar-document {
+    gap: 8px;
+}
+
+.solution-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+/* A group boundary. A hairline, not a heavy rule. */
+.solution-divider {
+    background: var(--datum-border);
+    flex: 0 0 auto;
+    height: 18px;
+    width: 1px;
+}
+
+.solution-doc-label {
+    color: var(--datum-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+/*
+ * THE DOCUMENT NAME IS AN INPUT, because it is editable - and it looks like a
+ * name until the pointer is over it, so the row does not read as a form.
+ */
+.solution-doc-name {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 120px;
+    padding: 4px 6px;
+    width: 190px;
+}
+
+.solution-doc-name:hover {
+    border-color: var(--datum-border);
+}
+
+.solution-doc-name:focus {
+    background: var(--datum-input);
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.solution-save-status {
+    color: var(--datum-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.solution-save-status[data-state="dirty"] {
+    color: var(--datum-warning);
+}
+
+/*
+ * A TOOLBAR BUTTON.
+ *
+ * The same box in every group: the input surface, a hairline, the ink. Hover
+ * lifts the border to the accent; the ACTIVE state is the accent tint, used by
+ * the layout modes to say which of the three is showing.
+ */
+.solution-tool {
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: var(--datum-font);
+    font-size: 11.5px;
+    line-height: 1;
+    padding: 6px 9px;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    white-space: nowrap;
+}
+
+.solution-tool:hover {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.solution-tool:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.solution-tool.active {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+    font-weight: 600;
+}
+
+.solution-tool-primary {
+    background: var(--datum-green);
+    border-color: var(--datum-green);
+    color: var(--datum-surface);
+    font-weight: 600;
+}
+
+.solution-tool-primary:hover {
+    background: var(--datum-green-hover);
+    border-color: var(--datum-green-hover);
+    color: var(--datum-surface);
+}
+
+.solution-tool-icon {
+    font-size: 14px;
+    padding: 5px 9px;
+}
+
+.solution-zoom-value {
+    color: var(--datum-muted);
+    font-family: var(--datum-font-mono);
+    font-size: 11px;
+    min-width: 38px;
+    text-align: center;
+}
+
+/* -------------------------------------------------------------------------
+   A PANEL HEADER, SHARED BY ALL THREE REGIONS
+   ------------------------------------------------------------------------- */
+
+.solution-panel-head {
+    align-items: center;
+    background: var(--datum-panel);
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 28px;
+    padding: 0 10px;
+}
+
+.solution-panel-title {
+    color: var(--datum-muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.solution-panel-toggle,
+.solution-panel-hint {
+    background: transparent;
+    border: 0;
+    color: var(--datum-muted);
+    cursor: pointer;
+    font-family: var(--datum-font);
+    font-size: 10.5px;
+    padding: 2px 6px;
+}
+
+.solution-panel-toggle:hover {
+    color: var(--datum-green-ink);
+}
+
+.solution-editor-hint {
+    color: var(--datum-subtle);
+    font-size: 10.5px;
+}
+
+/* -------------------------------------------------------------------------
+   LEFT: THE STRUCTURE PANEL
+   ------------------------------------------------------------------------- */
+
+.solution-nav,
+.solution-editor-panel,
+.solution-preview-panel {
+    background: var(--datum-surface);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.solution-nav {
+    border-right: 1px solid var(--datum-border);
+}
+
+.solution-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 0 14px;
+}
+
+.solution-tree {
+    display: flex;
+    flex-direction: column;
+}
+
+.solution-tree-row {
+    align-items: baseline;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    color: var(--datum-ink);
+    cursor: pointer;
+    display: flex;
+    font-family: var(--datum-font);
+    font-size: 12px;
+    gap: 7px;
+    padding: 4px 8px;
+    text-align: left;
+    width: 100%;
+}
+
+.solution-tree-row:hover {
+    background: var(--datum-menu-hover);
+}
+
+.solution-tree-row:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
+}
+
+/*
+ * THE NUMBER COLUMN IS FIXED, so every title starts at the same x and the tree
+ * reads as a contents list rather than as ragged text.
+ */
+.solution-tree-number {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 10.5px;
+    min-width: 26px;
+}
+
+.solution-tree-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.solution-tree-heading .solution-tree-label {
+    font-weight: 600;
+}
+
+.solution-tree-figure .solution-tree-label,
+.solution-tree-equation .solution-tree-label,
+.solution-tree-file .solution-tree-label {
+    color: var(--datum-muted);
+}
+
+.solution-tree-group,
+.solution-section-head {
+    color: var(--datum-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-top: 10px;
+    padding: 0 10px 3px;
+    text-transform: uppercase;
+}
+
+.solution-section-head {
+    border-top: 1px solid var(--datum-border);
+    margin-top: 14px;
+    padding-top: 10px;
+}
+
+.solution-tree-empty {
+    color: var(--datum-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 0;
+    padding: 6px 10px;
+}
+
+/* -------------------------------------------------------------------------
+   THE DIVIDERS
+   ------------------------------------------------------------------------- */
+
+.solution-splitter {
+    background: var(--datum-border);
+    cursor: col-resize;
+    position: relative;
+}
+
+/*
+ * THE HIT AREA IS WIDER THAN THE LINE. A 6px track is easy to see and hard to
+ * grab, so the visible line stays 1px and the grab area is the whole track -
+ * which is what makes a divider feel like a divider rather than a target.
+ */
+.solution-splitter::before {
+    background: transparent;
+    content: "";
+    inset: 0 -3px;
+    position: absolute;
+}
+
+.solution-splitter:hover,
+.solution-splitter.dragging,
+.solution-splitter:focus-visible {
+    background: var(--datum-green);
+}
+
+.solution-splitter:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/* -------------------------------------------------------------------------
+   CENTRE: THE EDITOR
+   ------------------------------------------------------------------------- */
+
+.solution-editor-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+/*
+ * THE GUTTER AND THE EDITOR SHARE ONE LINE BOX.
+ *
+ * Both are monospaced at the same size and line-height, so a number and the line
+ * it belongs to sit on the same baseline. That sameness is the whole trick -
+ * change one and the numbers drift off their lines.
+ */
+.solution-gutter {
+    background: var(--datum-panel);
+    border-right: 1px solid var(--datum-border);
+    color: var(--datum-subtle);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    margin: 0;
+    min-width: 44px;
+    overflow: hidden;
+    padding: 10px 8px 10px 10px;
+    text-align: right;
+    user-select: none;
+}
+
+.solution-gutter-line {
+    display: block;
+    height: 20px;
+}
+
+.solution-editor {
+    background: var(--datum-surface);
+    border: 0;
+    color: var(--datum-ink);
+    flex: 1 1 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    line-height: 20px;
+    min-width: 0;
+    outline: none;
+    overflow: auto;
+    padding: 10px 14px;
+    resize: none;
+    tab-size: 2;
+    white-space: pre;
+}
+
+.solution-editor::placeholder {
+    color: var(--datum-placeholder);
+}
+
+.solution-editor:focus-visible {
+    box-shadow: inset 2px 0 0 var(--datum-green);
+}
+
+/* -------------------------------------------------------------------------
+   RIGHT: THE TYPESET DOCUMENT
+   ------------------------------------------------------------------------- */
+
+.solution-preview-panel {
+    border-left: 1px solid var(--datum-border);
+}
+
+.solution-preview-scroll {
+    background: var(--datum-panel);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+    text-align: center;
+}
+
+/*
+ * THE STAGE CARRIES THE ZOOM, and it is `transform` rather than a font-size -
+ * so the maths, the margins and the figure widths all scale together, exactly
+ * as they would on a photocopier. `transform-origin: top center` keeps the
+ * scaled page centred rather than drifting to one side.
+ */
+.solution-preview-stage {
+    display: inline-block;
+    text-align: left;
+    transform-origin: top center;
+    transition: transform 120ms ease;
+}
+
+/*
+ * THE PAPER.
+ *
+ * A page, not a panel: its own white sheet, its own margin, its own type. It is
+ * light in BOTH themes on purpose - it is the finished document, and it is what
+ * the PDF export and a print of the solution will look like. The tokens around
+ * it still follow the theme, so a dark DAETUM shows a dark workspace with a
+ * sheet of paper in it, which is what a word processor does and what a reader
+ * expects.
+ */
+.solution-paper {
+    /*
+     * THE PAPER USES ITS OWN SHEET TOKENS, NOT THE INTERFACE ONES.
+     *
+     * `--datum-paper` and `--datum-paper-ink` are defined in every theme block
+     * as a WHITE page with DARK type, so the finished document looks the same in
+     * Light and Dark Mode - which is what a document editor must do, since the
+     * page is what will be exported and printed. They are separate from the
+     * canvas tokens on purpose: `--datum-canvas-ink` is the default DRAWING LINE
+     * colour and changes with the theme, so reusing it here would have put
+     * near-white type on a white page in Dark Mode.
+     */
+    background: var(--datum-paper);
+    border: 1px solid var(--datum-border);
+    box-shadow: var(--datum-shadow-soft);
+    color: var(--datum-paper-ink);
+    font-family: "Segoe UI", system-ui, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 0 auto;
+    max-width: 100%;
+    min-height: 400px;
+    padding: 34px 40px;
+    text-align: left;
+    width: 640px;
+}
+
+.solution-paper figure {
+    margin: 16px 0;
+    text-align: center;
+}
+
+.solution-paper figcaption {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    margin-top: 6px;
+}
+
+.solution-paper table {
+    border-collapse: collapse;
+    margin: 12px 0;
+}
+
+.solution-paper th,
+.solution-paper td {
+    border: 1px solid var(--datum-border);
+    padding: 4px 9px;
+}
+
+/* -------------------------------------------------------------------------
+   THE COMPILE STATE
+   ------------------------------------------------------------------------- */
+
+/*
+ * THE STATE IS ALWAYS VISIBLE, and it never pretends.
+ *
+ *   working  a compile is running
+ *   stale    the source has moved on
+ *   error    the compile failed - and it says so rather than showing a blank page
+ */
+.solution-compile-state {
+    font-size: 10.5px;
+    white-space: nowrap;
+}
+
+.solution-compile-state[data-state="working"],
+.solution-compile-state[data-state="stale"] {
+    color: var(--datum-muted);
+}
+
+.solution-compile-state[data-state="error"] {
+    color: var(--datum-error);
+    font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   THE GREEK MENU
+   ------------------------------------------------------------------------- */
+
+/*
+ * A small anchored popup, like the colour picker: the same raised surface, the
+ * same border, the same shadow as every other floating surface in DAETUM, so it
+ * follows the theme without a rule naming a theme.
+ */
+.solution-greek-menu {
+    background: var(--datum-menu);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--datum-shadow);
+    display: grid;
+    gap: 2px;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 6px;
+    position: fixed;
+    z-index: var(--z-popover);
+}
+
+.solution-greek-item {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    padding: 5px 9px;
+    text-align: center;
+}
+
+.solution-greek-item:hover {
+    background: var(--datum-green-tint);
+    color: var(--datum-green-ink);
+}
+
+.solution-greek-item:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/* -------------------------------------------------------------------------
+   NARROW WINDOWS
+   -------------------------------------------------------------------------
+
+   Below this the three columns cannot all be usable at once, so the layout
+   BECOMES two of them - the preview goes, and the editor keeps the room. It is
+   not a scaled-down three-column layout, because three columns squeezed into a
+   laptop's width is three unusable columns.
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+    .solution-workspace,
+    .solution-workspace[data-layout="split"] {
+        grid-template-columns:
+            var(--solution-nav-width)
+            6px
+            minmax(0, 1fr)
+            0px
+            0px;
+    }
+
+    .solution-workspace .solution-preview-panel,
+    .solution-workspace #solutionSplitterPreview {
+        display: none;
+    }
+
+    /* Read mode still shows the preview on its own, which is the whole point. */
+    .solution-workspace[data-layout="read"] .solution-preview-panel {
+        display: flex;
+    }
+}
+
+@media (max-width: 720px) {
+    .solution-workspace,
+    .solution-workspace[data-layout="split"] {
+        grid-template-columns: 0px 0px minmax(0, 1fr) 0px 0px;
+    }
+
+    .solution-workspace .solution-nav,
+    .solution-workspace #solutionSplitterNav {
+        display: none;
+    }
 }

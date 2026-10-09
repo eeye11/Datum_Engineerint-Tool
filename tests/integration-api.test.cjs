@@ -92,7 +92,11 @@ check(
   JSON.stringify(solution.references),
 );
 
-const code = document.getElementById("writingCode");
+/*
+ * THE EDITOR IS `solutionEditor` NOW. The written solution became a workspace
+ * with its own editor element; the API and the event it raises are unchanged.
+ */
+const code = document.getElementById("solutionEditor");
 code.value += " Edited.";
 code.dispatchEvent(new window.Event("input"));
 check("a student's edit raises solutionchange", solutionChanges === 1, `raised ${solutionChanges}`);
@@ -103,7 +107,7 @@ try {
 } catch (caught) {
   threw = caught;
 }
-check("an unknown event is an error, not silence", threw && /Unknown Datum event/.test(threw.message));
+check("an unknown event is an error, not silence", threw && /Unknown DAETUM event/.test(threw.message));
 
 console.log("\n  embedding is opt-in\n");
 

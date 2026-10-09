@@ -3,6 +3,7 @@
  */
 
 import enggDrawingState from "../core/model/drawing-state.js";
+import { isDerivedFeature } from "../core/model/feature-types.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { objectsByIds } from "./clipboard-commands.js";
 import { drawingCanvas } from "./dom.js";
@@ -614,14 +615,29 @@ function commitMove(
 
     objectsByIds(
         editorState.modifySession.ids
-    ).forEach(
-        object =>
-            translateObject(
-                object,
-                deltaX,
-                deltaY
-            )
-    );
+    )
+        /*
+         * A DERIVED CHILD IS NOT MOVED BY THE MOVE TOOL EITHER.
+         *
+         * The Move tool asks nothing about what a feature IS - it translates
+         * everything in the selection - so a Resultant caught in the selection
+         * would be nudged like a drawn line. Its place comes from its source
+         * force, so the general Move system must not assume that everything
+         * selectable is movable; the feature's own capability decides it. A
+         * feature the student wants moved is the FORCE, not its reading.
+         */
+        .filter(
+            object =>
+                !isDerivedFeature(object)
+        )
+        .forEach(
+            object =>
+                translateObject(
+                    object,
+                    deltaX,
+                    deltaY
+                )
+        );
 
     enggDrawingState.commitDrawingChange(
         drawingState,

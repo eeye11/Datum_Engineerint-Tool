@@ -498,6 +498,19 @@ function openDialog(options) {
       button.className = choice.primary
         ? "engg-dialog-button engg-dialog-button-primary"
         : "engg-dialog-button";
+
+      /*
+       * A DESTRUCTIVE CHOICE IS MARKED, NOT COLOURED THROUGH THE MENU.
+       *
+       * "Move to Trash" is the one answer here that cannot be undone by
+       * pressing Back, so its button carries a restrained warning treatment -
+       * a class the stylesheet styles from the theme's own warning tokens, so
+       * it is legible in both themes and is NOT a permanently red control.
+       */
+      if (choice.destructive) {
+        button.classList.add("engg-dialog-button-destructive");
+      }
+
       button.textContent = choice.label || choice.id;
       button.dataset.choice = choice.id;
       button.addEventListener("click", () =>
@@ -533,7 +546,19 @@ function openDialog(options) {
       }
     });
   } else {
-    actions.appendChild(cancelButton);
+    /*
+     * A DIALOG MAY HAVE NO CANCEL.
+     *
+     * An informational dialog - Document Details - has nothing to cancel: the
+     * only thing to do is close it. `cancel: null` is how a caller says so, and
+     * the button is omitted rather than shown with a label that lies about what
+     * pressing it does. Escape and the backdrop still close it, because
+     * `cancel()` is unchanged.
+     */
+    if (options.cancel !== null) {
+      actions.appendChild(cancelButton);
+    }
+
     actions.appendChild(confirmButton);
   }
 

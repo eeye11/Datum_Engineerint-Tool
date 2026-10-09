@@ -6,7 +6,7 @@ import { trussJoints } from "../core/geometry/feature-handles.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggAnalysisDependencies from "../features/analysis/analysis-dependencies.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
-import { analysisSourceBody, selectedStaticsFeatures } from "./analysis-tools.js";
+import { analysisSourceBody, diagramPrerequisiteMessage } from "./analysis-tools.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { COORDINATE_SYSTEM_LENGTH, COORDINATE_SYSTEM_TYPE, staticsForceLineWidth } from "./constants.js";
 import { arcThroughThreePoints, distance, rectangleGeometry, resolveCentrepointArc } from "./construction-geometry.js";
@@ -364,6 +364,27 @@ export function beginOrCompleteGeometry(
                 resolution.snapCandidate
             );
 
+        /*
+         * ONLY WHAT WAS ACTUALLY CLICKED.
+         *
+         * There used to be a second call here -
+         * `analysisSourceBody(selectedStaticsFeatures())` - as a fallback when
+         * the click resolved to nothing. That helper returns EVERY Statics
+         * feature when the selection is empty, so a click on empty space
+         * silently adopted whichever member happened to be on the sheet: the
+         * diagram was then armed against a beam the student had not chosen, and
+         * only the NEXT click committed it.
+         *
+         * That is what made Plot and Sketch feel like they needed repeated
+         * clicks: the first click "did nothing" (it had quietly picked a body),
+         * and the second appeared to be the one that worked. It is also the
+         * behaviour the diagram rules forbid - a diagram must never attach to a
+         * member nobody picked.
+         *
+         * So the body comes from the click alone. A click that names nothing
+         * usable says so and leaves the tool waiting for one, which is the
+         * honest outcome and keeps the student in control.
+         */
         const body =
             analysisSourceBody(
                 snappedId
@@ -375,14 +396,17 @@ export function beginOrCompleteGeometry(
                           )
                       ].filter(Boolean)
                     : [objectAtPoint(point)]
-            ) ||
-            analysisSourceBody(
-                selectedStaticsFeatures()
             );
 
         if (!body) {
+            /*
+             * THE CLICK NAMED SOMETHING THAT IS NOT A MEMBER - or nothing at
+             * all. The wording comes from the ONE prerequisite helper, so the
+             * message the tool shows on arming and the message it shows when a
+             * click lands on the wrong thing cannot disagree.
+             */
             setToolMessage(
-                "Click the Beam, Truss or member the diagram belongs to"
+                diagramPrerequisiteMessage(null, false)
             );
 
             renderCurrentDrawing();
@@ -395,7 +419,8 @@ export function beginOrCompleteGeometry(
 
         if (!span) {
             setToolMessage(
-                "That feature has no span to measure a diagram against"
+                "The selected feature is not a beam. Select the Beam, Truss, Cable or " +
+                    "Shaft this diagram belongs to"
             );
 
             return;

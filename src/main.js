@@ -1,5 +1,5 @@
 /*
- * Datum - standalone application entry point.
+ * DAETUM - standalone application entry point.
  *
  * index.html loads this one module; everything else is reached through
  * imports. Most modules only define things, but a few wire themselves to
@@ -53,6 +53,56 @@ import { installAutomationHooks } from "./app/automation-hooks.js";
 import enggErrorLog from "./app/error-log.js";
 import { createDatumApi } from "./api/datum-api.js";
 import { installEmbedBridge } from "./api/embed-bridge.js";
+import { installMenuBar } from "./ui/menubar/menu-bar.js";
+import { MENUS } from "./editor/menu-commands.js";
+import { installSavedTheme } from "./editor/theme.js";
+import { installThemePreference } from "./editor/theme-preference.js";
+import {
+  installCommandSearch,
+  installCommandSearchShortcut,
+} from "./editor/command-search.js";
+
+/*
+ * THE SAVED THEME, BEFORE ANYTHING IS DRAWN.
+ *
+ * Applied first so the very first frame is already in the right theme. Setting
+ * the attribute rather than painting a colour is what makes it cheap enough to
+ * do here: the palette lives in CSS, so this is one attribute write.
+ *
+ * `installThemePreference` is the same act PLUS the model's default drawing line
+ * colour, which follows the theme - so the first feature drawn is already the
+ * right colour. The attribute is set whether or not the editor state exists yet.
+ */
+installSavedTheme();
+installThemePreference();
+
+/*
+ * THE MAIN MENU BAR.
+ *
+ * Mounted into the placeholder the workspace markup leaves for it, from the six
+ * menu definitions. Every command it offers already existed - the bar is a new
+ * door onto them, not a second implementation - so this is the whole of the
+ * wiring: build the bar, and the commands are reachable.
+ *
+ * THE DEFINITIONS ARE PASSED AS FUNCTIONS, not as the objects they return. Each
+ * menu's items move with the state - "Undo" greys out, "Hide Grid" becomes
+ * "Show Grid" - so the bar evaluates them when a menu is opened rather than
+ * once at start-up. Passing `MENUS.map((menu) => menu())` here would freeze
+ * every label and every disabled state at whatever the application looked like
+ * on load.
+ */
+installMenuBar(document.getElementById("datumMenuBar"), MENUS);
+
+/*
+ * THE COMMAND SEARCH, at the start of the quick-access toolbar.
+ *
+ * It reads the menu tree for its catalogue, so a command added to a menu is
+ * findable the moment it is written.
+ */
+const commandSearchField = document.getElementById("drawingCommandSearch");
+
+installCommandSearch(commandSearchField);
+installCommandSearchShortcut(commandSearchField);
 
 /*
  * Record failures from the places the application cannot catch: an error thrown
@@ -65,7 +115,7 @@ installAutomationHooks();
 
 /*
  * The integration API (docs/INTEGRATION.md): window.datum for scripts in
- * this page, and the postMessage bridge for a page that embeds this one
+ * this page, and the postMessage bridge for a page that embeds DAETUM
  * (active only when the embedding origin is named in the URL).
  */
 const datum = createDatumApi();

@@ -6,6 +6,7 @@ import enggDrawingState from "../core/model/drawing-state.js";
 import enggErrorLog from "../app/error-log.js";
 import enggDrawingExport from "../file/document-export.js";
 import enggDocumentFile from "../file/document-file.js";
+import enggDocumentManagement from "../file/document-management.js";
 import enggRecovery from "../file/document-recovery.js";
 import enggFileSave from "../file/file-save.js";
 import enggRecentFiles from "../file/recent-files.js";
@@ -14,7 +15,25 @@ import enggDrawingReference from "../references/drawing-reference.js";
 import enggSheets from "../sheets/sheets.js";
 import enggOpenPopup from "../ui/open-popup.js";
 import enggUi from "../ui/ui.js";
+import enggSolutionState from "../solution/solution-state.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
+
+/*
+ * The workspace's own "load this source" function, registered by the workspace
+ * when it installs.
+ *
+ * IT IS A REGISTRATION, NOT AN IMPORT, and that is deliberate. The workspace
+ * already reaches this module (it renders through `written-references`, and the
+ * preview needs the sheet facade), so importing it back would close a cycle that
+ * the module-graph test exists to prevent. A registration has no such edge: the
+ * workspace is optional - a page can have the API and the drawings without the
+ * solution tab - and this stays null there, which the call site checks.
+ */
+let loadSolutionSource = null;
+
+export function attachSolutionLoader(loader) {
+    loadSolutionSource = typeof loader === "function" ? loader : null;
+}
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
 import { activeSheet, loadSheetIntoEditor, notifyReferences, refreshSheetTabs, sheetById, syncActiveSheet, syncWorkspaceSettingToggles } from "./sheet-controller.js";
@@ -334,7 +353,7 @@ function displayNameFor(fileName) {
  */
 function refreshDocumentTitle() {
     const shown = displayNameFor(documentFileName);
-    document.title = `${shown} - Datum`;
+    document.title = `${shown} - DAETUM`;
 
     const base = document.getElementById("headerDocumentBaseName");
     const host = document.getElementById("headerDocumentName");
@@ -389,7 +408,22 @@ export function serializeDocumentBody() {
         sheets: enggSheets.serializeCollection(
             editorState.sheetCollection
         ).sheets,
-        activeSheetId: editorState.sheetCollection.activeSheetId
+        activeSheetId: editorState.sheetCollection.activeSheetId,
+
+        /*
+         * THE WRITTEN SOLUTION TRAVELS WITH THE DRAWINGS.
+         *
+         * A submission is BOTH halves - the diagrams and the write-up - so the
+         * write-up's source is stored in the same file as the sheets that explain
+         * it. It is an ADDITIVE key: the format module spreads the body through
+         * unchanged, so a file carrying it is still a valid `.enggdraw`, and one
+         * saved before this existed simply reads back an empty solution.
+         *
+         * The DRAFT in localStorage is a safety copy of unsaved typing; THIS is
+         * the document - the version that belongs in the file the student keeps.
+         */
+        [enggSolutionState.SOLUTION_DOCUMENT_KEY]:
+            enggSolutionState.getSource()
     };
 }
 
@@ -402,6 +436,61 @@ export function serializeDocumentBody() {
  * route is used, which always works and is what most browsers will
  * do.
  */
+/*
+ * HAND A BLOB TO THE BROWSER AS A DOWNLOAD.
+ *
+ * The one place a file leaves the application. Every format goes through it, so
+ * the anchor is created, clicked and removed in exactly one way, and an object
+ * URL is always revoked - a URL left alive holds its whole blob in memory for
+ * the lifetime of the page.
+ */
+function downloadBlob(blob, fileName) {
+    const url =
+        URL.createObjectURL(blob);
+
+    const link =
+        document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    return fileName;
+}
+
+/*
+ * The document's name WITHOUT a known extension, so a download can add whichever
+ * one its format wants without ever doubling it ("Beam.pdf.enggdraw").
+ */
+function baseDocumentName() {
+    const current = String(documentFileName || "drawing");
+
+    const suffix = `.${enggDocumentFile.EXTENSION}`;
+
+    return current.toLowerCase().endsWith(suffix.toLowerCase())
+        ? current.slice(0, -suffix.length)
+        : current;
+}
+
+/*
+ * A filename for one of the export formats, built from the document's own name.
+ *
+ * `withExtension` is the SERIALIZER's own naming rule, reused rather than
+ * reimplemented, so a downloaded name is formed the same way a saved one is.
+ */
+function exportFileName(extension) {
+    const base = baseDocumentName();
+
+    return base.toLowerCase().endsWith(`.${extension.toLowerCase()}`)
+        ? base
+        : `${base}.${extension}`;
+}
+
 function downloadDocumentFile(name) {
     const fileName =
         enggDocumentFile.withExtension(
@@ -419,22 +508,200 @@ function downloadDocumentFile(name) {
             { type: enggDocumentFile.MEDIA_TYPE }
         );
 
-    const url =
-        URL.createObjectURL(blob);
-
-    const link =
-        document.createElement("a");
-
-    link.href = url;
-    link.download = fileName;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, fileName);
 
     return fileName;
+}
+
+/*
+ * ========================================================
+ * DOWNLOAD: THE FOUR EXPORT FORMATS
+ * ========================================================
+ *
+ * The File menu's Download submenu offers PDF, JPG, PNG and the native
+ * `.enggdraw`. Each one is a REAL export of the document as it stands right now
+ * - including unsaved changes - and none of them is a screenshot of the
+ * application:
+ *
+ *   enggdraw  the editable document, through the same serializer Save uses
+ *   png/jpg   the active sheet, through `renderSheetImageBlob` - the same
+ *             image producer Save As already uses
+ *   pdf       a print-ready page of the fitted drawing, handed to the
+ *             browser's own PDF writer
+ *
+ * THE PDF ROUTE IS PRINT-TO-PDF, AND THAT IS A REAL PDF.
+ *
+ * This application bundles no PDF library and runs no server-side typesetter,
+ * and adding one just to populate a menu item would rebuild the export system
+ * for a format every browser already writes. So the drawing is composed into a
+ * print-ready SVG page - VECTOR, not a raster grab - and the browser's own
+ * Save-as-PDF is invoked on it, through the very mechanism the Print command
+ * uses. The result is a genuine, scalable PDF of the drawing; it is not a
+ * picture of the editor.
+ */
+
+/* The extension each format downloads with, and its media type. */
+const DOWNLOAD_FORMATS = {
+    enggdraw: {
+        extension: enggDocumentFile.EXTENSION,
+        type: enggDocumentFile.MEDIA_TYPE
+    },
+    pdf: { extension: "pdf", type: "application/pdf" },
+    jpg: { extension: "jpg", type: "image/jpeg" },
+    png: { extension: "png", type: "image/png" }
+};
+
+/*
+ * Compose the active sheet into a print-ready page, then hand it to the browser's
+ * PDF writer. Returns the SVG it composed, or null when there was nothing to
+ * draw - so the caller can say so rather than opening an empty print dialog.
+ *
+ * It is deliberately the SAME composition Print uses, down to the shared fit
+ * engine (`fitBoundsIntoViewport`) and the shared clean renderer, so a PDF and a
+ * print cannot frame the same drawing differently.
+ *
+ * Save As hands this to `file-save` as its `exportPdf` route, and the PDF
+ * download calls it too, so there is one composition rather than two.
+ */
+function exportPdfPage() {
+    const svg = composePrintablePage();
+
+    if (!svg) {
+        return null;
+    }
+
+    runPrintPass(svg);
+
+    return exportFileName("pdf");
+}
+
+function composePrintablePage() {
+    const fittableObjects =
+        drawingState.objects.filter(isFittableObject);
+
+    if (!fittableObjects.length) {
+        return null;
+    }
+
+    const bounds = renderableBoundsOf(fittableObjects);
+
+    const camera = enggDrawingExport.fitBoundsIntoViewport(
+        bounds,
+        enggDrawingExport.PRINT_PAGE_PX
+    );
+
+    if (!camera) {
+        return null;
+    }
+
+    const padded = enggDrawingExport.paddedBounds(
+        [
+            { x: bounds.minX, y: bounds.minY },
+            { x: bounds.maxX, y: bounds.maxY }
+        ],
+        enggDrawingExport.PRINT_PAGE_PX.width,
+        enggDrawingExport.PRINT_PAGE_PX.height
+    );
+
+    if (!padded) {
+        return null;
+    }
+
+    return enggDrawingExport.renderClean(drawingState, padded);
+}
+
+/*
+ * Download the document in one of the four formats.
+ *
+ * Every branch is honest about failure: when there is nothing on the sheet, or
+ * a render fails, the student is told so and the document is left untouched. No
+ * branch writes a file it cannot vouch for.
+ */
+export async function downloadDrawing(format) {
+    const chosen = DOWNLOAD_FORMATS[format];
+
+    if (!chosen) {
+        setToolMessage(`There is no ${format} export`);
+
+        return null;
+    }
+
+    /*
+     * THE NATIVE FORMAT IS THE DOCUMENT ITSELF, and it goes through the very
+     * serializer Save uses - so a downloaded `.enggdraw` reopens with all of its
+     * geometry, annotations, dimensions, ordering and sheet settings intact. It
+     * is not an image of the drawing.
+     */
+    if (format === "enggdraw") {
+        try {
+            const name = downloadDocumentFile();
+
+            setToolMessage(`Downloaded ${name}`);
+
+            return name;
+        } catch (error) {
+            enggErrorLog.reportError("download enggdraw", error, {});
+
+            setToolMessage("The document could not be downloaded");
+
+            return null;
+        }
+    }
+
+    /*
+     * PDF: composed here, printed by the browser. The page is added to the
+     * document for the print pass only, exactly as Print does, so the user stays
+     * in the editor they were working in.
+     */
+    if (format === "pdf") {
+        const name = exportPdfPage();
+
+        if (!name) {
+            setToolMessage(
+                drawingState.objects.length
+                    ? "Every feature on this sheet is hidden, so there is nothing to export"
+                    : "There is nothing to export"
+            );
+
+            return null;
+        }
+
+        setToolMessage(
+            "Choose Save as PDF in the print dialog to download the PDF"
+        );
+
+        return name;
+    }
+
+    /*
+     * PNG and JPG: the same image producer Save As uses, so a downloaded image
+     * and a saved one cannot differ in what they show.
+     */
+    try {
+        const blob = await renderSheetImageBlob(format === "jpg" ? "jpg" : "png");
+
+        if (!blob) {
+            setToolMessage(
+                drawingState.objects.length
+                    ? `The ${format.toUpperCase()} could not be rendered`
+                    : "There is nothing to export"
+            );
+
+            return null;
+        }
+
+        const name = downloadBlob(blob, exportFileName(chosen.extension));
+
+        setToolMessage(`Downloaded ${name}`);
+
+        return name;
+    } catch (error) {
+        enggErrorLog.reportError(`download ${format}`, error, {});
+
+        setToolMessage(`The ${format.toUpperCase()} could not be downloaded`);
+
+        return null;
+    }
 }
 
 /*
@@ -884,6 +1151,32 @@ function printDrawing() {
      * app's CSS, so the behaviour does not depend on which stylesheets
      * happen to be loaded.
      */
+    runPrintPass(svg);
+
+    setToolMessage(
+        "Prepared the fitted drawing for printing"
+    );
+}
+
+/*
+ * ========================================================
+ * THE PRINT PASS: COMPOSE A PAGE, PRINT IT, TAKE IT AWAY
+ * ========================================================
+ *
+ * Print and the PDF download are the same act - put the fitted drawing on a page
+ * and hand that page to the browser - so they share this one function rather
+ * than each carrying its own copy of the host, the stylesheet and the cleanup.
+ * The only difference is what the student does with the dialog it opens: print,
+ * or Save as PDF.
+ *
+ * THE PAGE IS A HIDDEN HOST PLUS A PRINT-ONLY STYLESHEET.
+ *
+ * The drawing is added to THIS document and the host is revealed only inside
+ * `@media print`, so the print dialog describes a page containing the drawing
+ * alone while the user stays in the editor they were working in - no pop-up, no
+ * second window, and no popup permission to ask for.
+ */
+function runPrintPass(svg) {
     const PRINT_HOST_ID = "drawing-print-host";
 
     const previousHost =
@@ -999,10 +1292,6 @@ function printDrawing() {
     setTimeout(cleanup, 5000);
 
     window.print();
-
-    setToolMessage(
-        "Prepared the fitted drawing for printing"
-    );
 }
 
 /*
@@ -1095,7 +1384,7 @@ export async function saveDrawing() {
  * document is written, not changed, so there is nothing to undo and no
  * entry is added.
  */
-async function saveDrawingAs() {
+async function saveDrawingAs(options = {}) {
     const result =
         await enggFileSave.saveAs(
             serializeDocumentBody(),
@@ -1107,7 +1396,26 @@ async function saveDrawingAs() {
                  * from the same renderer the canvas uses. It is called
                  * only when the chosen format is an image.
                  */
-                renderImage: renderSheetImageBlob
+                renderImage: renderSheetImageBlob,
+
+                /*
+                 * THE PDF ROUTE, handed in for the same reason.
+                 *
+                 * There is no PDF writer in this application, so a Save As to
+                 * PDF composes the fitted drawing into a print-ready page and
+                 * lets the browser's own print-to-PDF produce the file - the
+                 * same mechanism the Print command and the PDF download use, so
+                 * all three cannot frame the drawing differently. It returns the
+                 * suggested name, or null when there is nothing to export.
+                 */
+                exportPdf: exportPdfPage,
+
+                /*
+                 * A caller may name the format outright - the Download submenu
+                 * and any direct Save As to PDF do. Otherwise it is read from
+                 * the filename the system panel returns.
+                 */
+                format: options.format
             }
         );
 
@@ -1134,6 +1442,23 @@ async function saveDrawingAs() {
      * the document keeps its own file name and stays marked clean -
      * saving a picture is a completed action, not an unsaved edit.
      */
+    if (result.pdf) {
+        /*
+         * A PDF IS AN EXPORT, NOT THE DOCUMENT.
+         *
+         * The file the student chose is a PDF they will hand in; the editable
+         * document keeps its own name, its own handle and its DIRTY state,
+         * because nothing about their work has been saved yet. Marking it clean
+         * here would be the single most damaging thing this could do - the next
+         * Open or New would then discard unsaved edits without asking.
+         */
+        setToolMessage(
+            "Choose Save as PDF in the print dialog to write the PDF"
+        );
+
+        return true;
+    }
+
     if (!result.image) {
         documentFileName = result.name;
 
@@ -1211,7 +1536,7 @@ function suggestedFileName() {
  *
  * An alert was used before, and it is the wrong tool three times over. It
  * BLOCKS the page, so a file problem froze the workspace until dismissed. Its
- * wording cannot be styled, so a Datum message arrived looking like a browser
+ * wording cannot be styled, so a DAETUM message arrived looking like a browser
  * warning. And it can THROW - in a sandboxed iframe, or in any context where
  * dialogs are suppressed - which turns a handled error into an UNCAUGHT one,
  * so the failure being reported is replaced by a worse failure from the
@@ -1260,7 +1585,7 @@ export function loadDrawing(
          * The reason is shown rather than a generic failure, because the user's
          * next action depends entirely on which of these it is: a wrong file
          * needs choosing again, an old one needs a different tool, and a future
-         * one needs a newer Datum.
+         * one needs a newer DAETUM.
          */
         return reportFileProblem(result.detail, {
             fileName,
@@ -1280,6 +1605,18 @@ export function loadDrawing(
             { fileName, failure: "no-document-body" }
         );
     }
+
+    /*
+     * THE WRITTEN SOLUTION COMES BACK WITH THE DRAWINGS.
+     *
+     * It is restored BEFORE the sheets, so the figure references the source
+     * carries can be resolved against the collection that is about to be
+     * installed - and so the workspace's first render already has both halves of
+     * the document. A file saved before the solution existed has no such key, and
+     * is answered with an empty source rather than an error: an old drawing is
+     * still a perfectly good drawing.
+     */
+    restoreSolutionSource(data[enggSolutionState.SOLUTION_DOCUMENT_KEY]);
 
     const previous =
         enggDrawingState.snapshotDrawing(
@@ -1317,6 +1654,37 @@ export function loadDrawing(
     }
 
     return data;
+}
+
+/*
+ * Put the written solution's source back into the workspace.
+ *
+ * The workspace is loaded LAZILY - it may not have been opened yet, and it may
+ * not be installed at all in a page without the solution tab - so this first
+ * offers the source to the workspace, and always keeps the state's own copy in
+ * step. That way a document opened while the Drawing tab is showing still brings
+ * its write-up back when the student switches to it.
+ */
+function restoreSolutionSource(source) {
+    const text = typeof source === "string" ? source : "";
+
+    enggSolutionState.setSource(text);
+
+    /*
+     * The editor is updated only if it is on the page. The source is written to
+     * the field AND through the workspace's loader where that exists, so the
+     * outline and line numbers are rebuilt rather than left describing the
+     * previous document.
+     */
+    const editor = document.getElementById("solutionEditor");
+
+    if (editor) {
+        editor.value = text;
+    }
+
+    if (typeof loadSolutionSource === "function") {
+        loadSolutionSource(text);
+    }
 }
 
 /*
@@ -1444,7 +1812,7 @@ export function importDrawingFile() {
     /*
      * WHERE THE BROWSER CAN, OPEN THROUGH THE HANDLE PICKER.
      *
-     * `showOpenFilePicker` is the only route that gives Datum a handle it can
+     * `showOpenFilePicker` is the only route that gives DAETUM a handle it can
      * later WRITE BACK to, which is what makes Save update the file the user
      * opened instead of asking for a name again. Where it exists it is used
      * first; where it does not, the ordinary file input is the fallback and
@@ -1564,7 +1932,7 @@ function openChosenFile(file) {
             resolve(
                 reportFileProblem(
                     `"${file.name}" could not be read. It may have been moved, ` +
-                        "or Datum may not have permission to read it.",
+                        "or DAETUM may not have permission to read it.",
                     { fileName: file.name, failure: reader.error?.name || "read" }
                 )
             );
@@ -1794,7 +2162,7 @@ function openTemplate(templateId) {
  * Choose a .enggdraw and add it to the template library.
  *
  * The file is READ AND VALIDATED by the same loader an Open uses, so a template
- * can only ever be created from a document Datum could actually open - there is
+ * can only ever be created from a document DAETUM could actually open - there is
  * no second parser, and a corrupt file is refused with the same reason an Open
  * would give.
  *
@@ -1951,7 +2319,7 @@ function readFileAsText() {
         input.type = "file";
 
         /*
-         * THE NATIVE TYPE, NAMED AS THE FORMAT. The software is Datum; the
+         * THE NATIVE TYPE, NAMED AS THE FORMAT. The software is DAETUM; the
          * drawing format is EnggDraw, and `.enggdraw` is its extension.
          */
         input.accept = `.${enggDocumentFile.EXTENSION},${enggDocumentFile.MEDIA_TYPE},application/json`;
@@ -2105,6 +2473,195 @@ export async function openDrawing() {
  * same key. It also means adding a file command is a single entry
  * rather than a button and a handler that have to be kept in step.
  */
+/*
+ * ========================================================
+ * DOCUMENT MANAGEMENT: RENAME, SHARE, DETAILS, TRASH
+ * ========================================================
+ *
+ * The commands that act on the DOCUMENT rather than the drawing. Each one reuses
+ * the state this module already owns - the file name, the dirty flag, the
+ * serializer - rather than keeping a second copy of any of it.
+ */
+
+/*
+ * RENAME.
+ *
+ * The name is validated HERE, because the dialog cannot know the application's
+ * naming rules. A name is required, the extension is added by the SAME helper
+ * Save uses, and the document's contents are untouched: only the name changes,
+ * and the title and dirty indicator are refreshed from the one place that owns
+ * them.
+ *
+ * WHAT IT DOES NOT DO: it does not rename a file on disk. A browser page cannot
+ * rename a saved file. Where a writable handle exists the next Save writes to
+ * that handle, so the name and the file agree; where it does not, the new name
+ * is the name the next Save offers. The dialog's wording says so.
+ */
+export async function renameDrawing() {
+  const current = displayNameFor(documentFileName);
+
+  const typed = await enggDocumentManagement.askForNewName(current);
+
+  if (typed === null || typed === undefined) {
+    /* Cancelled. Nothing is renamed, which is what Cancel means. */
+    return false;
+  }
+
+  const wanted = String(typed).trim();
+
+  /*
+   * AN EMPTY NAME IS REFUSED, not turned into "Untitled". A rename the user did
+   * not really give is worse than a rename that did not happen, so the document
+   * keeps its old name and the current state is reported.
+   */
+  if (!wanted) {
+    setToolMessage("A drawing needs a name");
+
+    return false;
+  }
+
+  const fileName = enggDocumentFile.withExtension(wanted);
+
+  /*
+   * A RENAMED DOCUMENT IS UNSAVED WORK.
+   *
+   * The document no longer matches the file it came from under its old name, so
+   * it is marked dirty - which is what makes the next Save write the new name
+   * rather than leaving the student believing a rename reached the disk when it
+   * did not.
+   */
+  documentFileName = fileName;
+
+  markDocumentDirty();
+
+  refreshDocumentTitle();
+
+  setToolMessage(`Renamed to ${fileName}`);
+
+  return true;
+}
+
+/*
+ * SHARE.
+ *
+ * There is no link, no account and no permission system in this application, and
+ * inventing a "share link" would be a lie the user would discover when it did not
+ * work. What genuinely exists is a self-contained document, so Share offers the
+ * two real ways to pass it on: copy it to the clipboard, or download it.
+ */
+export function shareDrawing() {
+  return enggDocumentManagement.showShareDialog({
+    fileName: documentFileName,
+
+    /*
+     * The two actions the dialog really offers, wired to the commands that
+     * already exist for them: the clipboard copy above, and the NATIVE download
+     * - the same `.enggdraw` a Save writes, so what someone is passed can be
+     * reopened and edited rather than being a picture of it.
+     */
+    onCopy: () => copyDrawingToClipboard(),
+    onDownload: () => downloadDrawing("enggdraw")
+  });
+}
+
+/*
+ * Copy the whole document to the system clipboard.
+ *
+ * The same JSON a `.enggdraw` file holds, so what is pasted is a complete
+ * document that can be saved back as one - not a picture and not a summary.
+ */
+export async function copyDrawingToClipboard() {
+  const payload = enggDocumentFile.createDocument(
+    serializeDocumentBody()
+  );
+
+  const text = JSON.stringify(payload, null, 2);
+
+  try {
+    await navigator.clipboard.writeText(text);
+
+    setToolMessage("Drawing copied to the clipboard");
+
+    return true;
+  } catch (error) {
+    /*
+     * A clipboard write can be refused - no permission, an insecure context, a
+     * browser that requires a user gesture it did not see. Reported honestly
+     * rather than claiming a copy that did not happen.
+     */
+    enggErrorLog.reportError("copy drawing", error, {});
+
+    setToolMessage("The drawing could not be copied to the clipboard");
+
+    return false;
+  }
+}
+
+/*
+ * DETAILS.
+ *
+ * Reads what is actually recorded, from the live state, so the panel reflects
+ * the document that is open right now.
+ */
+export function showDrawingDetails() {
+  return enggDocumentManagement.showDocumentDetails({
+    fileName: documentFileName,
+    dirty: documentIsDirty(),
+    serialize: serializeDocumentBody
+  });
+}
+
+/*
+ * MOVE TO TRASH.
+ *
+ * A browser page cannot delete a file the user saved to their own disk, so this
+ * does NOT claim to. It removes the document's copy from the application - the
+ * recent-files entry the app would offer to reopen - and replaces the workspace
+ * with a new, blank drawing, having asked first and having said plainly that a
+ * file on disk is untouched.
+ */
+export async function moveDrawingToTrash() {
+  const choice = await enggDocumentManagement.confirmMoveToTrash(
+    displayNameFor(documentFileName)
+  );
+
+  if (choice !== "trash") {
+    /* Cancel - including Escape and a backdrop click. Nothing happens. */
+    return false;
+  }
+
+  /*
+   * THE APPLICATION'S OWN COPY GOES.
+   *
+   * The recent entry is the document the application is holding and would offer
+   * to reopen, so removing it is the part of "move to trash" this side can
+   * really perform. A failure to remove it is reported rather than swallowed.
+   */
+  try {
+    if (documentFileName) {
+      enggRecentFiles.forget(documentFileName);
+    }
+  } catch (error) {
+    enggErrorLog.reportError("move to trash", error, {});
+
+    setToolMessage("The drawing could not be removed from DAETUM");
+
+    return false;
+  }
+
+  /*
+   * AND THE WORKSPACE RETURNS TO A CLEAN SHEET, through the SAME New path every
+   * other new-document action uses - so the sheet collection, the camera, the
+   * history sinks and the dirty flag are all reset in the one place that knows
+   * how, rather than in a second version here.
+   */
+  newDrawing();
+
+  setToolMessage("Moved to Trash. A saved file on your computer is unchanged.");
+
+  return true;
+}
+
 export const FILE_ACTIONS = {
   new() {
     /*
@@ -2119,11 +2676,34 @@ export const FILE_ACTIONS = {
   save() {
     saveDrawing();
   },
-  "save-as"() {
-    saveDrawingAs();
+  "save-as"(options) {
+    saveDrawingAs(options);
   },
   print() {
     printDrawing();
+  },
+
+  /*
+   * Download, in one of the four formats the File menu offers.
+   *
+   * It takes the format as an argument because the submenu names it; the work
+   * itself is in `downloadDrawing`, which is also what a test drives directly.
+   */
+  download(format) {
+    return downloadDrawing(format);
+  },
+
+  rename() {
+    return renameDrawing();
+  },
+  share() {
+    return shareDrawing();
+  },
+  details() {
+    return showDrawingDetails();
+  },
+  "move-to-trash"() {
+    return moveDrawingToTrash();
   }
 };
 
@@ -2142,7 +2722,7 @@ export const FILE_ACTIONS = {
  * leaves the user guessing which button keeps the work. The application's own
  * dialog is used for the same reason the unsaved-changes prompt uses it: this
  * is a question about the user's own drawing, and it should look and behave
- * like the rest of Datum.
+ * like the rest of DAETUM.
  *
  * RECOVERED WORK IS UNSAVED WORK.
  *
@@ -2171,7 +2751,7 @@ export async function offerRecoveryIfAvailable() {
             : "";
 
     const choice = await enggUi.choiceDialog(
-        "Datum found unsaved work from a previous session " +
+        "DAETUM found unsaved work from a previous session " +
             `(${features}).\n\n${when}`.trim() +
             "\n\nRecover it?",
         {
@@ -2371,7 +2951,7 @@ function installWorkProtection() {
              */
             if (typeof console !== "undefined" && console.warn) {
                 console.warn(
-                    "[Datum] A recovery snapshot could not be taken.",
+                    "[DAETUM] A recovery snapshot could not be taken.",
                     error
                 );
             }

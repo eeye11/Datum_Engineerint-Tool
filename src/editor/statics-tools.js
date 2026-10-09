@@ -250,12 +250,30 @@ export function openAnalysisModeMenu(
             );
 
             /*
+             * ARMING STARTS FROM A CLEAN SLATE.
+             *
+             * The tool is about to ask for a body. Whatever the interaction was
+             * holding before - a half-built axis, the previous diagram's source,
+             * a stray placement point - must not survive into it, or the new
+             * placement begins already half-decided.
+             *
+             * THIS IS ALSO WHAT MADE A PLOT FEEL LIKE IT NEEDED REPEATED
+             * CLICKS. Without the clear, `beginAnalysisDiagram` resolved the
+             * body from WHATEVER WAS SELECTED - and a beam is usually still
+             * selected straight after being drawn - so the first click committed
+             * the diagram instead of naming its body, and the tool then
+             * re-armed into a second placement the student never asked for.
+             * The status line said "Place analysis axis" over a diagram that had
+             * already been created.
+             */
+            enggDrawingState.clearInteraction(
+                drawingState
+            );
+
+            /*
              * The mode is carried onto the interaction, and
              * beginAnalysisDiagram reads it back rather than
-             * replacing it. A body the student already had
-             * selected is used immediately; otherwise the tool
-             * waits for one, which is the same two-stage shape
-             * every other body-attached Statics tool uses.
+             * replacing it.
              */
             enggDrawingState.setInteraction(
                 drawingState,

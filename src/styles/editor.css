@@ -4,23 +4,20 @@
 }
 
 /*
- * THE TOP-LEVEL TABS ARE THE SAME SIZE, AND THAT SIZE IS THE SMALLER ONE.
+ * THE TWO WORKSPACE TABS ARE THE SAME SIZE, AND THAT SIZE IS 12px.
  *
  * "Written Solution" and "Engineering Drawing" are the two halves of the same
- * application, side by side in the same bar, so neither may be set larger than
- * the other. The Engineering Drawing tab was already the smaller of the two,
- * and it is the one the workspace was designed around - so the WRITTEN
- * SOLUTION tab is brought down to match it, not the other way round.
- *
- * The drawing tab's own size is stated here explicitly rather than inherited
- * from `.tab`, because the shared bar's default is larger and this tab is the
- * reference the other one is matched to.
+ * application, side by side in the same group at the right of the application
+ * bar, so neither may be set larger than the other. The size is stated with the
+ * rest of the tab styling in `shell.css`; this rule only records that the two
+ * are locked together, so a later change cannot size one and forget the other.
  */
 .tab[data-tab="drawing"],
-.tab[data-tab="writing"] {
-    font-size: 13px;
-    line-height: 1.1;
-    padding: 10px 20px;
+.tab[data-tab="writing"],
+.tab[data-tab="solution"] {
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 14px;
 }
 
 .drawing-workspace {
@@ -39,7 +36,7 @@
     --cad-active-border: var(--datum-green-line);
     --cad-active-ink: var(--datum-green-ink);
     --cad-active-strong: var(--datum-green);
-    background: #edf2f3;
+    background: var(--datum-panel);
     border: 1px solid var(--cad-border);
     color: var(--cad-ink);
     display: grid;
@@ -74,8 +71,15 @@
      */
     grid-template-columns: 202px minmax(0, 1fr) 236px;
     /*
-     * Rows: the global toolbar, the toolset nav, the style strip, the
-     * three panels, then the sheet bar and the status bar.
+     * Rows: the main menu bar, the toolset nav, the style strip, the
+     * canvas row, the sheet bar, the status bar.
+     *
+     * THE FIRST THREE ARE THE DRAWING BANDS BELOW THE APPLICATION AND
+     * DOCUMENT BAR: Band 2 (the main menu), Band 3 (the toolset selector)
+     * and Band 4 (command search and the quick-access toolbar). They used to
+     * be TWO children - the menu shared a row with a global tool bar that has
+     * since been removed - and now each is its own row, which is what makes
+     * "four bands, in that order" true of the layout as well as the markup.
      *
      * THE STYLE STRIP'S ROW IS `auto`, NOT A FIXED 28px.
      *
@@ -102,83 +106,119 @@
 
 /*
  * =========================================================
- * THE DRAWING'S TOP BARS, FOLDED AWAY
+ * THE DRAWING'S TOP BAR, FOLDED AWAY
  * =========================================================
  *
- * `body.datum-topbar-hidden` is the ONE place this is defined. It is set by
- * the Hide control in the global tool bar and cleared by the Show control on
+ * `body.datum-topbar-hidden` is the ONE place this is defined. It is set by the
+ * Hide control on the toolset bar and cleared by the Show control at the top of
  * the canvas.
  *
  * WHAT GOES, AND WHAT DOES NOT.
  *
- * The bars hidden are the DRAWING's own two top rows:
+ * The bars hidden are the DRAWING's chrome AND the main menu bar:
  *
- *   .drawing-app-toolbar   the global tool bar (File, History, Modify, ...)
- *   .drawing-toolbar       the tool-type bar (Geometry/Statics/Annotate/...)
+ *   .datum-menubar          the main menu (File, Edit, Insert, View, Tools,
+ *                           Help) - folded away too, so "hide the top bar"
+ *                           means the whole strip of application chrome above
+ *                           the drawing, not just part of it
+ *   .drawing-toolbar        the toolset bar (Geometry/Statics/Annotate/...) -
+ *                           and the Hide button lives ON it, so the button
+ *                           folds away with the bar it folds, and the Show
+ *                           control takes its place
+ *   .drawing-style-strip    the quick-access strip (search, undo/redo, the
+ *                           drawing properties and the display toggles)
  *
- * They are the chrome that stands between the top of the page and the
- * drawing, and they are what this control is for. Hiding them lets the canvas
- * rise into the two rows they occupied.
+ * Everything above the canvas and below the application and document bar goes,
+ * so the drawing rises to just under the header and gets all three rows back.
  *
- * WHAT STAYS: the Datum header and the document name, the Written Solution /
- * Engineering Drawing tabs, the style strip, the sheet bar, the status bar
- * and the two side panels. The header and the tabs identify the application
- * and choose which page is open - they are not the drawing's chrome, and
- * hiding them would take away the things a student uses to know where they
- * are and to get to the other half of the application. The side panels are
- * independent controls and keep whatever state they were in.
+ * WHAT STAYS: the application and document bar, the sheet bar, the status bar
+ * and the two side panels. The application and document bar identifies where
+ * the student is and switches workspace - it is not the drawing's chrome, and
+ * hiding it would take away the things used to know which file and which half of
+ * the submission is open. The side panels are independent controls and keep
+ * whatever state they were in.
  *
- * They are removed with `display: none` rather than collapsed to zero
+ * THE MENU BAR IS HIDDEN TOO, but it gets a SLIM STRIP OF ITS OWN rather than
+ * simply vanishing - see the rule below. "Hide the top bar" still means the
+ * whole strip of chrome above the drawing disappears; what remains is a single
+ * full-width line carrying the way back.
+ *
+ * The bars are removed with `display: none` rather than collapsed to zero
  * height: a zero-height row still occupies its track and still contributes
  * its borders and padding, so the drawing would not actually gain the room.
  *
- * THE WORKSPACE'S ROW TRACKS ARE KEPT, AND TWO OF THEM ARE ZEROED.
+ * THE WORKSPACE'S ROW TRACKS ARE KEPT, AND THREE OF THEM ARE ZEROED.
  *
  * This is the part that has to be exactly right. The workspace is a grid with
- * SIX rows - the global toolbar, the tool-type bar, the style strip, the
- * panels, the sheet bar and the status bar - and the rows are matched to
- * their children by POSITION. Re-stating a SHORTER list while two children
- * are hidden does not remove those rows: it re-assigns every remaining row to
- * the wrong child, and the canvas ends up in a 24px track. That is the defect
- * this replaces - the drawing did not grow, it shrank.
+ * SIX rows - the menu bar, the toolset bar, the style strip, the panels, the
+ * sheet bar and the status bar - and the rows are matched to their children by
+ * POSITION. Re-stating a SHORTER list while three children are hidden does not
+ * remove those rows: it re-assigns every remaining row to the wrong child, and
+ * the canvas ends up in a 24px track. That is the defect this replaces - the
+ * drawing did not grow, it shrank.
  *
- * So the list keeps its SIX entries and the first two - the two rows that
- * have been emptied - become `0`. The tracks are still there, still matched
- * to the same children, and simply contribute no height. The canvas row is
- * untouched as `minmax(0, 1fr)`, so it absorbs exactly what the two empty
- * rows gave up.
+ * So the list keeps its SIX entries and the TOOLSET BAR and the STYLE STRIP
+ * become `0`. The menu bar's track stays `auto` - it has not gone away, it has
+ * become the sliver of the way back. The tracks are still there, still matched
+ * to the same children, and contribute no height. The canvas row is untouched
+ * as `minmax(0, 1fr)`, so it absorbs exactly what the two empty rows gave up.
  */
-body.datum-topbar-hidden .drawing-app-toolbar,
-body.datum-topbar-hidden .drawing-toolbar {
+body.datum-topbar-hidden .drawing-toolbar,
+body.datum-topbar-hidden .drawing-style-strip {
+    display: none;
+}
+
+/*
+ * THE SLIVER: THE MENU BAR SHRINKS TO A THIN LINE ACROSS THE TOP.
+ *
+ * The six menu labels and the Hide button go; the bar itself stays, 6px tall
+ * and full width, as a METALINE at the very top of the workspace.
+ *
+ * WHY A LINE AND NOT A BUTTON IN THE CORNER. A strip this thin cannot hold a
+ * legible label, and it does not need to: it is the seam the bar was folded
+ * along, and the whole line is the target. It also means the way back sits
+ * exactly where the bar was, across the entire width - so wherever the pointer
+ * happened to be when Hide was pressed, the way back is under it.
+ *
+ * IT IS INTERACTIVE, so it takes hover and focus, and it gets an accessible name
+ * of its own since it has no visible text.
+ */
+body.datum-topbar-hidden .datum-menubar {
+    align-items: center;
+    cursor: pointer;
+    min-height: 6px;
+    padding: 0;
+}
+
+body.datum-topbar-hidden .datum-menubar > * {
     display: none;
 }
 
 body.datum-topbar-hidden .drawing-workspace {
     /*
-     * SIX TRACKS, as above: the first two rows are the hidden bars and are
-     * now empty, then the style strip, the flexible panel row, the sheet bar
+     * SIX TRACKS, as above: the menu bar shrinks to its sliver, the toolset bar
+     * and the style strip are empty, then the flexible panel row, the sheet bar
      * and the status bar - the same children, in the same order.
      */
-    grid-template-rows: 0 0 auto minmax(0, 1fr) 24px 22px;
+    grid-template-rows: auto 0 0 minmax(0, 1fr) 24px 22px;
 }
 
 /*
- * THE HIDE CONTROL, ON THE STYLE STRIP.
+ * THE HIDE CONTROL, ON THE TOOLSET BAR.
  *
- * It lives on the Thickness row rather than on either of the bars it hides,
- * and that placement is the point:
- *
- *   - a control on a bar it collapses would be removed BY its own action,
- *     so the way to hide and the way to show would both have to live
- *     somewhere else;
- *   - the STYLE STRIP does not hide and does not scroll sideways, so a
- *     control on it is present and reachable at EVERY width - including the
- *     compact and icon-only layouts, where the two bars above it are the
- *     only rows that can spare the space.
+ * IT SITS ON A BAR IT HIDES, AND THAT IS THE POINT. Pressing it folds the
+ * whole top bar away - including this button - and the Show control appears at
+ * the very top of the drawing area, in the same place. So the control stays
+ * under the pointer: Hide here, Show there, press again and the bar is back.
  *
  * `margin-left: auto` pushes it to the trailing edge of the row however many
- * controls precede it, and `flex: 0 0 auto` stops it being squeezed into a
- * neighbour; when the row reflows, it simply travels with the last line.
+ * toolsets precede it, and `flex: 0 0 auto` stops it being squeezed into a
+ * neighbour.
+ *
+ * IT MUST NOT BE SCROLLED AWAY WITH THE TOOLSETS. The toolset row scrolls
+ * horizontally at narrow widths, so this button is placed in the row's own flex
+ * box OUTSIDE the scroller - see `.drawing-toolbar-scroll` - rather than inside
+ * it, where eleven toolsets would push it off the edge.
  *
  * Touch target: the button carries padding and a `min-height` rather than
  * relying on the size of its arrow, so it stays comfortably tappable on
@@ -188,28 +228,29 @@ body.datum-topbar-hidden .drawing-workspace {
     align-items: center;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--cad-muted);
     cursor: pointer;
     display: inline-flex;
     flex: 0 0 auto;
     font: inherit;
-    font-size: 10px;
+    font-size: 11px;
     gap: 4px;
-    margin-left: auto;
-    min-height: 20px;
-    padding: 2px 7px;
+    margin-left: 8px;
+    min-height: 24px;
+    padding: 0 8px;
+    transition: background-color 120ms ease, border-color 120ms ease;
     white-space: nowrap;
 }
 
 .drawing-topbar-hide:hover {
-    background: #e2ebee;
-    border-color: #d5dfe2;
+    background: var(--datum-panel);
+    border-color: var(--datum-border);
     color: var(--cad-ink);
 }
 
 .drawing-topbar-hide:focus-visible {
-    outline: 2px solid var(--datum-green);
+    outline: 2px solid var(--datum-focus);
     outline-offset: -2px;
 }
 
@@ -220,16 +261,28 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
- * THE SHOW CONTROL, ON THE CANVAS.
+ * THE SHOW CONTROL, ON THE RIGHT OF THE SLIVER.
  *
- * A slim strip along the canvas's top edge, present only while the top bar is
- * hidden. It is NOT an overlay that covers the drawing: it takes its own row
- * above the canvas, so the writing surface is never covered - which is the
- * whole point of having hidden the bar.
+ * IT SITS WHERE THE HIDE BUTTON WAS. The Hide button is the last control on the
+ * toolset bar, hard against the right edge; Show takes that same corner, so the
+ * pointer that pressed Hide is already over the way back and the bar returns
+ * under it.
+ *
+ * THE ARROW POINTS UP: the bar comes back from above, and an up-pointing chevron
+ * is what the Hide button carried before it was pressed - so the two controls
+ * read as one gesture in two directions.
+ *
+ * IT SITS BESIDE THE MENU BAR, NOT INSIDE IT. The bar is hidden while this is
+ * shown, so nothing is obstructed; the two are simply on the same line, with the
+ * Show control right-aligned and the empty bar's sliver filling the rest.
+ *
+ * Present only while the top bar is hidden, so it costs nothing until it is
+ * needed and the drawing keeps every pixel it reclaimed. It is NOT an overlay
+ * that covers the drawing: it takes its own row above the canvas.
  */
 .drawing-topbar-show {
     align-items: center;
-    background: #eef3f4;
+    background: var(--datum-panel);
     border: 0;
     border-bottom: 1px solid var(--cad-border);
     color: var(--cad-muted);
@@ -237,21 +290,36 @@ body.datum-topbar-hidden .drawing-workspace {
     display: flex;
     flex: 0 0 auto;
     font: inherit;
-    font-size: 10px;
-    gap: 4px;
+    font-size: 11px;
+    gap: 5px;
+    justify-content: center;
     letter-spacing: .02em;
-    padding: 2px 8px;
-    text-align: left;
+    min-height: 24px;
+    padding: 3px 12px;
+    text-align: center;
+    transition: background-color 120ms ease;
     width: 100%;
 }
 
+body.datum-topbar-hidden .drawing-topbar-show {
+    /*
+     * RIGHT-ALIGNED, at the same corner the Hide button held. The row is still
+     * full width - the clickable strip is the whole line, as it was for the
+     * sliver above - but the LABEL sits at the right, where the student last
+     * pressed.
+     */
+    justify-content: flex-end;
+    margin-left: auto;
+    width: auto;
+}
+
 .drawing-topbar-show:hover {
-    background: #e2ebee;
+    background: var(--datum-menu-hover);
     color: var(--cad-ink);
 }
 
 .drawing-topbar-show:focus-visible {
-    outline: 2px solid var(--datum-green);
+    outline: 2px solid var(--datum-focus);
     outline-offset: -2px;
 }
 
@@ -265,7 +333,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
- * The canvas area holds the optional Show strip ABOVE the canvas.
+ * The canvas area holds the optional Show row ABOVE the canvas.
  *
  * IT IS A GRID, NOT A FLEX COLUMN, and that is a deliberate choice. Both
  * layouts put the strip above the canvas with the canvas taking the rest,
@@ -282,18 +350,45 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
+ * THE ROW THE SHOW CONTROL SITS ON - A THIN LINE ACROSS THE WHOLE TOP.
+ *
+ * The row is the full width of the drawing area and only as tall as the
+ * control in it, so when the top bar is hidden the drawing begins almost
+ * immediately and this reads as the seam the bar was folded along.
+ */
+.drawing-topbar-show-row {
+    align-items: center;
+    background: var(--datum-panel);
+    border-bottom: 1px solid var(--cad-border);
+    display: flex;
+    justify-content: flex-end;
+    min-height: 6px;
+    padding: 0 8px;
+}
+
+.drawing-topbar-show-row:has(.drawing-topbar-show[hidden]) {
+    /*
+     * NOTHING TO SHOW - the top bar is up, so there is no seam to draw. The row
+     * collapses to nothing rather than leaving a pale line above the canvas.
+     */
+    background: transparent;
+    border-bottom: 0;
+    min-height: 0;
+    padding: 0;
+}
+
+/*
  * THE ROWS ARE PINNED BY NAME, NOT BY ORDER.
  *
- * The Show strip is `display: none` while the top bar is shown, and a hidden
- * grid item is REMOVED - so whatever came next would slide up into its
- * track. Left to order, the canvas would fall into the `auto` row the strip
- * had given up and collapse to nothing, which is exactly what happened.
+ * A hidden grid item is REMOVED, so whatever came next would slide up into its
+ * track. Left to order, the canvas would fall into the `auto` row the Show row
+ * had given up and collapse to nothing.
  *
  * Placing each on the row it belongs to means the canvas is always in the
- * flexible row and the strip is always in the row above it, whether the
- * strip is showing or not.
+ * flexible row and the Show row is always in the row above it, whether the
+ * control inside it is showing or not.
  */
-.drawing-topbar-show {
+.drawing-topbar-show-row {
     grid-row: 1;
 }
 
@@ -302,9 +397,799 @@ body.datum-topbar-hidden .drawing-workspace {
     min-height: 0;
 }
 
+/*
+ * =========================================================
+ * BAND 2: THE MAIN MENU BAR
+ * =========================================================
+ *
+ * File, Edit, Insert, View, Tools, Help - one compact row directly beneath the
+ * application and document bar, above the toolset selector.
+ *
+ * IT IS ITS OWN GRID CHILD, AND IT SPANS THE WHOLE WIDTH.
+ *
+ * The workspace is a THREE-COLUMN grid - `202px | 1fr | 236px` for the Tools
+ * rail, the canvas and the Features rail - and a child with no `grid-column`
+ * lands in COLUMN ONE, the 202px rail. Six short labels would then be cropped
+ * to the width of the rail. Every full-width row in this grid states the same
+ * span for that reason: the menu bar, the toolset nav and the style strip all
+ * carry `grid-column: 1 / -1`.
+ *
+ * IT DOES NOT WRAP AND IT DOES NOT GROW. Six short labels fit any desktop
+ * width, and the row's height comes from its own content - so opening a menu
+ * cannot change the toolset row's height and cannot push the canvas down. That
+ * is what "must not cause the document layout to shift" means in CSS: the panel
+ * is positioned OUT of the flow, drawn over the chrome rather than occupying
+ * space in it.
+ */
+.datum-menubar {
+    align-items: stretch;
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 0 6px;
+    position: relative;
+
+    /*
+     * ABOVE THE CANVAS BELOW IT. The bar is a positioned element, so without a
+     * level of its own a dropdown would be painted under later siblings - the
+     * canvas and the panels - and a menu opened near one would appear behind it.
+     * This is the whole of "must display above the drawing canvas".
+     */
+    z-index: 60;
+}
+
+/*
+ * ONE LABEL AND ITS SLOT.
+ *
+ * The slot holds the panel and is `position: static`, so the absolutely
+ * positioned panel inside it is measured from the MENU - which is what puts a
+ * dropdown directly beneath its own label rather than beneath the bar.
+ */
+.datum-menu {
+    display: flex;
+    position: relative;
+}
+
+.datum-menu-label {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font-family: var(--datum-font);
+    font-size: 12px;
+    line-height: 1;
+    padding: 7px 11px;
+    transition: background-color 120ms ease;
+    white-space: nowrap;
+}
+
+/*
+ * THE OPEN LABEL KEEPS ITS HIGHLIGHT while its menu is down, so the student can
+ * see which menu they are in even after the pointer has moved into the panel.
+ *
+ * IT IS THE SAME TREATMENT AS HOVER, deliberately: the open label IS the hovered
+ * one in every practical case, and a separate "open" colour would make a menu
+ * appear to rest in two states at once. The panel beneath it is what says the
+ * menu is open.
+ */
+.datum-menu-label:hover,
+.datum-menu-open .datum-menu-label {
+    background: var(--datum-menu-hover);
+    color: var(--datum-green-ink);
+}
+
+.datum-menu-label:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
+}
+
+/*
+ * THE DROPDOWN PANEL.
+ *
+ * Positioned out of the flow, directly under its label, and drawn at a level
+ * above everything else in the workspace. It is sized by its content - compact
+ * rather than a fixed width - so a menu with two short items is not a vast
+ * empty rectangle.
+ */
+.datum-menu-slot {
+    position: static;
+}
+
+.datum-menu-panel {
+    background: var(--datum-menu);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--datum-shadow);
+    left: 0;
+    min-width: 208px;
+    padding: 5px;
+    position: absolute;
+    top: 100%;
+    z-index: 70;
+}
+
+/*
+ * AN ITEM.
+ *
+ * One height, one left alignment, one type size - the menu's rhythm. The label
+ * takes the room and the shortcut sits at the far right, which is where every
+ * menu bar puts it and therefore where the eye already looks for it.
+ */
+.datum-menu-item {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    display: flex;
+    font-family: var(--datum-font);
+    font-size: 13px;
+    gap: 10px;
+    justify-content: flex-start;
+    padding: 7px 10px;
+    text-align: left;
+    transition: background-color 100ms ease;
+    width: 100%;
+}
+
+/*
+ * THE ICON COLUMN IS A FIXED WIDTH, ALWAYS RENDERED.
+ *
+ * Every command label starts at the same x because the column beside it is the
+ * same width whether or not that particular command has an icon. A column that
+ * collapsed for a missing icon would leave one command indented and its
+ * neighbours out - which reads as a mistake rather than as a hierarchy.
+ *
+ * `currentColor` on the icon means it follows the label's colour through hover,
+ * disabled and the theme, so the two can never disagree.
+ */
+.datum-menu-item-icon {
+    align-items: center;
+    color: var(--datum-muted);
+    display: inline-flex;
+    flex: 0 0 16px;
+    height: 16px;
+    justify-content: center;
+    width: 16px;
+}
+
+.datum-menu-item:hover .datum-menu-item-icon {
+    color: var(--datum-green);
+}
+
+/*
+ * A CHECKED ITEM'S ICON TAKES THE ACCENT.
+ *
+ * A visibility switch that is ON should read as on from the icon as well as the
+ * tick, so the state is visible at a glance without reading the label.
+ */
+.datum-menu-item-checked .datum-menu-item-icon {
+    color: var(--datum-green);
+}
+
+.datum-menu-item[aria-disabled="true"] .datum-menu-item-icon {
+    color: var(--datum-muted);
+    opacity: .55;
+}
+
+.datum-menu-item:hover {
+    background: var(--datum-menu-hover);
+}
+
+.datum-menu-item:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
+}
+
+/*
+ * A DISABLED COMMAND.
+ *
+ * Dimmed and not clickable, but still PRESENT: a menu whose items disappear when
+ * they cannot run teaches nothing about what exists. `aria-disabled` is the
+ * semantic flag; this is how it looks.
+ */
+.datum-menu-item[aria-disabled="true"] {
+    color: var(--datum-muted);
+    cursor: default;
+}
+
+.datum-menu-item[aria-disabled="true"]:hover {
+    background: transparent;
+}
+
+.datum-menu-item-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.datum-menu-item-shortcut {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 11px;
+    /* Right-aligned, one column, whichever command it belongs to. */
+    margin-left: auto;
+    padding-left: 16px;
+}
+
+/*
+ * =========================================================
+ * A SUBMENU: A MENU INSIDE A MENU ROW
+ * =========================================================
+ *
+ * Download is a row with children. The row opens a nested panel beside itself,
+ * and every surface, border, radius, shadow and row height is the SAME as the
+ * top-level panel's - a submenu that looked different would read as a different
+ * kind of object rather than as more of the same menu.
+ *
+ * THE ROW IS THE POSITIONING CONTEXT, and the panel is a CHILD of it. That is
+ * what makes the hover work with no JavaScript timers: moving the pointer from
+ * the row down into the panel never leaves the element the open state is on, so
+ * the submenu cannot close under the hand that just opened it.
+ */
+.datum-menu-item-submenu {
+    position: relative;
+}
+
+/*
+ * THE INDICATOR SITS IN ITS OWN COLUMN AT THE RIGHT, after the shortcut, so a
+ * nested row lines up with a plain one instead of shifting its label.
+ */
+.datum-menu-item-chevron {
+    align-items: center;
+    color: var(--datum-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 16px;
+    justify-content: center;
+    margin-left: 4px;
+    width: 16px;
+}
+
+.datum-menu-item-submenu:hover .datum-menu-item-chevron {
+    color: var(--datum-green);
+}
+
+/*
+ * THE NESTED PANEL.
+ *
+ * Hidden until the row is open, then placed just past its right edge so it
+ * reads as growing out of the row rather than floating somewhere near it. It
+ * takes the same theme surfaces as the panel it lives in, so both themes work
+ * without a rule naming either.
+ */
+.datum-menu-subpanel {
+    display: none;
+    left: calc(100% + 4px);
+    min-width: 172px;
+    position: absolute;
+    top: -6px;
+}
+
+.datum-menu-item-submenu-open .datum-menu-subpanel,
+.datum-menu-item-submenu:hover .datum-menu-subpanel,
+.datum-menu-item-submenu:focus-within .datum-menu-subpanel {
+    display: block;
+}
+
+/*
+ * AN OPEN ROW KEEPS THE HOVER TREATMENT, so the pointer leaving the row for the
+ * panel does not make the row look closed while the panel is still open.
+ */
+.datum-menu-item-submenu-open,
+.datum-menu-item-submenu:hover {
+    background: var(--datum-menu-hover);
+}
+
+/*
+ * THE CHILD ROWS ARE INDENTED past the parent's own icon, so the nesting is
+ * visible as a hierarchy rather than as a second flat list.
+ */
+.datum-menu-subpanel .datum-menu-item {
+    padding-left: 14px;
+}
+
+.datum-icon {
+    flex: 0 0 auto;
+    display: block;
+}
+
+/*
+ * =========================================================
+ * ROW 4: COMMAND SEARCH, AND THE ICON BUTTONS BESIDE IT
+ * =========================================================
+ *
+ * The search field leads the row. It is sized to fit a real query rather than
+ * to look tidy at its narrowest - a search box too small to read what you typed
+ * is a search box you stop using.
+ */
+.drawing-command-search {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    display: inline-flex;
+    flex: 0 1 220px;
+    gap: 6px;
+    height: 26px;
+    min-width: 150px;
+    padding: 0 8px;
+}
+
+.drawing-command-search:hover {
+    border-color: var(--datum-green);
+}
+
+/*
+ * FOCUS IS TWO SIGNALS: the accent border AND a tinted ring. A single hairline
+ * changing colour is easy to miss on a busy strip, and the ring is what makes
+ * the field obviously the one the keyboard is in.
+ */
+.drawing-command-search:focus-within {
+    border-color: var(--datum-green);
+    box-shadow: 0 0 0 2px var(--datum-green-tint);
+}
+
+.drawing-command-search-icon {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    opacity: .9;
+}
+
+.drawing-command-search input {
+    background: transparent;
+    border: 0;
+    color: var(--cad-ink);
+    font-family: var(--datum-font);
+    font-size: 11px;
+    flex: 1 1 auto;
+    height: 22px;
+    min-width: 0;
+    outline: none;
+    padding: 0;
+}
+
+.drawing-command-search input::placeholder {
+    color: var(--datum-placeholder);
+}
+
+/*
+ * The Ctrl+K hint. It is shown because the shortcut IS implemented, and it is
+ * muted because it is a reminder rather than a control.
+ */
+.drawing-command-search-key {
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    border-radius: 2px;
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-family: var(--datum-font-mono);
+    font-size: 10px;
+    padding: 1px 4px;
+}
+
+/*
+ * AN ICON BUTTON ON THE STYLE STRIP - Undo and Redo.
+ *
+ * Small and square, with the same height as every other control on the row so
+ * the strip keeps one rhythm. It is an ACTION, not a toggle: it gives hover,
+ * focus and a brief pressed feedback, and it must NOT stay highlighted after it
+ * is clicked - that is what a pressed-only `:active` rule makes true.
+ */
+.drawing-toolbar-icon-button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    color: var(--cad-ink);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 26px;
+    justify-content: center;
+    padding: 0 5px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.drawing-toolbar-icon-button:hover:not(:disabled) {
+    background: var(--datum-menu-hover);
+    border-color: var(--datum-border);
+}
+
+.drawing-toolbar-icon-button:active:not(:disabled) {
+    background: var(--datum-border);
+}
+
+.drawing-toolbar-icon-button:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.drawing-toolbar-icon-button:disabled {
+    color: var(--datum-muted);
+    cursor: default;
+    opacity: .45;
+}
+
+/*
+ * A SEPARATOR BETWEEN CONTROL FAMILIES on the strip.
+ *
+ * A rule rather than a labelled group: the row is a strip of controls, and the
+ * separator says "these belong together" without spending width on a heading.
+ * It separates HISTORY from DRAWING PROPERTIES, and DRAWING PROPERTIES from the
+ * DISPLAY controls - and nothing else. It is not interactive: no hover, no
+ * focus, no selected state.
+ *
+ * IT ADDS NO MARGIN OF ITS OWN. The strip's `column-gap` already spaces every
+ * child evenly, so a margin here would make the gaps on either side of a
+ * separator WIDER than the gaps between the controls - which is exactly what it
+ * did: a run of 7px gaps punctuated by 9px ones around each divider. The rule is
+ * 1px wide and the flex gap does the rest, so the row is spaced uniformly from
+ * end to end.
+ *
+ * IT IS CENTRED BY `align-self: center` ON A FIXED HEIGHT, not by stretching.
+ * The strip is a flex row whose items are all 22px tall, so a divider of a fixed
+ * 16px height centred in that row sits 3px down from the top - which is correct,
+ * and is why it is not aligned to `top` with the buttons.
+ */
+.drawing-style-strip-divider {
+    align-self: center;
+    background: var(--datum-border-strong);
+    flex: 0 0 auto;
+    height: 16px;
+    margin: 0;
+    width: 1px;
+}
+
+/*
+ * THE SEARCH RESULTS.
+ *
+ * Positioned in the DOCUMENT rather than inside the toolbar, so the list can
+ * extend past the strip's own edge without being clipped by it - a dropdown
+ * that a parent's `overflow` cuts off is a dropdown that cannot show its own
+ * last result.
+ */
+.datum-search-results {
+    background: var(--datum-menu);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--datum-shadow);
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 5px;
+    position: fixed;
+    z-index: 210;
+}
+
+.datum-search-result {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    display: flex;
+    font-family: var(--datum-font);
+    font-size: 13px;
+    gap: 10px;
+    justify-content: space-between;
+    padding: 7px 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.datum-search-result:hover,
+.datum-search-result.datum-search-active {
+    background: var(--datum-green-tint);
+    color: var(--datum-green-ink);
+}
+
+/*
+ * WHERE THE COMMAND LIVES. Shown because the point of the search is often to
+ * learn which menu a command is in - the second time, the student goes straight
+ * there.
+ */
+.datum-search-result-menu {
+    color: var(--datum-muted);
+    flex: 0 0 auto;
+    font-size: 11px;
+}
+
+.datum-search-result:hover .datum-search-result-menu,
+.datum-search-result.datum-search-active .datum-search-result-menu {
+    color: var(--datum-green-ink);
+    opacity: .75;
+}
+
+/*
+ * A TICKED ITEM - a visibility toggle that is currently ON.
+ */
+.datum-menu-item-checked .datum-menu-item-label::before {
+    color: var(--datum-green);
+    content: "\2713";
+    display: inline-block;
+    font-weight: 700;
+    margin-right: 6px;
+    width: 10px;
+}
+
+/*
+ * A SEPARATOR, AND ONLY WHERE IT MEANS SOMETHING.
+ *
+ * It marks a GROUP boundary - the break between file actions and saving, or
+ * between editing and selecting. A rule between every item would be a picket
+ * fence: it adds height, adds ink, and says nothing. `menu-commands.js` decides
+ * where the groups break.
+ */
+.datum-menu-separator {
+    background: var(--datum-border);
+    height: 1px;
+    margin: 4px 6px;
+}
+
+/*
+ * =========================================================
+ * THE SETTINGS AND HELP DIALOGS
+ * =========================================================
+ *
+ * Both are centred panels over a dimmed backdrop: open a panel, read or change
+ * something, close it. They share this styling rather than each carrying their
+ * own, so the two cannot look like they came from different applications.
+ *
+ * EVERY COLOUR IS A TOKEN. That is what makes them theme correctly - and a
+ * dialog is exactly where a hardcoded colour would be missed, because it is
+ * only visible after a click.
+ *
+ * THE BACKDROP IS PART OF THE DIALOG, so clicking the dimmed area closes it -
+ * the behaviour every other dialog in the application already has.
+ */
+.datum-settings-dialog,
+.datum-help-dialog {
+    align-items: center;
+    background: var(--datum-overlay);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 24px;
+    position: fixed;
+    z-index: 200;
+}
+
+/*
+ * THE PANEL ITSELF.
+ *
+ * A bounded height with the BODY scrolling, rather than the whole panel growing
+ * past the window: a settings page with many rows must stay fully usable, and a
+ * panel taller than the screen would put its own Close button out of reach.
+ */
+.datum-settings-title,
+.datum-help-dialog-title {
+    align-items: center;
+    background: var(--datum-chrome);
+    border-bottom: 1px solid var(--datum-border);
+    color: var(--datum-ink);
+    display: flex;
+    font-family: var(--datum-font);
+    font-size: 13px;
+    font-weight: 700;
+    justify-content: space-between;
+    padding: 10px 14px;
+}
+
+.datum-settings-body,
+.datum-help-dialog-body {
+    color: var(--datum-ink);
+    font-family: var(--datum-font);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.datum-settings-dialog > *,
+.datum-help-dialog > * {
+    box-sizing: border-box;
+    max-width: 620px;
+    width: 100%;
+}
+
+/*
+ * THE PANEL IS ONE COLUMN: a title that stays put and a body that scrolls.
+ *
+ * The dialog element is the dimmed backdrop, so the panel inside it is given a
+ * column layout and a bounded height - otherwise a long settings page would
+ * grow taller than the window and put its own Close button out of reach.
+ */
+.datum-settings-dialog > .datum-settings-title,
+.datum-settings-dialog > .datum-settings-body,
+.datum-help-dialog > .datum-help-dialog-title,
+.datum-help-dialog > .datum-help-dialog-body {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.datum-settings-dialog > .datum-settings-body,
+.datum-help-dialog > .datum-help-dialog-body {
+    flex: 1 1 auto;
+    max-height: 70vh;
+}
+
+.datum-settings-close,
+.datum-help-close {
+    background: transparent;
+    border: 0;
+    color: var(--datum-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.datum-settings-close:hover,
+.datum-help-close:hover {
+    color: var(--datum-ink);
+}
+
+/*
+ * A SETTINGS ROW: label, control, and an optional explanation beneath.
+ *
+ * The hint is a full-width line under the pair rather than a third column, so a
+ * long explanation cannot squeeze the control it describes.
+ */
+.datum-settings-row {
+    border-bottom: 1px solid var(--datum-border);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+    padding: 8px 0;
+}
+
+.datum-settings-label {
+    color: var(--datum-muted);
+    font-size: 11px;
+    padding-top: 3px;
+}
+
+.datum-settings-control {
+    min-width: 0;
+}
+
+.datum-settings-hint,
+.datum-settings-note {
+    color: var(--datum-muted);
+    font-size: 11px;
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.datum-settings-control select,
+.datum-settings-control input[type="number"] {
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
+    border-radius: 3px;
+    color: var(--datum-ink);
+    font: inherit;
+    height: 24px;
+    padding: 0 4px;
+}
+
+.datum-settings-value {
+    color: var(--datum-ink);
+    font-weight: 700;
+}
+
+.datum-settings-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.datum-settings-choice {
+    align-items: center;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 5px;
+}
+
+.datum-settings-button,
+.datum-help-copy {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
+    border-radius: 3px;
+    color: var(--datum-ink);
+    cursor: pointer;
+    font: inherit;
+    padding: 5px 10px;
+}
+
+.datum-settings-button:hover,
+.datum-help-copy:hover {
+    background: var(--datum-menu-hover);
+    border-color: var(--datum-green);
+}
+
+/* Heading rhythm inside either dialog. */
+.datum-settings-body h4,
+.datum-help-dialog-body h4 {
+    border-bottom: 1px solid var(--datum-border);
+    color: var(--datum-green-ink);
+    font-size: 11px;
+    letter-spacing: .04em;
+    margin: 16px 0 6px;
+    padding-bottom: 3px;
+    text-transform: uppercase;
+}
+
+.datum-settings-body h4:first-child,
+.datum-help-dialog-body h4:first-child {
+    margin-top: 0;
+}
+
+.datum-settings-body p,
+.datum-help-dialog-body p {
+    margin: 6px 0;
+}
+
+/* The shortcut reference: a name and its keys, one per line. */
+.datum-shortcut-list {
+    margin: 0;
+}
+
+.datum-shortcut-row {
+    border-bottom: 1px solid var(--datum-border);
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.datum-shortcut-row dt {
+    color: var(--datum-ink);
+}
+
+.datum-shortcut-row dd {
+    color: var(--datum-muted);
+    font-family: var(--datum-font-mono);
+    font-size: 11px;
+    margin: 0;
+}
+
+/*
+ * THE DIAGNOSTIC SUMMARY the feedback page offers to copy: selectable text,
+ * monospaced, and wrapped rather than scrolled so nothing is hidden.
+ */
+.datum-help-summary {
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    border-radius: 3px;
+    color: var(--datum-ink);
+    font-family: var(--datum-font-mono);
+    font-size: 11px;
+    margin: 8px 0;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.datum-help-note {
+    color: var(--datum-muted);
+    font-size: 11px;
+    font-style: italic;
+}
+
 .drawing-app-toolbar {
     align-items: center;
-    background: #eef3f4;
+    background: var(--datum-panel);
     border-bottom: 1px solid var(--cad-border);
     display: flex;
 
@@ -374,6 +1259,32 @@ body.datum-topbar-hidden .drawing-workspace {
     white-space: nowrap;
 }
 
+/*
+ * =========================================================
+ * A DIVIDER BETWEEN TOOL FAMILIES
+ * =========================================================
+ *
+ * The tool bar used to separate its groups with HEADINGS - File, History,
+ * Modify, Order, View - and those headings were the very words the menu bar
+ * uses, so the top of the window carried two rows of File/View and read as
+ * though one of them were redundant.
+ *
+ * A rule says "these buttons belong together" without naming anything, which is
+ * exactly right here: the tool bar is a strip of CONTROLS and the menu bar is
+ * where commands are NAMED.
+ *
+ * `align-self: stretch` gives it the full height of the row rather than the
+ * height of the word it replaced, so it separates the groups instead of reading
+ * as a stray mark beside a button.
+ */
+.drawing-app-toolbar-divider {
+    align-self: stretch;
+    background: var(--cad-border);
+    flex: 0 0 auto;
+    margin: 4px 6px;
+    width: 1px;
+}
+
 .drawing-app-toolbar button {
     align-items: center;
     background: transparent;
@@ -396,8 +1307,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * the hover state.
  */
 .drawing-app-toolbar button[data-global-tool]:hover {
-    background: #e4eef0;
-    border-color: #c3d4d9;
+    background: var(--datum-panel);
+    border-color: var(--datum-border);
 }
 
 .drawing-app-toolbar button[data-global-tool].active {
@@ -435,7 +1346,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-app-toolbar button:hover {
-    background: #e1ebe6;
+    background: var(--datum-green-tint);
     border-color: var(--datum-green-soft);
 }
 
@@ -452,93 +1363,98 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-app-toolbar-divider {
-    background: #cbd5d9;
+    background: var(--datum-border);
     height: 14px;
     margin: 0 4px;
     width: 1px;
 }
 
 .drawing-toolbar {
-    background: #f9fbfb;
-    border-bottom: 1px solid var(--cad-border);
-    display: flex;
-
     /*
-     * THE SECTION BAR KEEPS ITS HEIGHT, WHATEVER THE WIDTH.
+     * ========================================================
+     * BAND 3: THE TOOLSET SELECTOR
+     * ========================================================
      *
-     * These discipline tabs used to WRAP, so on a narrow screen the last
-     * few - Controls, Maths, and the long names like Solid Mechanics -
-     * slid onto a second line. That does make every tab visible, but it
-     * does it by making the bar taller, and the bar's height is taken out
+     * ONE ROW, WHATEVER THE WIDTH.
+     *
+     * Eleven named toolsets - and the algorithm's long names, Thermodynamics
+     * and Solid Mechanics among them - do not fit a narrow window. They used to
+     * WRAP onto a second line, which made the bar taller and took the height out
      * of the drawing below it.
      *
-     * One row that scrolls is the better trade: the bar is always the
-     * same height, the drawing never loses a line to it, and every tab is
-     * still reachable by a horizontal swipe. `nowrap` plus non-shrinking
-     * tabs is what produces the overflow the scrollbar then reveals.
-     *
-     * The title is the one item here that carries no function - every tab
-     * is named, and the product name is in the tab title - so it is the
-     * first thing allowed to fall out of the flow at truly tiny widths
-     * (see the small-screen block below); the tabs themselves never do.
+     * So the row DOES NOT WRAP: the toolsets scroll horizontally in their own
+     * inner row (`.drawing-toolbar-scroll`), and the Hide control, which is a
+     * sibling of that scroller, stays pinned at the right where eleven toolsets
+     * cannot push it off the edge. The bar is always the same height and the
+     * drawing never loses a line to it.
      */
+    align-items: center;
+    background: var(--datum-surface);
+    border-bottom: 1px solid var(--cad-border);
+    display: flex;
     flex-wrap: nowrap;
-    gap: 0;
     grid-column: 1 / -1;
+    min-width: 0;
+    padding: 4px 6px;
+}
+
+/*
+ * THE SCROLLER HOLDS THE TOOLSETS, AND ONLY THE TOOLSETS.
+ *
+ * It is the element that overflows; the bar around it is a plain flex row that
+ * lets this take the slack and keeps the Hide button beside it. `min-width: 0`
+ * is what allows a flex item to shrink below its content width at all - without
+ * it the scroller would refuse to be narrower than its toolsets and the whole
+ * page would scroll sideways instead.
+ */
+.drawing-toolbar-scroll {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    gap: 2px;
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
-    padding: 3px 4px;
     scrollbar-width: thin;
     white-space: nowrap;
 }
 
 .drawing-style-strip {
     align-items: center;
-    background: #f7faf9;
+    background: var(--datum-rail);
     border-bottom: 1px solid var(--cad-border);
     display: flex;
 
     /*
      * ========================================================
-     * EACH CONTROL GETS ITS OWN SPACE, AND NOTHING OVERLAPS
+     * BAND 4: COMMAND SEARCH AND THE QUICK-ACCESS TOOLBAR
      * ========================================================
      *
-     * This row holds Thickness, Color, Line Type and the display toggles -
-     * four controls of different kinds on one line. It used to be a single
-     * non-wrapping line of `flex` items with no minimum widths, which is
-     * exactly the arrangement that lets flex items shrink INTO one another:
-     * when the panel narrowed, the selects and the colour swatch were
-     * squeezed below their own content width and drew over their
-     * neighbours, so "Thickness [ 0.50 mm ]" ran into the next control.
+     * A COMPACT ROW. Everything on it is 22px tall - the search field, the icon
+     * buttons and the vector-scale readout alike - so the band reads as one
+     * strip rather than a line of controls of assorted heights, and it takes as
+     * little of the drawing's height as a legible row can. 22px is the floor
+     * rather than a preference: below it the icons stop being comfortable to
+     * hit.
      *
-     * Three things fix it, and all three are needed:
+     * EACH CONTROL GETS ITS OWN SPACE, AND NOTHING OVERLAPS.
      *
-     *   WRAP       - `flex-wrap: wrap` lets a control that no longer fits
-     *                move to a second line instead of being crushed. That is
-     *                the reflow the specification asks for, and it is why
-     *                the grid row above is `auto` rather than a fixed 28px.
-     *                A gap in BOTH directions keeps the second line clear of
-     *                the first.
-     *
-     *   NO SHRINK  - each child is `flex: 0 0 auto`, so it keeps the width
-     *                its own content needs. A control that may not shrink
-     *                cannot be squeezed under a neighbour; when it cannot
-     *                fit, the wrap above moves it down instead.
-     *
-     *   A FLOOR    - each child also carries a small `min-width`, so even a
-     *                natively tiny control (a colour swatch) reserves a
-     *                consistent column and the row keeps a steady rhythm.
-     *
-     * The font is untouched. Shrinking type to force one line is the other
-     * way this row could have been "made to fit", and it trades an overlap
-     * for an unreadable label - neither is acceptable.
+     * This row holds the search field, Undo and Redo, the three property
+     * controls and the display toggles. It used to be a single non-wrapping line
+     * of `flex` items with no minimum widths, which is exactly the arrangement
+     * that lets flex items shrink INTO one another: when the panel narrowed, the
+     * selects and the colour swatch were squeezed below their own content width
+     * and drew over their neighbours. Every child is therefore `flex: 0 0 auto`,
+     * so a control that no longer fits moves to a second line rather than being
+     * crushed - which is why the grid row above is `auto`, not a fixed height.
      */
-    column-gap: 12px;
+    column-gap: 7px;
     flex-wrap: wrap;
     grid-column: 1 / -1;
-    padding: 3px 7px;
+    min-width: 0;
+    padding: 3px 8px;
     row-gap: 4px;
 }
 
@@ -548,16 +1464,37 @@ body.datum-topbar-hidden .drawing-workspace {
  * It never shrinks, so its label can never be squeezed into the control
  * beside it, and its own two parts stay together: the label always sits
  * immediately beside the value it names.
+ *
+ * THE LABEL IS READABLE, NOT A CAPTION. 11px with the ordinary secondary ink:
+ * "Thickness" and "Line Type" name a control the student uses constantly, and
+ * 9px grey was a label you had to lean in to read.
  */
 .drawing-style-strip > label {
     align-items: center;
     color: var(--cad-muted);
     display: inline-flex;
     flex: 0 0 auto;
-    font-size: 9px;
-    gap: 4px;
+    font-size: 10.5px;
+    gap: 5px;
     min-width: 0;
     white-space: nowrap;
+}
+
+/*
+ * THE PROPERTY CONTROLS ARE VALUE CONTROLS, NOT TOGGLES.
+ *
+ * Thickness, Color and Line Type each DISPLAY a value the drawing already has.
+ * They therefore never take a persistent selected background merely because a
+ * value exists - only a hover and a focus treatment, and an open one while
+ * their picker is up. A value control that lit up like a toggle would claim a
+ * state the drawing does not have.
+ */
+.drawing-style-strip > label:hover {
+    color: var(--cad-ink);
+}
+
+.drawing-style-strip .drawing-strip-field-label {
+    color: inherit;
 }
 
 /*
@@ -568,12 +1505,15 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 
 .drawing-style-strip select {
-    background: #ffffff;
-    border: 1px solid #cbd8dc;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
     color: var(--cad-ink);
+    cursor: pointer;
     flex: 0 0 auto;
     font: inherit;
-    height: 20px;
+    font-size: 10.5px;
+    height: 24px;
 
     /*
      * A FLOOR WIDE ENOUGH FOR THE LONGEST OPTION. "0.25 mm" and
@@ -582,23 +1522,434 @@ body.datum-topbar-hidden .drawing-workspace {
      * same class of defect as an overlapping one. It never shrinks, so it
      * cannot push into its neighbour either - the row wraps instead.
      */
-    min-width: 72px;
-    padding: 0 3px;
+    min-width: 78px;
+    padding: 0 4px;
+}
+
+.drawing-style-strip select:hover {
+    border-color: var(--datum-green);
+}
+
+.drawing-style-strip select:focus-visible {
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
 }
 
 .drawing-style-strip input[type="color"] {
-    border: 1px solid #cbd8dc;
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
     flex: 0 0 auto;
-    height: 20px;
+    height: 24px;
     padding: 1px;
+    width: 34px;
+}
+
+.drawing-style-strip input[type="color"]:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/*
+ * =========================================================
+ * THICKNESS, COLOUR AND LINE TYPE: ICON-FIRST VALUE CONTROLS
+ * =========================================================
+ *
+ * Each is ONE SQUARE BUTTON showing a live preview of the current value, with
+ * the real `<select>` or `<input>` sitting transparently on top of it. That is
+ * the whole trick: the native control keeps its options, its keyboard behaviour
+ * and its existing `change`/`input` handlers, while what the student SEES is the
+ * icon - so nothing here re-implements a picker, and no value list is lost.
+ *
+ * THE SELECT IS LAID OVER THE BUTTON rather than being hidden, because a
+ * `display: none` control cannot be focused or opened. `opacity: 0` plus
+ * `inset: 0` makes it fill the button exactly and catch every click, so pressing
+ * the icon opens the list the platform already draws.
+ *
+ * THE PREVIEW IS DRAWN FROM THE VALUE, not from a static icon:
+ *
+ *   Thickness  two rules of different weight - the control's name
+ *   Color      a paint drop, filled with the drawing colour
+ *   Line Type  one rule - the control's name
+ *
+ * A VALUE CONTROL IS NEVER "TOGGLED ON". It takes hover, focus and an
+ * open-state treatment and nothing else - a permanent green background would
+ * claim a state the drawing does not have.
+ */
+.drawing-strip-icon-control {
+    flex: 0 0 auto;
+    height: 26px;
+    position: relative;
     width: 28px;
 }
 
 /*
- * The display toggles are children of the strip in their own right, not
- * wrapped in a label, so they carry the same "own space, never shrink" rule
- * as the label pairs above - which keeps every control on this row in the
- * same layout system rather than mixing two.
+ * THE ICON IS THE BUTTON'S FACE: one square of surface, with the artwork centred
+ * in it. Every icon is 18px against a 20x20 viewBox, so all seven controls in
+ * the row sit in the same optical area at the same weight.
+ */
+.drawing-strip-icon {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    color: var(--cad-ink);
+    display: inline-flex;
+    height: 26px;
+    justify-content: center;
+    pointer-events: none;
+    transition: background-color 120ms ease, border-color 120ms ease;
+    width: 28px;
+}
+
+.drawing-strip-icon svg {
+    display: block;
+    flex: 0 0 auto;
+    height: 18px;
+    width: 18px;
+}
+
+/*
+ * HOVER LIFTS THE SURFACE AND THE BORDER, so the button reads as pressable
+ * without claiming any state.
+ */
+.drawing-strip-icon-control:hover .drawing-strip-icon {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+}
+
+/*
+ * THE OPEN AND FOCUS STATE.
+ *
+ * `:has(:focus-visible)` asks for KEYBOARD focus specifically. Plain
+ * `:focus-within` matches whenever any descendant has focus at all - including
+ * the overlaid control the moment anything else focuses it - which left a
+ * control wearing a focus ring it had not been given. `:has(select:open)` is
+ * what a dropdown gives while its list is down, so the button shows it is open
+ * without the row changing size.
+ */
+.drawing-strip-icon-control:has(:focus-visible) .drawing-strip-icon,
+.drawing-strip-icon-control:has(select:open) .drawing-strip-icon {
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/*
+ * THE REAL CONTROL, FILLING THE BUTTON INVISIBLY.
+ *
+ * `appearance: none` removes the platform's own arrow and box so only the icon
+ * is seen; `opacity: 0` keeps it focusable and clickable, which `display: none`
+ * and `visibility: hidden` would both prevent.
+ */
+.drawing-strip-icon-select {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    height: 100%;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    padding: 0;
+    position: absolute;
+    width: 100%;
+}
+
+/*
+ * THE COLOUR SWATCH.
+ *
+ * The native colour input is overlaid the same way, and the SWATCH ITSELF is
+ * drawn behind it. A chequerboard backing shows through a translucent colour and
+ * gives a near-white or near-black swatch an edge to be distinguished against -
+ * which is the requirement that an extreme colour must not disappear into the
+ * toolbar surface.
+ */
+/*
+ * THE COLOUR BUTTON: A PAINT DROP FILLED WITH THE CURRENT COLOUR.
+ *
+ * The button is the same 30x22 box, border and radius as the thickness and
+ * line-type controls beside it, so the three sit on one line without any of them
+ * looking a different size. What makes it the COLOUR control is the drop:
+ *
+ *   the drop's FILL   is the ACTUAL drawing colour, painted from
+ *                     `--datum-colour-value` - the same custom property
+ *                     `editor/colour-picker.js` writes when the colour changes
+ *   the drop's OUTLINE is the interface ink, so the shape stays readable whether
+ *                     the fill is white, black or anything between
+ *
+ * A VALUE CONTROL IS NEVER "TOGGLED ON": it takes hover and focus and nothing
+ * else. A permanent green background would claim a state the drawing has not.
+ */
+/*
+ * THE COLOUR BUTTON: ONE SQUARE, LIKE THE OTHER TWO.
+ *
+ * Same 30x22 box, same 1px border, same radius as the thickness and line-type
+ * controls beside it - the three are meant to be one set, and any difference in
+ * border weight or size breaks that at a glance.
+ *
+ * THE SWATCH IS INSIDE IT, not behind it. `editor/colour-picker.js` inserts a
+ * swatch button next to the native input; it is inset inside this box so the
+ * border and corners stay visible and the hover state is a tint within the
+ * button rather than a block over it.
+ */
+.drawing-strip-colour {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    color: var(--cad-ink);
+    display: inline-flex;
+    height: 26px;
+    justify-content: center;
+    padding: 0;
+    position: relative;
+    transition: background-color 120ms ease, border-color 120ms ease;
+    width: 28px;
+}
+
+/*
+ * INSIDE THE STYLE STRIP THE COLOUR CONTROL WEARS NO BOX.
+ *
+ * It sits between the thickness and line-type controls, and those two are
+ * borderless, transparent button faces - the artwork alone marks the control and
+ * the row stays quiet. The colour button was the one member of the set with its
+ * own white surface and a 1px outline, so it read as a different kind of object
+ * wedged between its two siblings. Removing the box here makes the three line
+ * controls one set again; the DRAWING COLOUR is still shown - it is the paint
+ * drop's fill, which is the thing the student is actually choosing.
+ *
+ * HOVER AND FOCUS ARE RE-ASSERTED BELOW, because the sibling treatment is
+ * expressed for `.drawing-strip-icon` and this is a different element.
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-strip-colour {
+    background: transparent;
+
+    /*
+     * `border: 0`, NOT `border-color: transparent`. The thickness and line-type
+     * boxes take `border: 0` from the rule above, and a transparent 1px border
+     * would still take a pixel of the box - so the three controls would sit a
+     * pixel out of line. Zero width makes the set exactly uniform.
+     */
+    border: 0;
+}
+
+/*
+ * THE COLOUR DROP, AND WHY IT NEEDS NO HALO.
+ *
+ * The drop's FILL is the drawing colour and its OUTLINE is the interface ink, so
+ * the two already separate the shape from whatever is behind it: a white fill is
+ * bounded by a dark outline, and a black fill is bounded by the button's own
+ * surface round the outside.
+ *
+ * The earlier version added two `drop-shadow` passes as a halo. On a black fill
+ * the halo merged with the dark ink and the drop read as one heavy blob several
+ * times its intended weight - which is what it looked like. The outline is the
+ * edge; nothing else is needed.
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-strip-icon:has(svg) {
+    background: transparent;
+    border: 0;
+    box-sizing: border-box;
+    color: var(--datum-ink);
+    flex: 0 0 28px;
+    height: 26px;
+    pointer-events: none;
+    position: relative;
+    width: 28px;
+    z-index: 2;
+}
+
+.drawing-strip-colour input[type="color"] {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    height: 100%;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    padding: 0;
+    position: absolute;
+    width: 100%;
+
+    /*
+     * BELOW THE SWATCH, WHICH IS THE CONTROL THAT OPENS THE PICKER.
+     *
+     * `editor/colour-picker.js` wires the SWATCH's click to `openColourPopup`,
+     * so the swatch has to receive the press. The native input is kept in the
+     * DOM as the VALUE SOURCE, and it is given the lower level so it cannot
+     * cover the button that actually handles the interaction - while remaining
+     * focusable and reachable by the platform's own colour dialog for a keyboard
+     * user.
+     */
+    z-index: 0;
+}
+
+.drawing-style-strip .drawing-strip-icon-control .drawing-strip-colour:hover {
+    background: var(--datum-input-hover);
+    border-color: transparent;
+}
+
+.drawing-strip-colour:hover {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+}
+
+/*
+ * FOCUS IS FOR THE KEYBOARD, NOT FOR HAVING A DESCENDANT.
+ *
+ * `:focus-within` matches whenever ANY element inside has focus - and the swatch
+ * button that `editor/colour-picker.js` inserts is always present and focusable,
+ * so the rule was matching at rest and the control sat there wearing a gold ring
+ * permanently.
+ *
+ * `:has(:focus-visible)` asks the narrower question: is something inside focused
+ * BY THE KEYBOARD? That is the only case the ring is for, and it is what every
+ * other control on the row uses.
+ */
+.drawing-style-strip .drawing-strip-icon-control
+    .drawing-strip-colour:has(:focus-visible) {
+    border-color: transparent;
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.drawing-strip-colour:has(:focus-visible) {
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/*
+ * =========================================================
+ * VECTOR SCALE: THE VALUE DROPDOWN AT THE FAR RIGHT
+ * =========================================================
+ *
+ * It KEEPS ITS VALUE VISIBLE, and that is what separates it from the four
+ * toggles before it. It is a value selector, and the selected scale is
+ * information the student reads at a glance - requiring the dropdown to be
+ * opened to learn the current scale would make the control useless as a readout.
+ *
+ * THE SELECT IS LAID OVER THE BOX, as with the property controls: the visible
+ * box shows icon + value + chevron, and the real `<select>` sits transparent on
+ * top so the platform's own dropdown, its options and the existing `change`
+ * handler are exactly what they were. Nothing about the scaling logic changes.
+ *
+ * IT IS NOT A TOGGLE. There is deliberately no green background: the value
+ * being set does not make this control "on".
+ */
+.drawing-vector-scale {
+    align-items: center;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    color: var(--cad-ink);
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 5px;
+    height: 26px;
+    padding: 0 6px;
+    position: relative;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.drawing-vector-scale-icon {
+    color: var(--cad-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+/*
+ * THE VALUE. Tabular numerals so the number does not shuffle sideways as it
+ * changes between 0.5x, 1x and 100x - a readout that jumps is hard to scan.
+ */
+.drawing-vector-scale-value {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    min-width: 34px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.drawing-vector-scale-chevron {
+    color: var(--datum-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+/*
+ * THE REAL SELECT, FILLING THE BOX INVISIBLY - the same technique the property
+ * controls use, and for the same reason: the native list, its keyboard handling
+ * and its existing handlers survive.
+ */
+.drawing-vector-scale select {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    height: 100%;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    padding: 0;
+    position: absolute;
+    width: 100%;
+}
+
+.drawing-vector-scale:hover {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+}
+
+.drawing-vector-scale:focus-within {
+    border-color: var(--datum-green);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+.drawing-vector-scale:has(select:open) {
+    background: var(--datum-input-hover);
+    border-color: var(--datum-green);
+}
+
+/*
+ * THE CUSTOM FIELD, SHOWN ONLY WHILE CUSTOM IS CHOSEN.
+ *
+ * It appears beside the select for a value the list does not carry, and is
+ * `hidden` the rest of the time - which is the one attribute the wiring toggles,
+ * so there is no second piece of state deciding its visibility. The digits are
+ * right-aligned and tabular so the number reads steadily as it changes.
+ */
+.drawing-vector-scale .drawing-vector-scale-custom {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--cad-ink);
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    height: 24px;
+    min-width: 60px;
+    padding: 0 4px;
+    position: relative;
+    text-align: right;
+    width: 60px;
+    z-index: 1;
+}
+
+.drawing-vector-scale .drawing-vector-scale-custom[hidden] {
+    display: none;
+}
+
+/*
+ * The toggles are children of the strip in their own right, not wrapped in a
+ * label, so they carry the same "own space, never shrink" rule as the controls
+ * above - which keeps every control on this row in the same layout system
+ * rather than mixing two.
  */
 .drawing-style-strip .drawing-status-toggle,
 .drawing-style-strip button {
@@ -606,68 +1957,161 @@ body.datum-topbar-hidden .drawing-workspace {
     white-space: nowrap;
 }
 
+/*
+ * AN ICON-ONLY TOGGLE: ONE SQUARE BUTTON, TWO PERSISTENT STATES.
+ *
+ * The size is deliberately the same as the icon controls beside it, so the row
+ * keeps one rhythm and the eye can move along it without re-measuring. The
+ * width and height are a usable target even though the icon inside is smaller.
+ */
 .drawing-style-strip .drawing-status-toggle {
-    border: 1px solid #d5dfe2;
-    border-radius: 3px;
-    font-size: 9px;
-    padding: 2px 5px;
+    align-items: center;
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    display: inline-flex;
+    gap: 0;
+    height: 26px;
+    justify-content: center;
+    padding: 0;
+    width: 28px;
 }
 
+/*
+ * EVERY TOGGLE'S ICON IS THE SAME SIZE AS EVERY OTHER CONTROL'S.
+ *
+ * The four toggles and the three property controls sit in one row, so a toggle
+ * icon at a different size from a property icon is the thing that stops the row
+ * reading as one set. 18px here, 18px there, one weight of stroke throughout.
+ */
+.drawing-style-strip .drawing-status-toggle .drawing-toolbar-icon {
+    flex: 0 0 auto;
+    height: 18px;
+    width: 18px;
+}
+
+/*
+ * THE ROW IS NAMED BY ITS OWN LABELS.
+ *
+ * There is deliberately no "EnggDraw" caption at the head of the toolset row.
+ * Eleven named toolsets say what the row is for more clearly than a product
+ * name does, and the product name is already in the application bar above -
+ * so the caption was a word the student had to read past to reach the first
+ * toolset. `.drawing-workspace-title` is kept as a rule only so a layout that
+ * still carries one is styled rather than broken.
+ */
 .drawing-workspace-title {
     align-items: center;
     color: var(--cad-muted);
     display: flex;
     flex: 0 0 auto;
-    font-size: 10px;
-    letter-spacing: .01em;
-    margin: 0 14px 0 5px;
+    font-size: 11px;
+    letter-spacing: .02em;
+    margin: 0 12px 0 4px;
     white-space: nowrap;
-}
-
-.drawing-workspace-title strong {
-    color: var(--cad-ink);
-    font-weight: 700;
-    margin-left: 3px;
 }
 
 .drawing-category {
     background: transparent;
     border: 1px solid transparent;
+
+    /*
+     * AN INACTIVE WORKSPACE IS MUTED, NOT DISABLED.
+     *
+     * The row lists eleven workspaces and exactly one of them is where the
+     * student is. Painting every hovered one with the selected treatment made
+     * the row light up as the pointer crossed it, so "where am I" and "where is
+     * the mouse" looked the same. Inactive options therefore stay neutral until
+     * they are chosen - but they use the ordinary secondary ink, not the disabled
+     * grey, because every one of them is available.
+     */
     color: var(--cad-muted);
     cursor: pointer;
     flex: 0 0 auto;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    min-height: 30px;
-    padding: 4px 8px;
+
+    /*
+     * A COMPACT LABEL - 10.5px, DOWN FROM 12px.
+     *
+     * Eleven of these share one row, and at 12px the long names
+     * (Thermodynamics, Solid Mechanics, Mechanical Design) pushed the row into
+     * scrolling long before the window was actually narrow. The size is what
+     * makes the row fit. The SELECTED state, below, is what makes the active one
+     * unmistakable - so the two pull in opposite directions and the active
+     * toolset is the loudest thing on the row without the row itself being loud.
+     */
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    line-height: 1;
+    min-height: 24px;
+    padding: 5px 8px;
     white-space: nowrap;
 
     /*
      * THE BORDER IS DRAWN, NOT EARNED.
      *
-     * Every category carries a transparent border so that the ACTIVE one
-     * can gain an outline without the row changing size. Without this the
-     * border sits INSIDE the button's declared width while the row still
-     * advanced by the full width, so adjacent categories overlapped by a
-     * pixel - a hairline seam where one button's edge sat on top of its
-     * neighbour's, and which read as the buttons covering each other.
-     *
-     * Drawing the border inside the box makes the declared width and the
-     * occupied width the same number, so the row lays out exactly as
-     * measured and no two categories can intersect.
+     * Every category carries a transparent border so that the ACTIVE one can
+     * gain an underline and an outline without the row changing size - and so
+     * the green indicators below have a box to sit inside rather than hanging
+     * off the bottom edge.
      */
+    border-bottom: 2px solid transparent;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     box-sizing: border-box;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.drawing-category:hover,
-.drawing-category.active {
-    background: var(--datum-green-wash);
-    color: var(--datum-green);
+/*
+ * A HOVERED, UNSELECTED WORKSPACE LIFTS ITS SURFACE ONLY.
+ *
+ * It gets the hover surface and the ordinary ink - the same feedback every
+ * other control gives - so it reads as "this is clickable" without claiming to
+ * be the current workspace.
+ */
+.drawing-category:hover {
+    background: var(--datum-menu-hover);
+    color: var(--cad-ink);
 }
 
-.drawing-category.active {
-    border-color: var(--datum-green-soft);
+/*
+ * AND THE SELECTED ONE IS UNMISTAKABLE - AND IS DRAWN AS A DIFFERENT SHAPE.
+ *
+ * FOUR SIGNALS, none of which is colour alone:
+ *
+ *   an ACCENT BAR down the left edge - the "you are here" mark, the same
+ *   idea as the rule a technical drawing uses to flag a section;
+ *   a PALE GREEN SURFACE behind the label;
+ *   a GREEN OUTLINE round the whole chip; and
+ *   the strongest ink at the heaviest weight.
+ *
+ * THE LEFT BAR IS WHAT MAKES IT CREATIVE RATHER THAN JUST LOUD. A toolset row
+ * of eleven equal labels is a list; giving the active one an edge marker turns
+ * it into a SET WITH A CURRENT POSITION, which is what it is. The marker also
+ * reads instantly at a glance along the row, because it breaks the left
+ * alignment every other label shares - the eye finds it without reading a word.
+ *
+ * IT SURVIVES HOVER (the rule below covers `.active:hover`), so the student can
+ * always see which toolset is current, even with the pointer resting on it.
+ *
+ * GREEN IS THE SELECTED-STATE ACCENT here, as everywhere else in the interface -
+ * the same green the active workspace tab and an "on" toggle use.
+ */
+.drawing-category.active,
+.drawing-category.active:hover {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green-line);
+    border-radius: var(--radius-sm);
+    box-shadow:
+        inset 0 0 0 1px var(--datum-green),
+        inset 3px 0 0 0 var(--datum-green);
+    color: var(--datum-green-ink);
+    font-weight: 700;
+    padding-left: 11px;
+}
+
+.drawing-category:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -2px;
 }
 
 .drawing-tool-panel,
@@ -779,7 +2223,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-panel-toggle {
     align-items: center;
     align-self: stretch;
-    background: #eef3f4;
+    background: var(--datum-panel);
     border: 0;
     color: var(--cad-muted);
     cursor: pointer;
@@ -794,7 +2238,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-panel-toggle:hover {
-    background: #e2ebee;
+    background: var(--datum-panel);
     color: var(--cad-ink);
 }
 
@@ -955,7 +2399,7 @@ body.datum-topbar-hidden .drawing-workspace {
      * list is currently overflowing, so the column of tools does not
      * shift sideways the moment the list becomes scrollable.
      */
-    scrollbar-color: #b9c9ce transparent;
+    scrollbar-color: var(--datum-border) transparent;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
 }
@@ -974,19 +2418,19 @@ body.datum-topbar-hidden .drawing-workspace {
  * below look as though it did not exist.
  */
 .drawing-tool-list::-webkit-scrollbar-thumb {
-    background: #b9c9ce;
+    background: var(--datum-border);
     border: 2px solid transparent;
     border-radius: 4px;
     background-clip: content-box;
 }
 
 .drawing-tool-list::-webkit-scrollbar-thumb:hover {
-    background: #93a8b0;
+    background: var(--datum-muted);
     background-clip: content-box;
 }
 
 .drawing-tool-group {
-    border-bottom: 1px solid #e0e7e9;
+    border-bottom: 1px solid var(--datum-panel);
 
     /*
      * Same reason as the buttons: a grid item's default `min-width:
@@ -1162,8 +2606,8 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-tool:hover,
 .drawing-tool.selected {
-    background: #e9efeb;
-    border-color: #ccdad0;
+    background: var(--datum-green-wash);
+    border-color: var(--datum-green-line);
 }
 
 .drawing-tool.active {
@@ -1183,16 +2627,16 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-canvas-area {
-    background: #ffffff;
+    background: var(--datum-surface);
     min-height: 0;
     min-width: 0;
     padding: 0;
 }
 
 .drawing-canvas {
-    background-color: #ffffff;
+    background-color: var(--datum-surface);
     background-image: none;
-    border: 1px solid #cbd4d9;
+    border: 1px solid var(--datum-border);
     cursor: default;
     height: 100%;
     min-height: 0;
@@ -1214,18 +2658,18 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-snap-marker {
-    fill: #ffffff;
-    stroke: #00a9c7;
+    fill: var(--datum-surface);
+    stroke: var(--datum-focus);
     stroke-width: 1.5;
 }
 
 .drawing-snap-label {
-    fill: #008ca6;
+    fill: var(--datum-focus);
     font-family: Arial, sans-serif;
     font-size: 9px;
     font-weight: 700;
     paint-order: stroke;
-    stroke: #ffffff;
+    stroke: var(--datum-surface);
     stroke-width: 3px;
 }
 
@@ -1245,7 +2689,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-selection-box {
     fill: none;
     pointer-events: none;
-    stroke: #00a9c7;
+    stroke: var(--datum-focus);
     stroke-dasharray: 4 3;
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
@@ -1257,7 +2701,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-axis-x,
 .drawing-axis-y {
-    background: #98a8b1;
+    background: var(--datum-muted);
     position: absolute;
 }
 
@@ -1277,7 +2721,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-origin {
     background: var(--datum-green);
-    border: 2px solid #ffffff;
+    border: 2px solid var(--datum-surface);
     border-radius: 50%;
     height: 10px;
     left: calc(50% - 5px);
@@ -1287,7 +2731,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-axis-label {
-    color: #84939b;
+    color: var(--datum-muted);
     font-size: 10px;
     position: absolute;
 }
@@ -1304,7 +2748,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-canvas-note {
     background: rgba(255, 255, 255, .85);
-    color: #839098;
+    color: var(--datum-muted);
     font-size: 11px;
     left: 14px;
     padding: 4px 6px;
@@ -1330,7 +2774,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-inspector-message {
-    color: #829098;
+    color: var(--datum-muted);
     font-size: 11px;
     line-height: 1.5;
     margin: 0;
@@ -1384,7 +2828,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-component-row:hover,
 .drawing-component-row.selected {
-    background: #e4f0ea;
+    background: var(--datum-green-wash);
     border-color: var(--datum-green-soft);
 }
 
@@ -1431,13 +2875,13 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-component-row-child {
-    color: #4a5b63;
+    color: var(--datum-ink);
     font-size: 10px;
     padding-left: 8px;
 }
 
 .drawing-component-row-child svg {
-    color: #6b7d85;
+    color: var(--datum-muted);
     height: 13px;
     width: 13px;
 }
@@ -1473,7 +2917,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * a long feature name could be mistaken for a field caption.
  */
 .drawing-properties-title {
-    border-bottom: 1px solid #d8e2e6;
+    border-bottom: 1px solid var(--datum-border);
     color: var(--datum-green);
     font-size: 11px;
     font-weight: 700;
@@ -1502,9 +2946,9 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-status-bar {
-    background: #e5eaed;
+    background: var(--datum-panel);
     border-top: 1px solid var(--cad-border);
-    color: #64747d;
+    color: var(--datum-muted);
     display: flex;
     font-size: 10px;
     height: 22px;
@@ -1534,23 +2978,127 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-status-toggle {
+    align-items: center;
     background: transparent;
-    border: 0;
-    color: #64747d;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--cad-muted);
     cursor: pointer;
+    display: inline-flex;
     font: inherit;
+    font-size: 10.5px;
+    gap: 5px;
     line-height: 1;
-    padding: 0;
+    padding: 0 6px;
+    transition: background-color 120ms ease, border-color 120ms ease;
     white-space: nowrap;
 }
 
-.drawing-status-toggle:hover,
+/*
+ * =========================================================
+ * THE TOOLBAR'S TOGGLE ICONS
+ * =========================================================
+ *
+ * Each toggle is an ICON-ONLY button now, so the icon IS the control rather
+ * than a companion to a word. Its accessible name comes from the button's
+ * `aria-label` and its explanation from the `title` tooltip, so the meaning is
+ * not lost with the text - which is the requirement that a student must not
+ * have to guess what an icon does.
+ *
+ * The icon takes `currentColor`, so it follows the button through off, on,
+ * hover and disabled without a rule of its own.
+ */
+.drawing-toolbar-icon {
+    flex: 0 0 auto;
+}
+
+/*
+ * THE OFF STATE. Neutral ink on a neutral surface, with the icon fully legible:
+ * an unavailable-looking control that is in fact available is the fault this
+ * avoids. `opacity: .75` keeps it recessed against the "on" state without
+ * making it hard to see.
+ */
+.drawing-status-toggle:not(.active) {
+    background: var(--datum-input);
+    border-color: var(--datum-border);
+    color: var(--cad-muted);
+}
+
+.drawing-status-toggle:not(.active) .drawing-toolbar-icon {
+    opacity: .75;
+}
+
+/*
+ * =========================================================
+ * THE ON STATE - AND IT IS NOT MERELY A COLOUR CHANGE
+ * =========================================================
+ *
+ * FOUR SIGNALS, so the state survives a monochrome screenshot and a student who
+ * cannot distinguish the green:
+ *
+ *   a filled GREEN-TINTED SURFACE (not the plain input surface)
+ *   a GREEN BORDER
+ *   the GREEN ink on the icon
+ *   an INSET RING, which is a shape rather than a colour
+ *
+ * AND THE WHOLE TREATMENT PERSISTS after the pointer moves away: a toggle that
+ * was on and then looked off as soon as the mouse left it would be the worst of
+ * both states.
+ */
+.drawing-status-toggle.active {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    box-shadow: inset 0 0 0 1px var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.drawing-status-toggle.active .drawing-toolbar-icon {
+    opacity: 1;
+}
+
+/*
+ * HOVER ON AN OFF TOGGLE: a lift of the surface and the ink, so it reads as
+ * pressable without claiming to be on.
+ */
+.drawing-status-toggle:not(.active):hover {
+    background: var(--datum-menu-hover);
+    border-color: var(--datum-border-strong);
+    color: var(--cad-ink);
+}
+
+/*
+ * HOVER ON AN ON TOGGLE PRESERVES ITS STATE. It brightens the icon and keeps
+ * the tinted surface and the ring - the pointer over an "on" control must never
+ * make it look like an "off" one.
+ */
 .drawing-status-toggle.active:hover {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    box-shadow: inset 0 0 0 1px var(--datum-green);
     color: var(--datum-green);
 }
 
-.drawing-status-toggle:not(.active) {
-    color: #9aa7ad;
+/*
+ * KEYBOARD FOCUS IS ITS OWN TREATMENT - the gold ring in both themes - so it is
+ * distinct from hover and from the on/off appearance.
+ */
+.drawing-status-toggle:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
+/*
+ * A GENUINELY UNAVAILABLE TOGGLE. Subdued, and the pointer says so too; the
+ * wiring that disables it decides when that is, so this rule only styles the
+ * real state rather than inventing one.
+ */
+.drawing-status-toggle:disabled {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--datum-muted);
+    cursor: default;
+    opacity: .45;
 }
 
 .drawing-zoom-controls {
@@ -1561,7 +3109,7 @@ body.datum-topbar-hidden .drawing-workspace {
     align-items: center;
     background: transparent;
     border: 1px solid transparent;
-    color: #52636c;
+    color: var(--datum-muted);
     cursor: pointer;
     display: inline-flex;
     font-size: 13px;
@@ -1573,15 +3121,15 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-zoom-controls button:hover {
-    background: #d9e4e0;
-    border-color: #bfd1c7;
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green-line);
 }
 
 #drawingZoomValue {
-    background: #f7f9fa;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-rail);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    color: #52636c;
+    color: var(--datum-muted);
     font-variant-numeric: tabular-nums;
     font: inherit;
     height: 19px;
@@ -1591,14 +3139,14 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 #drawingZoomValue:focus {
-    border-color: #83a994;
+    border-color: var(--datum-green);
     outline: 2px solid var(--datum-green-tint);
 }
 
 .drawing-properties-block input,
 .drawing-properties-block select {
-    background: #fff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--cad-ink);
     font: inherit;
@@ -1728,8 +3276,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-properties-block input[type="number"]:disabled {
-    background: #eef1f2;
-    color: #88949b;
+    background: var(--datum-panel);
+    color: var(--datum-muted);
     opacity: 0.65;
 }
 
@@ -1759,7 +3307,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-swatch {
-    border: 1px solid #b9c6cc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     cursor: pointer;
     height: 18px;
@@ -1769,6 +3317,79 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-colour-swatch:hover {
     border-color: var(--datum-green);
+}
+
+/*
+ * =========================================================
+ * THE SWATCH ON BAND 4'S COLOUR BUTTON
+ * =========================================================
+ *
+ * THE SWATCH IS THE CLICK TARGET THAT OPENS THE PICKER.
+ *
+ * `editor/colour-picker.js` builds this element as a real `<button>` and wires
+ * its click to `openColourPopup`, so it is what opens the picker. It also
+ * carries the live colour, republished as `--datum-colour-value` for the drop.
+ *
+ * IT IS TRANSPARENT, NOT PAINTED. The colour is shown INSIDE the paint drop -
+ * see `.drawing-strip-icon-fill` - so a painted face would cover the icon and
+ * hide the shape that tells the student what this control is.
+ *
+ * IT IS INSET, NOT FULL-BLEED. `inset: 0` made it cover the button's own border
+ * and corner radius, so its hover state painted a hard-edged square over a
+ * rounded button and swallowed the outline. The inset below leaves the button's
+ * border and radius visible and gives the swatch the SAME radius, so the two
+ * read as one control at rest and the hover state is a tint INSIDE the button
+ * rather than a block over it.
+ *
+ * THESE RULES COME AFTER `.drawing-colour-swatch` ABOVE ON PURPOSE. That rule
+ * sizes the swatch at 18x34 for a labelled property row, and it is LATER IN THE
+ * FILE than the strip's own block - so without a rule down here, at the same or
+ * greater specificity, the component's row sizing won and the control came out
+ * the wrong height.
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-colour-swatch {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    height: auto;
+    inset: 2px;
+    min-width: 0;
+    padding: 0;
+    position: absolute;
+    width: auto;
+    z-index: 1;
+}
+/*
+ * THE SWATCH'S HOVER IS THE BUTTON'S HOVER.
+ *
+ * The component gives this element its own hover border, which drew a second
+ * outline INSIDE the button and looked like a stray box. The button already
+ * answers the pointer - see `.drawing-strip-colour:hover` - so the swatch is a
+ * plain, invisible hit area and adds nothing of its own.
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-colour-swatch:hover,
+.drawing-style-strip .drawing-strip-icon-control .drawing-colour-swatch:focus {
+    background: transparent;
+    border: 0;
+    outline: none;
+}
+
+/*
+ * THE COLOUR FILL INSIDE THE DROP.
+ *
+ * The drop is drawn as two paths: this one is the FILL, painted with the current
+ * colour, and the path after it in the markup is the OUTLINE in the interface
+ * ink. Splitting them is what keeps the shape visible on a white fill (the dark
+ * outline is the edge) and on a black one (the button's surface shows round the
+ * outside).
+ *
+ * `--datum-colour-value` is set on the CONTROL by `updateColourSwatch`, so it
+ * inherits down into this path. Before the first update there is no value, and
+ * the fallback is the surface - an unfilled drop rather than a guessed colour.
+ */
+.drawing-strip-icon-fill {
+    fill: var(--datum-colour-value, var(--datum-input));
 }
 
 .drawing-colour-native {
@@ -1789,7 +3410,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-section {
-    color: #87949b;
+    color: var(--datum-muted);
     font-size: 8px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -1822,7 +3443,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-custom {
-    border: 1px solid #cbd5d9;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     cursor: pointer;
     flex: 0 0 auto;
@@ -1832,8 +3453,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-action {
-    background: #eef2f4;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-chrome);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--cad-ink);
     cursor: pointer;
@@ -1844,14 +3465,14 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-action:hover {
-    background: #e0eaee;
+    background: var(--datum-panel);
     border-color: var(--datum-green);
 }
 
 .drawing-colour-action.active {
     background: var(--datum-green);
-    border-color: #16472b;
-    color: #ffffff;
+    border-color: var(--datum-green-hover);
+    color: var(--datum-surface);
     font-weight: 700;
 }
 
@@ -1867,7 +3488,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-colour-empty {
-    color: #9aa7ad;
+    color: var(--datum-muted);
     font-size: 8px;
 }
 
@@ -1876,8 +3497,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * triangle between its two representations.
  */
 .drawing-segmented {
-    background: #e7ecee;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     display: grid;
     gap: 2px;
@@ -1889,7 +3510,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: transparent;
     border: 0;
     border-radius: 2px;
-    color: #64747d;
+    color: var(--datum-muted);
     cursor: pointer;
     font: inherit;
     font-size: 9px;
@@ -1903,7 +3524,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-segmented-option.active {
-    background: #ffffff;
+    background: var(--datum-surface);
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
     color: var(--datum-green);
     font-weight: 700;
@@ -1928,8 +3549,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * are the thing being read.
  */
 .drawing-properties-section {
-    border-top: 1px solid #e2e8ea;
-    color: #87949b;
+    border-top: 1px solid var(--datum-panel);
+    color: var(--datum-muted);
     font-size: 8px;
     font-weight: 700;
     letter-spacing: .09em;
@@ -2156,11 +3777,272 @@ body.datum-topbar-hidden .drawing-workspace {
     white-space: normal;
 }
 
+.drawing-properties-block input[type="number"],
+.drawing-properties-block input[type="text"],
+.drawing-properties-block input[type="search"],
+.drawing-properties-block textarea,
+.drawing-properties-block select,
+.drawing-property-grid input[type="number"],
+.drawing-property-grid input[type="text"],
+.drawing-property-grid input[type="search"],
+.drawing-property-grid textarea,
+.drawing-property-grid select,
+.datum-settings-control select,
+.datum-settings-control input[type="number"],
+.datum-settings-control input[type="text"],
+.datum-open-select input,
+.drawing-style-strip select,
+.drawing-style-strip input[type="number"],
+.drawing-style-strip input[type="color"],
+.drawing-scale-dialog-input,
+.drawing-scale-dialog-select,
+.drawing-dimension-dialog input,
+.drawing-dimension-dialog select,
+.drawing-plot-editor input,
+.drawing-plot-editor select,
+.drawing-plot-editor textarea,
+.drawing-command-search input {
+    /*
+     * =========================================================
+     * THE ONE INPUT TREATMENT
+     * =========================================================
+     *
+     * EVERY editable field in the application gets its colours from these five
+     * declarations. It is written once, above the individual rules, so a field
+     * cannot be half-themed in one panel and correct in another.
+     *
+     * DARK MODE WAS THE PROBLEM. A form control is drawn by the BROWSER, and
+     * several of these fields were inheriting the browser's own white input
+     * background - which is the single most visible way a dark theme is left
+     * unfinished. They now all read `--datum-input`, which is a designed dark
+     * surface in Dark Mode and near-white in Light Mode.
+     *
+     * A FIELD SITS IN A WELL, NOT ON A CHIP. The input colour is slightly DEEPER
+     * than the panel behind it, so an editable area reads as somewhere to type
+     * rather than as another raised surface.
+     *
+     * `color: var(--datum-ink)` IS LOAD-BEARING. Changing a background without
+     * the foreground leaves black text on a dark field - which is worse than
+     * leaving it white, because the field LOOKS themed and the text cannot be
+     * read.
+     *
+     * `caret-color` and `::selection` are set because they belong to the same
+     * decision: the caret is the field's cursor and the selection is what the
+     * student is about to act on, so neither should be the browser's default
+     * blue on a green-and-gold interface.
+     */
+    background: var(--datum-input);
+    border: 1px solid var(--datum-input-border);
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    caret-color: var(--datum-green);
+}
+
+/*
+ * =========================================================
+ * THE ICON-FIRST CONTROLS OPT OUT OF THE INPUT TREATMENT
+ * =========================================================
+ *
+ * THIS RULE MUST COME AFTER THE SHARED ONE ABOVE, and that placement is the
+ * whole reason it is here rather than beside the rest of the strip's styling:
+ * the selector `.drawing-style-strip select` matches the three overlays, and a
+ * later rule of equal specificity wins. Declared earlier, the input treatment's
+ * background and border landed ON TOP of the transparent overlay - so the
+ * select painted its own box over the icon, stretched across its neighbours,
+ * and swallowed their clicks.
+ *
+ * WHAT AN OVERLAY IS: an invisible copy of the real control, filling the button
+ * exactly, so the platform's own dropdown is opened where the icon is. It must
+ * therefore have NO box of its own - no background, no border, no appearance -
+ * and be positioned against its own wrapper rather than the row.
+ */
+.drawing-style-strip .drawing-strip-icon-select,
+.drawing-style-strip .drawing-strip-colour input[type="color"],
+.drawing-style-strip .drawing-vector-scale select {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+
+    /*
+     * THE OVERLAY MATCHES THE BUTTON EXACTLY - ITS FOOTPRINT, THAT IS.
+     *
+     * The strip's normal select rule sizes a VISIBLE dropdown to 24px with
+     * padding, and this opt-out replaces that box. The overlay is invisible, but
+     * the platform sizes the OPEN list from the control, so the two concerns are
+     * separated here:
+     *
+     *   HEIGHT is 100%, so the closed control is exactly the 26px button - the
+     *   overlay can never be a pixel taller than the icon behind it.
+     *
+     *   FONT and LINE-HEIGHT are set for the POPUP, not the button. The option
+     *   rows the platform draws take their height from the control's computed
+     *   line box, so a 12px/1.5 control produced rows a few pixels tall with the
+     *   options crowded against one another. A larger line-height gives each
+     *   option room to breathe; because the control itself is transparent and
+     *   fixed at the button's height, none of this is visible until the list is
+     *   opened - which is the point.
+     *
+     * HORIZONTAL PADDING STAYS ZERO. The overlay is only as wide as the 28px
+     * BUTTON, and the platform sizes the popup from the control - so any left or
+     * right padding is taken OUT of the room the option text has, and the words
+     * end up crammed against the right edge of the list.
+     *
+     * AND THE POPUP IS GIVEN A FLOOR FOR ITS WIDTH. The button is 28px square,
+     * and with `appearance: none` the platform sizes the OPEN list from that same
+     * narrow control - so the options were squeezed into 28px and pressed against
+     * the right edge. `min-width` does NOT widen the visible button (the overlay
+     * is transparent and pinned to the button by `inset`), it only stops the
+     * platform treating 28px as the list's maximum. The value is the longest
+     * option ("Construction") plus comfortable side padding.
+     */
+    box-sizing: border-box;
+    font-size: 13px;
+    height: 100%;
+    inset: 0;
+    line-height: 2.4;
+    margin: 0;
+    min-width: 0;
+    opacity: 0;
+    padding: 0;
+    position: absolute;
+    width: 100%;
+}
+
+/*
+ * THE POPUP NEEDS A REAL WIDTH, AND ITS OPTIONS NEED SIDE ROOM.
+ *
+ * The button is 28px square, and with `appearance: none` the platform sizes the
+ * OPEN list from that same narrow control - so the option text was squeezed and
+ * pressed against the right edge. Two things fix that, and neither touches the
+ * closed button:
+ *
+ *   `:open`   matches ONLY while the list is down, so the wider floor applies to
+ *             the POPUP alone. The control is still 28px at rest. Where a browser
+ *             does not support `:open` the rule simply does not match and the
+ *             list is no worse than before.
+ *
+ *   `option`  padding keeps the text off BOTH edges of the list. Some platforms
+ *             ignore it, which is why it is a companion to the width floor rather
+ *             than the only fix.
+ */
+.drawing-style-strip .drawing-strip-icon-select:open {
+    min-width: 148px;
+}
+
+.drawing-style-strip .drawing-strip-icon-select option {
+    padding: 2px 14px;
+}
+
+/*
+ * =========================================================
+ * THE COLOUR COMPONENT'S OWN WRAPPER IS DISSOLVED
+ * =========================================================
+ *
+ * `editor/colour-picker.js` moves the native input and builds a swatch button
+ * inside a `span.drawing-colour-control` of its own, and it inserts that span
+ * NEXT TO our label rather than inside it. `display: contents` removes the
+ * span's box, so the input and the swatch are laid out against OUR control
+ * wrapper and can be positioned to fill it.
+ *
+ * IT IS STILL A DESCENDANT OF THE CONTROL, which is what matters: the wrapper
+ * `.drawing-strip-icon-control` remains their positioning context, so `inset: 0`
+ * on the swatch still means "the whole button".
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-colour-control {
+    display: contents;
+}
+
+/*
+ * AND THE SWATCH IS NOT SIZED OR DISABLED BY THAT OPT-OUT RULE.
+ *
+ * The opt-out above neutralises the SELECTS' boxes. The colour swatch is not a
+ * select: it is the BUTTON that opens the picker, so it must keep its own
+ * geometry and stay clickable. This rule re-asserts both, after the opt-out, so
+ * the swatch cannot be caught by a rule intended for the overlays.
+ */
+.drawing-style-strip .drawing-strip-icon-control .drawing-colour-swatch {
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+/*
+ * PLACEHOLDERS MUST BE READABLE, NOT DECORATIVE.
+ *
+ * `--datum-placeholder` is chosen to clear the 4.5:1 contrast floor against the
+ * input surface in BOTH themes. A placeholder that is too faint to read is a
+ * field whose purpose the student has to guess.
+ */
+.drawing-properties-block input::placeholder,
+.drawing-property-grid input::placeholder,
+.datum-settings-control input::placeholder,
+.drawing-scale-dialog-input::placeholder,
+.drawing-command-search input::placeholder,
+.drawing-plot-editor input::placeholder,
+.drawing-plot-editor textarea::placeholder {
+    color: var(--datum-placeholder);
+    opacity: 1;
+}
+
+/*
+ * SELECTED TEXT.
+ *
+ * The browser's default is a blue that belongs to no other part of the
+ * interface, so it is replaced with the accent. The foreground is the raised
+ * surface, because the accent behind it is dark in both themes.
+ */
+.drawing-properties-block ::selection,
+.drawing-property-grid ::selection,
+.datum-settings-dialog ::selection,
+.datum-help-dialog ::selection,
+.datum-search-results ::selection,
+.drawing-command-search ::selection,
+.drawing-plot-editor ::selection {
+    background: var(--datum-green);
+    color: var(--datum-raised);
+}
+
+/*
+ * A HOVERED FIELD LIFTS SLIGHTLY, so a field the pointer is over reads as the
+ * one about to be typed into. It is a background change and not an outline,
+ * because an outline here would compete with the FOCUS ring.
+ */
+.drawing-properties-block input:hover:not(:disabled),
+.drawing-property-grid input:hover:not(:disabled),
+.datum-settings-control input:hover:not(:disabled),
+.drawing-command-search:hover {
+    background: var(--datum-input-hover);
+}
+
+/*
+ * AND A FOCUSED FIELD TAKES THE GOLD RING.
+ *
+ * Focus is the one state a student must never have to hunt for, so it is the
+ * loudest thing on the row - `--datum-focus`, which is gold in both themes and
+ * shares a hue with nothing behind it.
+ */
+.drawing-properties-block input:focus-visible,
+.drawing-property-grid input:focus-visible,
+.datum-settings-control input:focus-visible,
+.drawing-scale-dialog-input:focus-visible,
+.drawing-scale-dialog-select:focus-visible,
+.drawing-dimension-dialog input:focus-visible,
+.drawing-dimension-dialog select:focus-visible,
+.drawing-plot-editor input:focus-visible,
+.drawing-plot-editor select:focus-visible,
+.drawing-plot-editor textarea:focus-visible {
+    border-color: var(--datum-focus);
+    outline: 2px solid var(--datum-focus);
+    outline-offset: -1px;
+}
+
 .drawing-property-grid input[type="number"],
 .drawing-property-grid input[type="text"],
 .drawing-property-grid select {
-    background: #fff;
-    border: 1px solid #cbd5d9;
     border-radius: 3px;
     color: var(--cad-ink);
 
@@ -2254,10 +4136,10 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-number-stepper button {
     align-items: center;
-    background: #eef2f4;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-chrome);
+    border: 1px solid var(--datum-border);
     border-left: 0;
-    color: #5d6c74;
+    color: var(--datum-muted);
     cursor: pointer;
     display: flex;
     font-size: 7px;
@@ -2288,17 +4170,17 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-number-stepper button:hover {
-    background: #dde6ea;
+    background: var(--datum-border);
     color: var(--datum-green);
 }
 
 .drawing-number-stepper button:active {
-    background: #cfdbe1;
+    background: var(--datum-border);
 }
 
 .drawing-number-field input[type="number"]:disabled + .drawing-number-stepper button {
-    background: #eef1f2;
-    color: #b3bdc3;
+    background: var(--datum-panel);
+    color: var(--datum-border);
     cursor: default;
 }
 
@@ -2311,8 +4193,8 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 
 .drawing-property-grid input[type="number"]:disabled {
-    background: #eef1f2;
-    color: #88949b;
+    background: var(--datum-panel);
+    color: var(--datum-muted);
     opacity: 0.65;
 }
 
@@ -2377,8 +4259,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * every other Features panel.
  */
 .drawing-property-action {
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -2397,7 +4279,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-property-action:active {
     background: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 /*
@@ -2443,7 +4325,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * a local and an absolute coordinate.
  */
 .drawing-property-relative-to {
-    color: #5b6b73;
+    color: var(--datum-muted);
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -2452,8 +4334,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-properties-block input[type="text"] {
-    background: #fff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--cad-ink);
     font: inherit;
@@ -2464,7 +4346,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-coordinate-submenu-title {
-    color: #87949b;
+    color: var(--datum-muted);
     font-size: 8px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -2472,7 +4354,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-coordinate-submenu-item.active {
-    background: #e4f0ea;
+    background: var(--datum-green-wash);
     color: var(--datum-green);
     font-weight: 700;
 }
@@ -2518,7 +4400,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * than a browser menu dropped into a CAD canvas.
  */
 .drawing-context-menu {
-    background: #fff;
+    background: var(--datum-surface);
     border: 1px solid var(--cad-border);
     border-radius: 4px;
     box-shadow: 0 6px 18px rgba(38, 52, 59, .18);
@@ -2549,7 +4431,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-context-item:disabled {
-    color: #a9b4ba;
+    color: var(--datum-border);
     cursor: default;
 }
 
@@ -2564,8 +4446,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-polygon-prompt-row input {
-    background: #fff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--cad-ink);
     font: inherit;
@@ -2579,7 +4461,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: var(--datum-green);
     border: 1px solid var(--datum-green);
     border-radius: 3px;
-    color: #fff;
+    color: var(--datum-surface);
     cursor: pointer;
     font: inherit;
     font-size: 10px;
@@ -2587,7 +4469,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-polygon-prompt-row button:hover {
-    background: #26714a;
+    background: var(--datum-green);
 }
 
 .drawing-properties-block .drawing-property-fix {
@@ -2603,10 +4485,10 @@ body.datum-topbar-hidden .drawing-workspace {
  * field beside it is emptied and greyed out.
  */
 .drawing-property-known {
-    background: #eef2f4;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-chrome);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    color: #5d6c74;
+    color: var(--datum-muted);
     cursor: pointer;
     flex: 0 0 auto;
     font: inherit;
@@ -2634,6 +4516,48 @@ body.datum-topbar-hidden .drawing-workspace {
     white-space: nowrap;
 }
 
+/*
+ * =========================================================
+ * THE ONE UNIT SELECTOR
+ * =========================================================
+ *
+ * Every unit-bearing feature states its unit in this control - a force in
+ * "N", a moment in "N\u00b7m", a load in "kN/m" - and this is the ONE
+ * place its size is decided, so it looks the same on every panel.
+ *
+ * A MINIMUM WIDTH, NOT A FIT.
+ *
+ * A select sizes itself to its widest option by default, but it is also the
+ * first thing to collapse when the track it sits in is squeezed: at the panel's
+ * narrowest the unit was clipped to "k..." or to a bare arrow, and a unit a
+ * student cannot read is a unit they cannot check. So a floor is declared here,
+ * wide enough for the longest unit the tables contain - `kg\u00b7m/s\u00b2`,
+ * `kN\u00b7m`, `lbf\u00b7ft` - and the track that holds it is `min-content`, which
+ * means the row takes that width from the label and value tracks rather than
+ * clipping the unit.
+ *
+ * THE FONT IS THE PANEL'S OWN. Shrinking the type is the other way a control
+ * can be made to "fit" and it is refused here: a readable width is the fix, not
+ * a smaller unit.
+ *
+ * `flex: 0 0 auto` keeps it from being flexed narrower than its options, and
+ * `text-overflow: clip` with a nowrap is deliberate - an ellipsis in a unit is
+ * worse than a wide control, because "N\u2026" is not a unit.
+ */
+.drawing-property-unit .drawing-property-unit-select,
+.drawing-property-grid .drawing-property-unit-select {
+    flex: 0 0 auto;
+    font-size: 9px;
+    min-width: 62px;
+    padding: 0 2px;
+    white-space: nowrap;
+    width: auto;
+}
+
+.drawing-property-unit .drawing-property-unit-select:disabled {
+    opacity: 0.65;
+}
+
 .drawing-property-known:hover {
     border-color: var(--datum-green);
 }
@@ -2643,9 +4567,9 @@ body.datum-topbar-hidden .drawing-workspace {
  * keeps the state readable next to the greyed field.
  */
 .drawing-property-known.unknown {
-    background: #fdf1dc;
-    border-color: #e0b877;
-    color: #8a5a12;
+    background: var(--datum-unknown-tint);
+    border-color: var(--datum-unknown-line);
+    color: var(--datum-unknown-ink);
 }
 
 /*
@@ -2655,15 +4579,15 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 .drawing-property-input-unknown,
 .drawing-property-input-unknown:disabled {
-    background: #f0f1f1;
-    border-color: #d9dcdc;
-    color: #a4adb2;
+    background: var(--datum-panel);
+    border-color: var(--datum-border);
+    color: var(--datum-muted);
     cursor: not-allowed;
     opacity: 1;
 }
 
 .drawing-property-unknown .drawing-property-grid-label {
-    color: #8a5a12;
+    color: var(--datum-unknown-ink);
 }
 
 .drawing-property-mode label {
@@ -2745,14 +4669,8 @@ body.datum-topbar-hidden .drawing-workspace {
         padding: 4px;
     }
 
-    .drawing-workspace-title {
-        font-size: 9px;
-        margin-right: 8px;
-    }
-
-    .drawing-app-toolbar button {
-        padding-left: 5px;
-        padding-right: 5px;
+    .drawing-topbar-hide .header-hide-text {
+        display: none;
     }
 }
 
@@ -2857,7 +4775,7 @@ body.datum-topbar-hidden .drawing-workspace {
     }
 
     .drawing-tool-group {
-        border-bottom: 1px solid #cbd8dc;
+        border-bottom: 1px solid var(--datum-border);
         margin: 3px 0;
         padding: 8px 0;
     }
@@ -3025,8 +4943,8 @@ body.datum-topbar-hidden .drawing-workspace {
 
 /* Coordinate System flyout submenu */
 .drawing-coordinate-submenu {
-    background: #ffffff;
-    border: 1px solid #cbd8dc;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 2px;
     box-shadow: 0 4px 14px rgba(38, 52, 59, .14);
     display: grid;
@@ -3069,7 +4987,7 @@ body.datum-topbar-hidden .drawing-workspace {
 ========================================================= */
 
 .drawing-geometry-handle {
-    fill: #ffffff;
+    fill: var(--datum-surface);
     stroke: var(--datum-green);
     stroke-width: 1.5;
     cursor: pointer;
@@ -3138,8 +5056,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-property-edit input {
-    background: #ffffff;
-    border: 1px solid #cbd8dc;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 2px;
     color: var(--cad-ink);
     font-size: 9px;
@@ -3150,7 +5068,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-property-edit input:focus {
-    border-color: #8fb49d;
+    border-color: var(--datum-green);
     outline: none;
     box-shadow: 0 0 0 1px rgba(31, 92, 56, .12);
 }
@@ -3159,7 +5077,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: var(--datum-green);
     border: 1px solid var(--datum-green);
     border-radius: 2px;
-    color: #ffffff;
+    color: var(--datum-surface);
     cursor: pointer;
     font-size: 9px;
     margin-top: 4px;
@@ -3254,7 +5172,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-manipulation-handle {
-    fill: #ffffff;
+    fill: var(--datum-surface);
     pointer-events: none;
     stroke: var(--datum-focus);
     stroke-width: 1.5px;
@@ -3277,13 +5195,13 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-manipulation-handle.origin {
-    fill: #7a3fb5;
+    fill: var(--datum-green);
 }
 
 .drawing-engineering-grid {
     fill: none;
     pointer-events: none;
-    stroke: #e7ecef;
+    stroke: var(--datum-panel);
     stroke-width: 0.65px;
 }
 
@@ -3306,8 +5224,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * something drawn on the canvas.
  */
 .drawing-sheet-bar-row {
-    background: #e4eaec;
-    border-top: 1px solid #cbd4d9;
+    background: var(--datum-panel);
+    border-top: 1px solid var(--datum-border);
     grid-column: 2;
     grid-row: 5;
     min-height: 0;
@@ -3331,9 +5249,9 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-sheet-tab {
     align-items: center;
-    background: #f2f6f7;
-    border: 1px solid #cbd4d9;
-    color: #455761;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    color: var(--datum-ink);
     cursor: pointer;
     display: flex;
     flex: 0 0 auto;
@@ -3395,7 +5313,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-sheet-close {
     align-items: center;
     border-radius: 3px;
-    color: #6d7d85;
+    color: var(--datum-muted);
     cursor: pointer;
     display: inline-flex;
     flex: 0 0 auto;
@@ -3430,8 +5348,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-sheet-close:hover {
-    background: #d8e0e3;
-    color: #8c2b2b;
+    background: var(--datum-border);
+    color: var(--datum-error);
 }
 
 .drawing-sheet-close.is-disabled {
@@ -3440,16 +5358,16 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-sheet-close.is-disabled:hover {
     background: transparent;
-    color: #6d7d85;
+    color: var(--datum-muted);
 }
 
 .drawing-sheet-tab:hover {
-    background: #e8eff1;
+    background: var(--datum-panel);
     color: var(--datum-green);
 }
 
 .drawing-sheet-tab.active {
-    background: #ffffff;
+    background: var(--datum-surface);
     color: var(--datum-green-ink);
     font-weight: 600;
 
@@ -3484,9 +5402,9 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-sheet-add {
-    background: #f2f6f7;
-    border: 1px solid #cbd4d9;
-    color: #455761;
+    background: var(--datum-panel);
+    border: 1px solid var(--datum-border);
+    color: var(--datum-ink);
     cursor: pointer;
     flex: 0 0 auto;
     font-size: 15px;
@@ -3507,8 +5425,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * menu dropping out of a scrolled canvas would otherwise do.
  */
 .drawing-sheet-menu {
-    background: #ffffff;
-    border: 1px solid #cbd4d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
     display: flex;
     flex-direction: column;
@@ -3529,11 +5447,11 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-sheet-menu button:hover:not(:disabled) {
-    background: #e8eff1;
+    background: var(--datum-panel);
 }
 
 .drawing-sheet-menu button:disabled {
-    color: #9aa7ae;
+    color: var(--datum-muted);
     cursor: default;
 }
 
@@ -3543,15 +5461,15 @@ body.datum-topbar-hidden .drawing-workspace {
    ========================================================= */
 
 .reference-panel {
-    background: #f6f8f9;
-    border: 1px solid #d8dce1;
+    background: var(--datum-rail);
+    border: 1px solid var(--datum-border);
     border-radius: 6px;
     margin-top: 14px;
     padding: 12px;
 }
 
 .reference-panel-heading {
-    color: #555;
+    color: var(--datum-ink);
     font-size: 13px;
     font-weight: 600;
     margin: 0 0 10px;
@@ -3559,7 +5477,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .reference-field {
     align-items: center;
-    color: #555;
+    color: var(--datum-ink);
     display: flex;
     font-size: 12px;
     gap: 8px;
@@ -3569,7 +5487,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .reference-field select,
 .reference-field input {
-    border: 1px solid #cfd3d8;
+    border: 1px solid var(--datum-border);
     border-radius: 4px;
     font-family: inherit;
     font-size: 12px;
@@ -3646,8 +5564,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * it run over the page, is the bug being fixed.
  */
 .drawing-reference-frame {
-    background: #ffffff;
-    border: 1px solid #d8dce1;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 6px;
     display: block;
     max-height: 70vh;
@@ -3693,7 +5611,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .drawing-reference-figure figcaption {
-    color: #555;
+    color: var(--datum-ink);
     font-size: 12px;
     padding-top: 6px;
     text-align: center;
@@ -3701,7 +5619,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-reference-empty,
 .drawing-reference-missing {
-    color: #777;
+    color: var(--datum-muted);
     font-size: 12px;
     margin: 0;
     padding: 14px 4px;
@@ -3734,8 +5652,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .engg-dialog {
-    background: #ffffff;
-    border: 1px solid #cbd4d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 8px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
     color: var(--datum-ink);
@@ -3751,7 +5669,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .engg-dialog-description {
-    color: #5c6b73;
+    color: var(--datum-muted);
     font-size: 12.5px;
     line-height: 1.5;
     margin: 0 0 14px;
@@ -3766,13 +5684,13 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .engg-dialog-field-label {
-    color: #5c6b73;
+    color: var(--datum-muted);
     flex: 0 0 auto;
     font-size: 12px;
 }
 
 .engg-dialog-input {
-    border: 1px solid #cfd3d8;
+    border: 1px solid var(--datum-border);
     border-radius: 5px;
     flex: 1 1 auto;
     font-family: inherit;
@@ -3795,8 +5713,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .engg-dialog-button {
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -3820,12 +5738,131 @@ body.datum-topbar-hidden .drawing-workspace {
 .engg-dialog-button-primary {
     background: var(--datum-green);
     border-color: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .engg-dialog-button-primary:hover {
     background: var(--datum-green-hover);
     border-color: var(--datum-green-hover);
+}
+
+/*
+ * =========================================================
+ * A DESTRUCTIVE DIALOG BUTTON
+ * =========================================================
+ *
+ * The warning treatment, and it is the DIALOG's job rather than the menu row's.
+ * A permanently red "Move to Trash" in the File menu would be decoration; the
+ * red belongs on the button that is one click from the act, where it is a
+ * warning. It uses the theme's own error tokens, so it is legible in Light Mode
+ * and lifted for Dark Mode without a rule naming either.
+ */
+.engg-dialog-button-destructive {
+    background: var(--datum-surface);
+    border-color: var(--datum-error);
+    color: var(--datum-error);
+}
+
+.engg-dialog-button-destructive:hover {
+    background: var(--datum-error-tint);
+    border-color: var(--datum-error);
+    color: var(--datum-error);
+}
+
+.engg-dialog-button-destructive:focus-visible {
+    outline: 2px solid var(--datum-error);
+    outline-offset: 1px;
+}
+
+/*
+ * =========================================================
+ * DOCUMENT DETAILS: A READ-ONLY LABEL/VALUE TABLE
+ * =========================================================
+ *
+ * Two columns, so every value starts at the same x and the panel reads as a
+ * table rather than as sentences. The labels take the muted ink and the values
+ * the primary ink, which is what makes the pairs scannable.
+ */
+.datum-document-details {
+    display: grid;
+    gap: 0;
+}
+
+.datum-document-details-row {
+    align-items: baseline;
+    border-bottom: 1px solid var(--datum-border);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 104px minmax(0, 1fr);
+    padding: 7px 0;
+}
+
+.datum-document-details-row:last-child {
+    border-bottom: 0;
+}
+
+.datum-document-details-label {
+    color: var(--datum-muted);
+    font-size: 11px;
+}
+
+.datum-document-details-value {
+    color: var(--datum-ink);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+/*
+ * =========================================================
+ * SHARE: THE TWO REAL ACTIONS, AND THE NOTE THAT EXPLAINS THEM
+ * =========================================================
+ */
+.datum-share-dialog {
+    display: grid;
+    gap: 12px;
+}
+
+.datum-share-note {
+    color: var(--datum-muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.datum-share-filename {
+    color: var(--datum-ink);
+    font-family: var(--datum-font-mono);
+    font-size: 12px;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.datum-share-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.datum-share-action {
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
+    border-radius: var(--radius-sm);
+    color: var(--datum-ink);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11.5px;
+    padding: 7px 12px;
+}
+
+.datum-share-action:hover {
+    background: var(--datum-green-tint);
+    border-color: var(--datum-green);
+    color: var(--datum-green-ink);
+}
+
+.datum-share-action:focus-visible {
+    outline: 2px solid var(--datum-focus);
+    outline-offset: 1px;
 }
 
 /*
@@ -3877,7 +5914,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .engg-context-menu-item-danger:hover {
-    background: #fdf2f4;
+    background: var(--datum-error-tint);
 }
 
 /*
@@ -3988,7 +6025,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
- * THE MENU BUTTON IS A DATUM PANEL BUTTON.
+ * THE MENU BUTTON IS A DAETUM PANEL BUTTON.
  *
  * It is the same control as `.drawing-property-action` - a white button, a thin
  * border, the accent colour, a 3px radius - so a control in the Open popup and
@@ -4004,8 +6041,8 @@ body.datum-topbar-hidden .drawing-workspace {
 .datum-open-recent-menu,
 .datum-open-template-menu {
     align-items: center;
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -4030,7 +6067,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .datum-open-recent-menu:active,
 .datum-open-template-menu:active {
     background: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .datum-open-recent-menu:focus-visible,
@@ -4218,7 +6255,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 /*
- * ADD TEMPLATE IS A DATUM BUTTON, NOT A DASHED OUTLINE.
+ * ADD TEMPLATE IS A DAETUM BUTTON, NOT A DASHED OUTLINE.
  *
  * It was a dashed box, which reads as a placeholder - "something goes here" -
  * rather than as a control that does something. It is now the same button as
@@ -4226,8 +6263,8 @@ body.datum-topbar-hidden .drawing-workspace {
  * the shared hover fill.
  */
 .datum-open-add-template {
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -4245,7 +6282,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .datum-open-add-template:active {
     background: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .datum-open-add-template:focus-visible {
@@ -4286,8 +6323,8 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 .datum-open-view-button {
     align-items: center;
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -4309,7 +6346,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .datum-open-view-button.active {
     background: var(--datum-green);
     border-color: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .datum-open-view-button:focus-visible {
@@ -4336,7 +6373,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * THE SELECT CONTROL AND ITS BULK ACTIONS
  * =========================================================
  *
- * "Select" is the ordinary way into multi-selection, so it is an ordinary Datum
+ * "Select" is the ordinary way into multi-selection, so it is an ordinary DAETUM
  * button - the same white, thin-bordered control as Add Template and the menu
  * buttons, so the row of controls at the head of Recent reads as one family.
  */
@@ -4347,8 +6384,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .datum-open-select-toggle {
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -4397,8 +6434,8 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .datum-open-selection-action {
-    background: #ffffff;
-    border: 1px solid #cbd5d9;
+    background: var(--datum-input);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     color: var(--datum-green);
     cursor: pointer;
@@ -4422,7 +6459,7 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .datum-open-selection-action-danger:hover {
-    background: #fdf2f4;
+    background: var(--datum-error-tint);
     border-color: var(--datum-error);
 }
 
@@ -4626,7 +6663,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: rgba(255, 255, 255, 0.86);
     font-family: Arial, sans-serif;
     font-size: 13px;
-    color: #000000;
+    color: var(--datum-ink);
 }
 
 .drawing-scale-dialog-title {
@@ -4640,7 +6677,7 @@ body.datum-topbar-hidden .drawing-workspace {
     max-width: 340px;
     text-align: center;
     line-height: 1.5;
-    color: #333333;
+    color: var(--datum-ink);
 }
 
 .drawing-scale-dialog-note {
@@ -4649,7 +6686,7 @@ body.datum-topbar-hidden .drawing-workspace {
     text-align: center;
     font-size: 11px;
     line-height: 1.5;
-    color: #666666;
+    color: var(--datum-muted);
 }
 
 .drawing-scale-dialog-error {
@@ -4666,7 +6703,7 @@ body.datum-topbar-hidden .drawing-workspace {
     margin-bottom: 3px;
     font-size: 11px;
     text-align: left;
-    color: #444444;
+    color: var(--datum-ink);
 }
 
 .drawing-scale-dialog-input,
@@ -4676,10 +6713,10 @@ body.datum-topbar-hidden .drawing-workspace {
     padding: 6px 8px;
     margin-bottom: 8px;
 
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
-    color: #000000;
+    background: var(--datum-input);
+    color: var(--datum-ink);
     font-family: Arial, sans-serif;
     font-size: 13px;
 }
@@ -4699,10 +6736,10 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-scale-dialog-actions button {
     min-width: 96px;
     padding: 7px 14px;
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
-    color: #000000;
+    background: var(--datum-surface);
+    color: var(--datum-ink);
     font-family: Arial, sans-serif;
     font-size: 13px;
     cursor: pointer;
@@ -4711,15 +6748,15 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-scale-dialog-actions button.primary {
     border-color: var(--datum-green);
     background: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .drawing-scale-dialog-actions button:hover {
-    background: #f0f0f0;
+    background: var(--datum-panel);
 }
 
 .drawing-scale-dialog-actions button.primary:hover {
-    background: #17492b;
+    background: var(--datum-green-hover);
 }
 
 /* ==========================================================================
@@ -4752,14 +6789,14 @@ body.datum-topbar-hidden .drawing-workspace {
     min-width: 172px;
     padding: 10px 12px;
 
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--datum-surface);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 
     font-family: Arial, sans-serif;
     font-size: 13px;
-    color: #000000;
+    color: var(--datum-ink);
 }
 
 .drawing-creation-dimension-title {
@@ -4776,7 +6813,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .drawing-creation-dimension-label {
     font-size: 12px;
-    color: #444444;
+    color: var(--datum-ink);
     white-space: nowrap;
 }
 
@@ -4787,16 +6824,16 @@ body.datum-topbar-hidden .drawing-workspace {
 
     padding: 2px 8px;
 
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
+    background: var(--datum-input);
 }
 
 .drawing-creation-dimension-input {
     width: 88px;
     border: none;
     background: transparent;
-    color: #000000;
+    color: var(--datum-ink);
     font-family: Arial, sans-serif;
     font-size: 13px;
     text-align: right;
@@ -4845,7 +6882,7 @@ body.datum-topbar-hidden .drawing-workspace {
     width: auto;
 
     border: none;
-    border-left: 1px solid #d0d0d0;
+    border-left: 1px solid var(--datum-border);
     margin-left: 2px;
 
     /*
@@ -4856,15 +6893,15 @@ body.datum-topbar-hidden .drawing-workspace {
      * whole difference between a label and a choice, and it has to be
      * visible or the unit cannot be selected at all.
      */
-    background-image: linear-gradient(45deg, transparent 50%, #555555 50%),
-        linear-gradient(135deg, #555555 50%, transparent 50%);
+    background-image: linear-gradient(45deg, transparent 50%, var(--datum-ink) 50%),
+        linear-gradient(135deg, var(--datum-ink) 50%, transparent 50%);
     background-position:
         right 7px center,
         right 3px center;
     background-size: 4px 4px, 4px 4px;
     background-repeat: no-repeat;
 
-    color: #444444;
+    color: var(--datum-ink);
 
     font-family: Arial, sans-serif;
     font-size: 12px;
@@ -4889,13 +6926,13 @@ body.datum-topbar-hidden .drawing-workspace {
 
 /* The dropdown list itself, when the select is opened. */
 .drawing-creation-dimension-unit option {
-    color: #000000;
-    background: #ffffff;
+    color: var(--datum-ink);
+    background: var(--datum-surface);
 }
 
 .drawing-creation-dimension-step {
     font-size: 10px;
-    color: #666666;
+    color: var(--datum-muted);
 }
 
 .drawing-creation-dimension-error {
@@ -4929,7 +6966,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: rgba(255, 255, 255, 0.86);
     font-family: Arial, sans-serif;
     font-size: 13px;
-    color: #000000;
+    color: var(--datum-ink);
 }
 
 .drawing-dimension-dialog-title {
@@ -4942,9 +6979,9 @@ body.datum-topbar-hidden .drawing-workspace {
     min-width: 300px;
     padding: 10px 12px;
     margin-bottom: 12px;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #f7f7f7;
+    background: var(--datum-rail);
     text-align: center;
 }
 
@@ -4957,14 +6994,14 @@ body.datum-topbar-hidden .drawing-workspace {
 .drawing-dimension-dialog-meta {
     margin-top: 3px;
     font-size: 11px;
-    color: #666666;
+    color: var(--datum-muted);
 }
 
 .drawing-dimension-dialog-group {
     min-width: 300px;
     margin: 0 0 12px;
     padding: 10px 12px 12px;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
 }
 
@@ -4974,7 +7011,7 @@ body.datum-topbar-hidden .drawing-workspace {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #555555;
+    color: var(--datum-ink);
 }
 
 .drawing-dimension-dialog-check {
@@ -4993,7 +7030,7 @@ body.datum-topbar-hidden .drawing-workspace {
     display: block;
     margin-bottom: 3px;
     font-size: 11px;
-    color: #444444;
+    color: var(--datum-ink);
 }
 
 .drawing-dimension-dialog-input,
@@ -5003,10 +7040,10 @@ body.datum-topbar-hidden .drawing-workspace {
     padding: 6px 8px;
     margin-bottom: 10px;
 
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
-    color: #000000;
+    background: var(--datum-input);
+    color: var(--datum-ink);
     font-family: Arial, sans-serif;
     font-size: 13px;
 }
@@ -5021,7 +7058,7 @@ body.datum-topbar-hidden .drawing-workspace {
     margin: 0 0 10px;
     font-size: 11px;
     line-height: 1.5;
-    color: #666666;
+    color: var(--datum-muted);
 }
 
 /* ==========================================================================
@@ -5049,7 +7086,7 @@ body.datum-topbar-hidden .drawing-workspace {
     background: rgba(255, 255, 255, 0.9);
     font-family: Arial, sans-serif;
     font-size: 13px;
-    color: #000000;
+    color: var(--datum-ink);
 }
 
 .plot-editor {
@@ -5061,8 +7098,8 @@ body.datum-topbar-hidden .drawing-workspace {
     height: 620px;
     max-height: calc(100vh - 48px);
 
-    background: #ffffff;
-    border: 1px solid #c8d2d6;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 4px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
     overflow: hidden;
@@ -5074,7 +7111,7 @@ body.datum-topbar-hidden .drawing-workspace {
     justify-content: space-between;
 
     padding: 12px 14px;
-    border-bottom: 1px solid #dfe5e8;
+    border-bottom: 1px solid var(--datum-border);
 }
 
 .plot-editor-title {
@@ -5087,14 +7124,14 @@ body.datum-topbar-hidden .drawing-workspace {
     padding: 0;
     border: 0;
     background: none;
-    color: #666666;
+    color: var(--datum-muted);
     font-size: 20px;
     line-height: 1;
     cursor: pointer;
 }
 
 .plot-editor-close:hover {
-    color: #000000;
+    color: var(--datum-ink);
 }
 
 .plot-editor-body {
@@ -5115,7 +7152,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .plot-editor-left {
     width: 380px;
     flex: 0 0 380px;
-    border-right: 1px solid #dfe5e8;
+    border-right: 1px solid var(--datum-border);
 }
 
 .plot-editor-right {
@@ -5128,7 +7165,7 @@ body.datum-topbar-hidden .drawing-workspace {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: #555555;
+    color: var(--datum-ink);
 }
 
 /* ==========================================================================
@@ -5156,9 +7193,9 @@ body.datum-topbar-hidden .drawing-workspace {
     padding: 10px;
     margin-bottom: 8px;
 
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #f7f7f7;
+    background: var(--datum-rail);
 }
 
 .plot-editor-card-number {
@@ -5166,7 +7203,7 @@ body.datum-topbar-hidden .drawing-workspace {
 
     font-size: 12px;
     font-weight: 700;
-    color: #888888;
+    color: var(--datum-muted);
     font-variant-numeric: tabular-nums;
 }
 
@@ -5201,12 +7238,12 @@ body.datum-topbar-hidden .drawing-workspace {
     min-width: 46px;
 
     font-size: 12px;
-    color: #333333;
+    color: var(--datum-ink);
     white-space: nowrap;
 }
 
 .plot-editor-arrow {
-    color: #888888;
+    color: var(--datum-muted);
     font-size: 12px;
 }
 
@@ -5216,10 +7253,10 @@ body.datum-topbar-hidden .drawing-workspace {
     box-sizing: border-box;
 
     padding: 5px 7px;
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
-    color: #000000;
+    background: var(--datum-input);
+    color: var(--datum-ink);
 
     font-family: Arial, sans-serif;
     font-size: 13px;
@@ -5246,15 +7283,15 @@ body.datum-topbar-hidden .drawing-workspace {
 
     font-size: 11px;
     line-height: 1.4;
-    color: #a3321f;
+    color: var(--datum-error);
 }
 
 .plot-editor-delete {
     padding: 0 6px;
-    border: 1px solid #d8c4c4;
+    border: 1px solid var(--datum-error-tint);
     border-radius: 3px;
-    background: #ffffff;
-    color: #a3321f;
+    background: var(--datum-surface);
+    color: var(--datum-error);
 
     font-size: 14px;
     line-height: 1.4;
@@ -5262,14 +7299,14 @@ body.datum-topbar-hidden .drawing-workspace {
 }
 
 .plot-editor-delete:hover {
-    background: #fdf1ef;
+    background: var(--datum-error-tint);
 }
 
 .plot-editor-add {
     padding: 7px 10px;
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
+    background: var(--datum-surface);
     color: var(--datum-green);
 
     font-family: Arial, sans-serif;
@@ -5294,9 +7331,9 @@ body.datum-topbar-hidden .drawing-workspace {
     margin-top: 10px;
     padding: 10px;
 
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
+    background: var(--datum-surface);
 }
 
 .plot-editor-choose[hidden] {
@@ -5309,7 +7346,7 @@ body.datum-topbar-hidden .drawing-workspace {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: #555555;
+    color: var(--datum-ink);
 }
 
 .plot-editor-choose-option {
@@ -5318,9 +7355,9 @@ body.datum-topbar-hidden .drawing-workspace {
 
     padding: 7px 10px;
     margin-bottom: 6px;
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
+    background: var(--datum-surface);
 
     font-family: Arial, sans-serif;
     font-size: 13px;
@@ -5352,13 +7389,13 @@ body.datum-topbar-hidden .drawing-workspace {
     min-height: 0;
 
     width: 100%;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #fdfdfd;
+    background: var(--datum-surface);
 }
 
 .plot-editor-graph-axis {
-    stroke: #9aa7ad;
+    stroke: var(--datum-muted);
     stroke-width: 1;
 }
 
@@ -5399,20 +7436,20 @@ body.datum-topbar-hidden .drawing-workspace {
 .sketch-editor-tool {
     padding: 6px 10px;
     font-size: 12px;
-    background: #ffffff;
-    border: 1px solid #dcdcdc;
+    background: var(--datum-surface);
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
     cursor: pointer;
 }
 
 .sketch-editor-tool:hover {
-    border-color: #9aa7ad;
+    border-color: var(--datum-muted);
 }
 
 .sketch-editor-tool-active {
     background: var(--datum-green);
     border-color: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
     font-weight: 600;
 }
 
@@ -5444,14 +7481,14 @@ body.datum-topbar-hidden .drawing-workspace {
     gap: 8px;
     padding: 6px 8px;
     margin-bottom: 6px;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #f7f7f7;
+    background: var(--datum-rail);
 }
 
 .sketch-editor-element-selected {
     border-color: var(--datum-green);
-    background: #eef5f0;
+    background: var(--datum-green-wash);
 }
 
 .sketch-editor-element-label {
@@ -5469,18 +7506,18 @@ body.datum-topbar-hidden .drawing-workspace {
     border: none;
     font-size: 16px;
     line-height: 1;
-    color: #888888;
+    color: var(--datum-muted);
     cursor: pointer;
     padding: 0 4px;
 }
 
 .sketch-editor-element-delete:hover {
-    color: #b03030;
+    color: var(--datum-error);
 }
 
 .sketch-editor-detail {
     padding: 8px;
-    border-top: 1px solid #e4e4e4;
+    border-top: 1px solid var(--datum-border);
     font-size: 11px;
     color: var(--datum-subtle);
 }
@@ -5488,7 +7525,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .sketch-editor-detail-title {
     margin-bottom: 6px;
     font-weight: 600;
-    color: #444444;
+    color: var(--datum-ink);
 }
 
 .sketch-editor-point {
@@ -5501,7 +7538,7 @@ body.datum-topbar-hidden .drawing-workspace {
 .sketch-editor-point span {
     min-width: 18px;
     font-size: 10px;
-    color: #888888;
+    color: var(--datum-muted);
 }
 
 .sketch-editor-point input {
@@ -5509,7 +7546,7 @@ body.datum-topbar-hidden .drawing-workspace {
     min-width: 0;
     padding: 3px 4px;
     font-size: 11px;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 2px;
 }
 
@@ -5558,14 +7595,14 @@ body.datum-topbar-hidden .drawing-workspace {
     flex: 0 0 auto;
     max-height: 42%;
     min-height: 0;
-    border-top: 1px solid #dfe5e8;
+    border-top: 1px solid var(--datum-border);
     overflow: hidden;
 }
 
 .sketch-editor-lower .plot-editor-left {
     width: 260px;
     flex: 0 0 260px;
-    border-right: 1px solid #dfe5e8;
+    border-right: 1px solid var(--datum-border);
     overflow-y: auto;
 }
 
@@ -5576,13 +7613,13 @@ body.datum-topbar-hidden .drawing-workspace {
 
 .sketch-editor-graph {
     width: 100%;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #fdfdfd;
+    background: var(--datum-surface);
 }
 
 .sketch-editor-axis {
-    stroke: #87949b;
+    stroke: var(--datum-muted);
     stroke-width: 1.2;
 }
 
@@ -5594,13 +7631,13 @@ body.datum-topbar-hidden .drawing-workspace {
  * band below the plot, so it is always outside the drawing.
  */
 .sketch-editor-axis-mark {
-    stroke: #87949b;
+    stroke: var(--datum-muted);
     stroke-width: 1;
 }
 
 .sketch-editor-tick-label,
 .sketch-editor-axis-label {
-    fill: #64747d;
+    fill: var(--datum-muted);
     font-family: Arial, sans-serif;
     font-size: 10px;
 }
@@ -5613,7 +7650,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * behind the diagram, present enough to aim a new element at.
  */
 .sketch-editor-tick {
-    stroke: #d6dee2;
+    stroke: var(--datum-border);
     stroke-width: 1;
     stroke-dasharray: 3 3;
 }
@@ -5626,7 +7663,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * to change the shape, so it has to be findable.
  */
 .sketch-editor-handle {
-    fill: #ffffff;
+    fill: var(--datum-surface);
     stroke: var(--datum-green);
     stroke-width: 2;
     cursor: grab;
@@ -5647,19 +7684,19 @@ body.datum-topbar-hidden .drawing-workspace {
  */
 .sketch-editor-snap {
     fill: none;
-    stroke: #00a9c7;
+    stroke: var(--datum-focus);
     stroke-width: 2;
     pointer-events: none;
 }
 
 .sketch-editor-snap-label {
-    fill: #008ca6;
+    fill: var(--datum-focus);
     font-family: Arial, sans-serif;
     font-size: 10px;
     font-weight: 700;
     paint-order: stroke;
     pointer-events: none;
-    stroke: #ffffff;
+    stroke: var(--datum-surface);
     stroke-width: 3px;
 }
 
@@ -5698,7 +7735,7 @@ body.datum-topbar-hidden .drawing-workspace {
  * finished diagram.
  */
 .sketch-editor-bend-handle {
-    fill: #ffffff;
+    fill: var(--datum-surface);
     stroke: var(--datum-green);
     stroke-width: 1.5;
 }
@@ -5715,17 +7752,17 @@ body.datum-topbar-hidden .drawing-workspace {
     justify-content: flex-end;
 
     padding: 12px 14px;
-    border-top: 1px solid #dfe5e8;
+    border-top: 1px solid var(--datum-border);
 }
 
 .plot-editor-actions button {
     min-width: 96px;
     padding: 7px 14px;
 
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--datum-border);
     border-radius: 3px;
-    background: #ffffff;
-    color: #000000;
+    background: var(--datum-surface);
+    color: var(--datum-ink);
 
     font-family: Arial, sans-serif;
     font-size: 13px;
@@ -5735,13 +7772,13 @@ body.datum-topbar-hidden .drawing-workspace {
 .plot-editor-actions button.primary {
     border-color: var(--datum-green);
     background: var(--datum-green);
-    color: #ffffff;
+    color: var(--datum-surface);
 }
 
 .plot-editor-actions button:hover {
-    background: #f0f0f0;
+    background: var(--datum-panel);
 }
 
 .plot-editor-actions button.primary:hover {
-    background: #17492b;
+    background: var(--datum-green-hover);
 }

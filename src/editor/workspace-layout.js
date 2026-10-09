@@ -18,7 +18,7 @@ import { updateDrawingZoom } from "./viewport.js";
  *
  * WHAT IT IS NOT.
  *
- * It does not hide the Datum header, the document name, or the Written
+ * It does not hide the DAETUM header, the document name, or the Written
  * Solution / Engineering Drawing tabs. Those identify the application and
  * choose which page is open; they are not the drawing's chrome, and hiding
  * them would take away the things a student uses to know where they are and

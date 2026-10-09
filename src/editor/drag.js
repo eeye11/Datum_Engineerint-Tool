@@ -3,10 +3,12 @@
  */
 
 import enggDrawingState from "../core/model/drawing-state.js";
+import { isDerivedFeature } from "../core/model/feature-types.js";
 import enggAnnotate from "../features/annotations/annotate-model.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { objectsByIds } from "./clipboard-commands.js";
 import { COORDINATE_SYSTEM_TYPE } from "./constants.js";
+import { allowsDirectManipulation } from "./direct-manipulation.js";
 import { drawingCanvas } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
 import { renderProperties } from "./feature-panel.js";
@@ -28,6 +30,23 @@ export function beginManipulationDrag(
     }
 
     /*
+     * ONLY SELECT MAY DRAG WHAT IS ALREADY DRAWN.
+     *
+     * While a creation tool is armed, a press belongs to that tool - so this
+     * whole direct-manipulation path is closed to everything but Select. See
+     * `direct-manipulation.js` for the rule and why it is asked in one place.
+     *
+     * It is checked FIRST, ahead of the Modify-session and in-progress guards
+     * below, so that no branch of this function can be reached by a press that
+     * the active tool should have received. A press that lands here with a
+     * creation tool armed must not move a handle, a body, a magnitude label or
+     * a dimension - the tool gets the interaction instead.
+     */
+    if (!allowsDirectManipulation()) {
+        return false;
+    }
+
+    /*
      * A running Modify session owns the pointer, so
      * direct manipulation stays out of its way.
      */
@@ -36,20 +55,14 @@ export function beginManipulationDrag(
     }
 
     /*
-     * A construction already UNDER WAY owns the pointer: its
-     * first point is down and its second is expected, so the
-     * click belongs to it.
+     * A construction already UNDER WAY owns the pointer: its first point is
+     * down and its second is expected, so the click belongs to it.
      *
-     * A tool that is merely ARMED is different. Choosing the
-     * Circle tool does not begin a circle; the circle begins on
-     * the first click. Until then there is nothing in progress,
-     * and a press on a selected feature is a request to move
-     * that feature, not to start drawing.
-     *
-     * Direct manipulation therefore has to win here, or picking
-     * a creation tool silently breaks every handle the drawing
-     * already has: the press is taken as the tool's first point
-     * and the feature is never moved.
+     * This is now a second, narrower guard rather than the whole rule. The rule
+     * is that only Select may directly manipulate an existing feature at all
+     * (see the `allowsDirectManipulation` check above); this remains because a
+     * Modify session or an in-progress construction is the one state in which
+     * even a Select press must not begin a manipulation drag.
      */
     if (isConstructionInProgress()) {
         return false;
@@ -60,6 +73,30 @@ export function beginManipulationDrag(
             event,
             false
         );
+
+    /*
+     * A DERIVED CHILD IS NEVER DRAGGED.
+     *
+     * A Resultant and a Force Components pair are static children of the
+     * force(s) they read: position, direction and magnitude are all re-derived
+     * from those parents on every refresh. A drag would either be wiped by the
+     * next refresh or survive as a lie about where the reading belongs.
+     *
+     * Refused ahead of BOTH drag shapes - a handle and the body - so the child
+     * stays put; it is still selectable, inspectable and deletable.
+     */
+    const underPointer =
+        objectAtPoint(
+            point
+        );
+
+    if (isDerivedFeature(underPointer)) {
+        setToolMessage(
+            `${underPointer.name || "This feature"} is derived from its source force - change the force instead`
+        );
+
+        return false;
+    }
 
     const hit =
         handleAtPoint(
@@ -529,6 +566,65 @@ function applyManipulation(
      * redraws itself from the new position, so moving the box moves the
      * leader with it rather than leaving it pointing at nothing.
      */
+    /*
+     * ========================================================
+     * DRAGGING ONE POINT OF A LEADER'S PEN
+     * ========================================================
+     *
+     * A leader or a callout is a path - attachment, bends, endpoint - and each
+     * point can be dragged on its own. Dragging a BEND moves that bend and so
+     * reshapes the two segments that meet it, exactly as the requirement asks;
+     * dragging the ATTACHMENT or the ENDPOINT moves just that end. The whole
+     * path stays ONE feature throughout: only a stored point changes, and the
+     * renderer redraws the polyline through the new list.
+     *
+     * The point is written from the RAW cursor, like every other annotation
+     * placement - a bend is where the student puts it and snapping it would pull
+     * the corner somewhere they did not point at.
+     */
+    if (
+        typeof drag.kind === "string" &&
+        drag.kind.startsWith("annotate-")
+    ) {
+        if (
+            !point ||
+            !Number.isFinite(point.x) ||
+            !Number.isFinite(point.y)
+        ) {
+            return false;
+        }
+
+        const geometry = object.geometry || {};
+
+        if (drag.kind === "annotate-attachment") {
+            geometry.start = { x: point.x, y: point.y };
+            return true;
+        }
+
+        if (drag.kind === "annotate-endpoint") {
+            geometry.end = { x: point.x, y: point.y };
+            return true;
+        }
+
+        const index =
+            Number(drag.kind.replace("annotate-bend", ""));
+
+        if (
+            Number.isInteger(index) &&
+            Array.isArray(geometry.bends) &&
+            geometry.bends[index]
+        ) {
+            geometry.bends[index] = {
+                x: point.x,
+                y: point.y
+            };
+
+            return true;
+        }
+
+        return false;
+    }
+
     if (object.type === "annotation") {
         if (
             !point ||

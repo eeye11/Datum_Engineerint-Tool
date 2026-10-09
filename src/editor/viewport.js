@@ -18,7 +18,7 @@ import { renderedPointsForObjects } from "./document-commands.js";
 import { drawingCanvas, drawingGridToggle, drawingSnapToggle } from "./dom.js";
 import { drawingState } from "./editor-state.js";
 import { objectPoints } from "./hit-testing.js";
-import { activeSheet, syncActiveSheet } from "./sheet-controller.js";
+import { activeSheet, setToggleLabel, syncActiveSheet } from "./sheet-controller.js";
 import { setToolMessage } from "./toolbar-render.js";
 
 /*
@@ -1293,8 +1293,16 @@ export function updateDrawingZoom(
  *   - grid snapping
  *   - object snapping
  *
- * This keeps the visible "Snap ON/OFF" state
- * consistent with the actual snapping system.
+ * The visual state is written by `setToggleLabel`, which is the ONE place the
+ * three parts of a toggle's state are set - the `.active` class, `aria-pressed`
+ * and the tooltip.
+ *
+ * IT MUST NOT WRITE THE BUTTON'S TEXT. This function used to do
+ * `button.textContent = "Grid OFF"`, and `textContent` REPLACES EVERY CHILD -
+ * so the first press DELETED THE ICON and left a bare word where the symbol had
+ * been. The button then had no icon to turn back on, which is exactly the
+ * "turning it off leaves text that cannot be turned back" fault this fixes.
+ * The label lives in the tooltip now, and the icon is never touched.
  */
 export function toggleWorkspaceSetting(
     button,
@@ -1308,18 +1316,9 @@ export function toggleWorkspaceSetting(
     const nextEnabled =
         !enabled;
 
-    button.setAttribute(
-        "aria-pressed",
-        String(
-            nextEnabled
-        )
-    );
-
-    button.textContent =
-        `${label} ${nextEnabled ? "ON" : "OFF"}`;
-
-    button.classList.toggle(
-        "active",
+    setToggleLabel(
+        button,
+        label,
         nextEnabled
     );
 

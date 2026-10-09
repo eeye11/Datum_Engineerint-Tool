@@ -1,16 +1,16 @@
 /*
  * ============================================================
- * USING DATUM FROM ANOTHER PAGE (iframe + postMessage)
+ * USING DAETUM FROM ANOTHER PAGE (iframe + postMessage)
  * ============================================================
  *
- * A tool that shows Datum inside its own page - an OCR review screen, a
+ * A tool that shows DAETUM inside its own page - an OCR review screen, a
  * course platform - loads it in an iframe and talks to it with
  * postMessage. This bridge maps those messages onto the integration API
  * (datum-api.js). It is OFF unless the page is embedded AND the embedding
- * origin is named in the URL, so a page that merely frames Datum cannot
+ * origin is named in the URL, so a page that merely frames DAETUM cannot
  * read a student's work:
  *
- *   <iframe src="https://datum.example/?embedOrigin=https://grader.example">
+ *   <iframe src="https://daetum.example/?embedOrigin=https://grader.example">
  *
  * Several origins may be given, comma-separated.
  *
@@ -20,7 +20,7 @@
  *
  *   { type: "datum:request", id: <any>, method: "getDocument", params: [] }
  *
- * and Datum answers with the same id:
+ * and DAETUM answers with the same id:
  *
  *   { type: "datum:response", id, ok: true,  result }
  *   { type: "datum:response", id, ok: false, error: "message" }

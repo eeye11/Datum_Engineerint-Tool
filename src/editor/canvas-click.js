@@ -4,9 +4,10 @@
 
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggNoteEditor from "../ui/editors/note-editor.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import { handleAnnotateClick, isAnnotateTool, isEditableAnnotate } from "./annotate-creation.js";
-import { commitAnalysisAxis } from "./analysis-tools.js";
+import { commitAnalysisAxis, handleAnalysisInputClick } from "./analysis-tools.js";
 import { handleAnnotationClick, isAnnotationTool } from "./annotation-tool.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { pickColourFromFeature } from "./colour-picker.js";
@@ -19,7 +20,8 @@ import { add2DCoordinateSystem, beginOrCompleteGeometry } from "./geometry-creat
 import { objectAtPoint } from "./hit-testing.js";
 import { handleModifyClick } from "./modify-tools.js";
 import { resolvePointerEvent } from "./pointer.js";
-import { canvasPointFromEvent } from "./tool-activation.js";
+import { shouldExitToSelectOnClick } from "./tool-classification.js";
+import { activateTool, canvasPointFromEvent } from "./tool-activation.js";
 import { setToolMessage } from "./toolbar-render.js";
 
 export function handleCanvasClick(
@@ -141,6 +143,33 @@ export function handleCanvasClick(
     }
 
     /*
+     * THE ANALYSIS INPUT-SELECTION STATE, BEFORE EVERYTHING ELSE.
+     *
+     * Resultant and Force Components are CHILD analysis features: they read
+     * explicit Force features and derive everything from those. While the tool
+     * waits for its input, a click is asking one question - "is this a Force?" -
+     * and the answer must not be influenced by universal selection, by the
+     * construction pipeline, or by what happens to be under the cursor. A click
+     * on a Resultant, on a beam, or on empty space adds nothing; only a Force
+     * is an input.
+     *
+     * So it is routed FIRST, ahead of every other rule, from the interaction
+     * phase rather than from a list of tool ids - the same way the analysis axis
+     * placement owns its clicks.
+     */
+    if (
+        drawingState.interaction.phase ===
+            "analysis-input"
+    ) {
+        handleAnalysisInputClick(
+            resolution,
+            event
+        );
+
+        return;
+    }
+
+    /*
      * THE DIMENSION TOOLS, BEFORE THE CONSTRUCTION PIPELINE.
      *
      * A dimension tool IS a construction tool - it needs the same
@@ -186,6 +215,38 @@ export function handleCanvasClick(
     ) {
         handleAnnotateClick(
             resolution
+        );
+
+        return;
+    }
+
+    /*
+     * ========================================================
+     * A BARE CLICK WITH A ONE-GESTURE PATH TOOL LEAVES THE TOOL
+     * ========================================================
+     *
+     * A Line, a Beam, a Rectangle, an Arrow and a Note are all made by ONE
+     * press-drag-release - their gesture arrives through the drag path, which
+     * has already armed the press and will have committed on release. So a
+     * plain `click` reaching here is NOT the first point of a shape: it is the
+     * student finishing with the tool. It exits to Select and selects whatever
+     * was under the cursor, which is the automatic way out that stops a tool
+     * trapping someone who has just drawn something.
+     *
+     * IT IS PLACED BEFORE the construction branch below, because that branch
+     * would otherwise consume the click as a first point. It is placed AFTER the
+     * dimension, annotate and animation handlers above, because a tool with an
+     * EXPLICIT REQUIRED INPUT - a dimension collecting references, a label or a
+     * leader attaching, a Resultant being told which force - must keep receiving
+     * the click. The classification decides this; see tool-classification.js.
+     */
+    if (
+        shouldExitToSelectOnClick(
+            drawingState.activeTool
+        )
+    ) {
+        exitToolToSelect(
+            event
         );
 
         return;
@@ -599,6 +660,19 @@ export function openNoteEditorFor(object) {
         enggNoteEditor?.open({
             text: object.text || "",
 
+            /*
+             * A NOTE IS MULTI-LINE; A LABEL AND A SHORT CALLOUT ARE NOT. The
+             * editor decides its field and its commit key from this, and the
+             * PLACEHOLDER is the contextual prompt the model gives for the
+             * kind - shown only, never stored.
+             */
+            multiline: object.annotateKind === "note",
+
+            placeholder:
+                enggAnnotate?.placeholderOf?.(object) || "Enter text",
+
+            title: `Edit ${enggAnnotate?.ANNOTATE_KINDS?.[object.annotateKind]?.label || "Annotation"}`,
+
             onApply: (text) => {
                 const previousObjects =
                     enggDrawingState.snapshotDrawing(drawingState);
@@ -662,6 +736,28 @@ export function openNoteEditorFor(object) {
     });
 
     return true;
+}
+
+/*
+ * ========================================================
+ * FINISHING WITH A TOOL: BACK TO SELECT IN ONE CLICK
+ * ========================================================
+ *
+ * The automatic way out of a creation tool. A student who has just drawn a Line
+ * and clicks empty space should not have to go and find the Select button: the
+ * click means "done", so the tool is dropped and Select takes over.
+ *
+ * WHERE THE CLICK LANDS STILL MATTERS. Clicking empty space leaves nothing
+ * selected; clicking an existing feature selects it - exactly as though the
+ * student had switched to Select and clicked it. So the tool is deactivated
+ * FIRST (through the ordinary activation path, so a half-built construction is
+ * cancelled and its preview removed), and the selection then follows the same
+ * click.
+ */
+function exitToolToSelect(event) {
+    activateTool("select");
+
+    selectFromCanvasClick(event);
 }
 
 export function syncSelectionInteraction() {

@@ -9,12 +9,14 @@ import enggDimensionEditor from "../features/dimensions/dimension-editor.js";
 import enggAnnotationModel from "../features/annotations/annotation-model.js";
 import enggPlotEditor from "../ui/editors/plot-editor.js";
 import { commitAnalysisAxis } from "./analysis-tools.js";
+import { commitAnalysisInput } from "./analysis-tools.js";
 import { objectIntersectsSelection } from "./box-selection.js";
 import { syncSelectionInteraction } from "./canvas-click.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { objectsByIds } from "./clipboard-commands.js";
 import { distance } from "./construction-geometry.js";
 import { commitDimensionSelection } from "./dimension-placement.js";
+import { allowsDirectManipulation } from "./direct-manipulation.js";
 import { isDimensionTool } from "./dimension-tool.js";
 import { drawingCanvas } from "./dom.js";
 import { drawingState, editorState } from "./editor-state.js";
@@ -161,6 +163,19 @@ function startDerivedAnnotationDrag(
 export function beginAnnotationDrag(
     event
 ) {
+    /*
+     * ONLY SELECT MAY DRAG A MAGNITUDE LABEL.
+     *
+     * A label's text is a direct-manipulation target - grabbing "500 N" moves
+     * the number - so while a creation tool is armed the press must belong to
+     * that tool instead. Without this, starting a Line by pressing near a
+     * force's magnitude moved the label rather than drawing, which is exactly
+     * the accidental manipulation the active-tool rule exists to prevent.
+     */
+    if (!allowsDirectManipulation()) {
+        return false;
+    }
+
     if (
         event.button !== 0 ||
         event.shiftKey
@@ -280,9 +295,17 @@ function startAxisLabelDrag(event, picked, point) {
 export function beginSelectionDrag(
     event
 ) {
+    /*
+     * BOX SELECTION IS DIRECT MANIPULATION'S SIBLING, so it asks the same
+     * question through the same function rather than stating the rule again.
+     *
+     * It used to compare the active tool to the string "select" inline, which
+     * is the same answer today and a second place to change tomorrow - and the
+     * test that pins "only Select interacts with what is drawn" reads the source
+     * for ONE predicate, so a literal copy here is invisible to it.
+     */
     if (
-        drawingState.activeTool !==
-            "select" ||
+        !allowsDirectManipulation() ||
         event.button !== 0
     ) {
         return;
@@ -893,6 +916,110 @@ export function cancelInteraction() {
 }
 
 /*
+ * ========================================================
+ * SWITCHING TOP-LEVEL CATEGORY RESETS THE ACTIVE TOOL
+ * ========================================================
+ *
+ * The active tool must always belong to the category the student is looking at.
+ * Choosing Geometry while a Statics tool is running leaves two things true at
+ * once - the canvas belongs to Geometry, the tool belongs to Statics - and the
+ * next press would create a Statics feature with a Geometry tool highlighted, or
+ * the reverse. So a category switch ABANDONS the previous tool and establishes
+ * a clean interaction state:
+ *
+ *   - any unfinished construction is cancelled and its preview removed;
+ *   - creation-specific mouse state is cleared;
+ *   - temporary control handles go with it;
+ *   - the previous tool stops responding to mouse events;
+ *   - Select becomes active, and owns canvas interaction, in the new category.
+ *
+ * NOTHING ABOUT THE DRAWING CHANGES. This is why it is NOT `cancelInteraction`
+ * verbatim: that also clears the SELECTION, which is an interaction state a
+ * category switch has no reason to throw away - a student inspecting a beam
+ * should still have it selected after glancing at the Statics tools and coming
+ * back. So the selection, the hover and the document are all left exactly as
+ * they were, and only the tool and any half-built operation are reset.
+ *
+ * The re-render reads the category from the DOM, so the caller must have set the
+ * new category's button active BEFORE calling this - which is the order the
+ * toolbar uses, and the order that makes the tool list and the reset agree about
+ * which category Select now belongs to.
+ */
+export function resetActiveToolForCategory() {
+    /*
+     * A drag-to-create gesture ends with the operation, so the session goes
+     * with it - otherwise the next release anywhere would try to complete a
+     * span that no longer exists.
+     */
+    editorState.creationDrag = null;
+    editorState.creationDragConsumedClick = false;
+
+    if (editorState.selectionDrag) {
+        if (
+            drawingCanvas.hasPointerCapture(
+                editorState.selectionDrag.pointerId
+            )
+        ) {
+            drawingCanvas.releasePointerCapture(
+                editorState.selectionDrag.pointerId
+            );
+        }
+
+        editorState.selectionDrag = null;
+    }
+
+    /*
+     * Transient creation popups belong to the abandoned tool, so they go too.
+     */
+    closePolygonSidesPrompt();
+    closeCoordinateSystemMenu();
+
+    if (editorState.guidelineHoldTimer) {
+        clearTimeout(editorState.guidelineHoldTimer);
+        editorState.guidelineHoldTimer = null;
+    }
+
+    drawingState.interaction.guideline = null;
+
+    /*
+     * A running Modify session is part of the unfinished operation.
+     */
+    cancelModifySession();
+
+    /*
+     * An in-flight manipulation drag has already moved real geometry, so it is
+     * rolled back rather than abandoned.
+     */
+    cancelManipulationDrag();
+
+    clearGlobalToolHighlight();
+
+    /*
+     * THE CONSTRUCTION IS CLEARED, NOT THE SELECTION.
+     *
+     * `clearInteraction` removes the half-built operation - its phase, its
+     * preview, its points - while the selection is left alone, which is the
+     * whole difference between a category switch and a cancel.
+     */
+    enggDrawingState.clearInteraction(drawingState);
+
+    drawingState.selection.boxSelectionIds = [];
+
+    /*
+     * SELECT IS NOW THE ACTIVE TOOL. The previous tool can no longer respond
+     * to a mouse event, because this is the field the pointer handlers read.
+     */
+    enggDrawingState.setActiveTool(drawingState, "select");
+
+    setToolMessage("Select geometry");
+
+    renderEngineeringTools(activeCategory());
+
+    renderProperties();
+    renderCurrentDrawing();
+}
+
+/*
  * Complete whatever construction is running, if it can be
  * completed.
  *
@@ -940,6 +1067,20 @@ export function finishActiveConstruction() {
     }
 
     const phase = interaction.phase;
+
+    /*
+     * THE ANALYSIS INPUT-SELECTION STATE.
+     *
+     * Enter is the "use what I picked" point for a Resultant or a Force
+     * Components pair: the student has clicked the force(s) they mean, and
+     * Enter commits. It is checked here rather than through
+     * `isConstructionInProgress` because that asks about a SHAPE being drawn,
+     * and this is a selection being confirmed - the same distinction the
+     * dimension reference selection makes.
+     */
+    if (phase === "analysis-input") {
+        return commitAnalysisInput();
+    }
 
     /*
      * THE ANALYSIS AXIS, PLACED.

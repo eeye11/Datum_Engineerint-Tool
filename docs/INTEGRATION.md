@@ -1,29 +1,29 @@
-# Integrating with Datum
+# Integrating with DAETUM
 
-Datum is the drawing and written-solution tool in the submission pipeline:
+DAETUM is the drawing and written-solution tool in the submission pipeline:
 
 ```
-handwritten page ──► OCR tool ──► LaTeX ──► Datum ──► submission ──► autograder
+handwritten page ──► OCR tool ──► LaTeX ──► DAETUM ──► submission ──► autograder
                                    (student corrects the LaTeX,
                                     draws the figures it refers to)
 ```
 
 This document is for the teams building the tools around it. It covers the
-three supported ways to work with Datum, and what each one guarantees:
+three supported ways to work with DAETUM, and what each one guarantees:
 
 | You want to…                                         | Use                                         |
 | ---------------------------------------------------- | ------------------------------------------- |
 | read or write a saved drawing                        | the [`.enggdraw` file format](FILE-FORMAT.md) |
-| drive Datum running in the same page                 | the JavaScript API, `window.datum`          |
-| show Datum inside your own page and talk to it       | an iframe plus the postMessage bridge       |
+| drive DAETUM running in the same page                 | the JavaScript API, `window.datum`          |
+| show DAETUM inside your own page and talk to it       | an iframe plus the postMessage bridge       |
 
 Everything else in `src/` is internal and can change without notice.
 
 ---
 
-## What Datum holds
+## What DAETUM holds
 
-A Datum **document** is an ordered list of **sheets**. Each sheet is one
+A DAETUM **document** is an ordered list of **sheets**. Each sheet is one
 drawing (a free body diagram, a shear force diagram, …) with its own
 features, view, grid and length scale.
 
@@ -47,7 +47,7 @@ sheet's current contents.
 
 ## The JavaScript API (`window.datum`)
 
-When Datum runs as a standalone page, the API is available as
+When DAETUM runs as a standalone page, the API is available as
 `window.datum`. It is defined in [`src/api/datum-api.js`](../src/api/datum-api.js).
 
 All results are plain, JSON-safe objects, so the same calls work across an
@@ -72,7 +72,7 @@ const file = datum.getDocument();
 ### `datum.loadDocument(file)` → `{ ok, failure?, detail? }`
 
 Replaces the document. Accepts the parsed object or its JSON text. Older
-versions are migrated forward; anything that is not a Datum document is
+versions are migrated forward; anything that is not a DAETUM document is
 refused and the current document is left untouched.
 
 ```js
@@ -120,14 +120,14 @@ output to the student.
 
 ---
 
-## Embedding Datum in another page
+## Embedding DAETUM in another page
 
-Load Datum in an iframe and name your origin in the URL. The bridge is
+Load DAETUM in an iframe and name your origin in the URL. The bridge is
 **off** unless the page is embedded *and* the embedding origin is listed,
-so a page that merely frames Datum cannot read a student's work:
+so a page that merely frames DAETUM cannot read a student's work:
 
 ```html
-<iframe id="datum" src="https://datum.example/?embedOrigin=https://grader.example"></iframe>
+<iframe id="datum" src="https://daetum.example/?embedOrigin=https://grader.example"></iframe>
 ```
 
 Several origins may be given, comma-separated. The bridge is
@@ -135,23 +135,23 @@ Several origins may be given, comma-separated. The bridge is
 
 ### Protocol
 
-Request (parent → Datum):
+Request (parent → DAETUM):
 
 ```js
 frame.contentWindow.postMessage(
   { type: "datum:request", id: 1, method: "getSolution", params: [] },
-  "https://datum.example"
+  "https://daetum.example"
 );
 ```
 
-Response (Datum → parent), with the same `id`:
+Response (DAETUM → parent), with the same `id`:
 
 ```js
 { type: "datum:response", id: 1, ok: true,  result: { latex, references } }
 { type: "datum:response", id: 1, ok: false, error: "Unknown method \"…\"." }
 ```
 
-Pushed by Datum:
+Pushed by DAETUM:
 
 ```js
 { type: "datum:ready", apiVersion: 1, documentVersion: 2 }   // once, at start-up
@@ -181,7 +181,7 @@ function datumClient(frame, origin) {
   });
 }
 
-const call = datumClient(document.getElementById("datum"), "https://datum.example");
+const call = datumClient(document.getElementById("datum"), "https://daetum.example");
 await call("setSolution", ocrLatex);
 ```
 
@@ -189,7 +189,7 @@ await call("setSolution", ocrLatex);
 
 ## Building a submission
 
-Datum does not build the submission itself; it gives you the parts. A
+DAETUM does not build the submission itself; it gives you the parts. A
 typical integration:
 
 1. `getSolution()` – the LaTeX source and its `references`.

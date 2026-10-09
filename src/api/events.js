@@ -11,11 +11,11 @@ export const DATUM_EVENTS = Object.freeze(["documentchange", "solutionchange"]);
 
 export function onDatumEvent(event, listener) {
     if (!DATUM_EVENTS.includes(event)) {
-        throw new Error(`Unknown Datum event "${event}". Known events: ${DATUM_EVENTS.join(", ")}.`);
+        throw new Error(`Unknown DAETUM event "${event}". Known events: ${DATUM_EVENTS.join(", ")}.`);
     }
 
     if (typeof listener !== "function") {
-        throw new Error("A Datum event listener must be a function.");
+        throw new Error("A DAETUM event listener must be a function.");
     }
 
     if (!listeners.has(event)) listeners.set(event, new Set());

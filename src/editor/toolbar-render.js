@@ -8,6 +8,7 @@ import { ANALYSIS_DIAGRAM_TOOLS, STATICS_ANALYSIS_TOOLS, runStaticsAnalysis } fr
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingToolMessage, toolHeading, toolList } from "./dom.js";
 import { drawingState } from "./editor-state.js";
+import { renderProperties } from "./feature-panel.js";
 import { STATICS_TOOL_MENUS, openAnalysisModeMenu, openCoordinateSystemMenu, openStaticsMenu } from "./statics-tools.js";
 import { activateTool } from "./tool-activation.js";
 import { activeCategory, openArcMenu, openPolygonMenu, renderToolButton, toolDefinitionForLabel } from "./tool-menus.js";
@@ -163,16 +164,21 @@ export function renderEngineeringTools(
                             event.preventDefault();
 
                             /*
-                             * THE THREE DIAGRAMS ARE THE ONLY TOOLS HERE
-                             * THAT ASK A SECOND QUESTION.
+                             * THE THREE DIAGRAMS ASK A SECOND QUESTION.
                              *
-                             * Resultant and Force Components read the
-                             * current selection and report, so they never
-                             * become the active tool. A diagram is a
-                             * thing to be placed and takes the ordinary
-                             * body-then-click placement, so it is armed
-                             * - but only once Sketch or Plot has been
-                             * chosen, which is what openAnalysisModeMenu
+                             * Resultant and Force Components are CHILD
+                             * analysis features: they read explicit Force
+                             * feature(s) and derive everything from those, so
+                             * they ARM as a tool and enter an INPUT-SELECTION
+                             * state - "Select force" / "Select force(s)" - in
+                             * which the student clicks the force(s) they mean
+                             * and commits with Enter. Nothing is read from a
+                             * previous selection or inferred from the cursor.
+                             *
+                             * A diagram is a thing to be placed and takes the
+                             * ordinary body-then-click placement, so it is
+                             * armed too - but only once Sketch or Plot has
+                             * been chosen, which is what openAnalysisModeMenu
                              * does.
                              */
                             const isTemplate =
@@ -191,11 +197,13 @@ export function renderEngineeringTools(
                                 return;
                             }
 
-                            enggDrawingState.setActiveTool(
-                                drawingState,
-                                "select"
-                            );
-
+                            /*
+                             * THE TOOL ARMS ITSELF. `runStaticsAnalysis` calls
+                             * `beginAnalysisInput`, which sets the active tool,
+                             * clears the selection and enters the input state -
+                             * so no `setActiveTool("select")` is imposed here,
+                             * which would fight the very arming the tool needs.
+                             */
                             runStaticsAnalysis(
                                 toolId
                             );
@@ -204,6 +212,7 @@ export function renderEngineeringTools(
                                 activeCategory()
                             );
 
+                            renderProperties();
                             renderCurrentDrawing();
                             return;
                         }

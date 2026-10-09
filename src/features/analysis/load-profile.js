@@ -16,6 +16,8 @@
  * and there is exactly one set of vector rules in the
  * application.
  */
+import enggQuantities from "../../core/units/quantities.js";
+
     /*
      * A load is stored with a direction as a unit vector in
      * degrees plus its own profile points. A load created
@@ -51,12 +53,21 @@
      */
     const DEFAULT_LOAD_UNIT = "kN/m";
 
-    const LOAD_UNITS = ["kN/m", "N/mm"];
+    /*
+     * THE LOAD UNITS COME FROM THE SHARED QUANTITY TABLE.
+     *
+     * `unitsFor("distributedLoad")` is the ONE list of units a load may be
+     * stated in, so the units this module accepts and the units the panel
+     * offers cannot drift apart. The literal list is kept only as the fallback
+     * for a harness that loads this module on its own.
+     */
+    const LOAD_UNITS =
+        enggQuantities.unitsFor("distributedLoad");
 
     function isLoadUnit(value) {
-        return (
-            value === "kN/m" ||
-            value === "N/mm"
+        return enggQuantities.isUnitFor(
+            "distributedLoad",
+            value
         );
     }
 
@@ -570,6 +581,35 @@
  */
 function zeroIfAxis(value) {
     return Math.abs(value) < 1e-3 ? 0 : value;
+}
+
+/*
+ * An angle folded into a single turn, (-180, 180].
+ *
+ * Angles are periodic, so `37 + 360` names the same direction as `37` while
+ * being a different NUMBER - and the Features panel prints the number. Reversing
+ * a force adds a half turn each time, so two reversals used to leave a force
+ * stored at `397` where the student began at `37`: the arrow was right and the
+ * figure beside it had gained a whole turn. Folding the result keeps the stored
+ * angle the one a reader would write, without changing the direction it means.
+ *
+ * The range is (-180, 180] rather than [-180, 180) so the half-turn case lands
+ * on `180`, which is how a reversed force reads: 0 becomes 180, not -180.
+ */
+function normaliseAngle(degrees) {
+    const value = finite(degrees);
+
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    let folded = ((value + 180) % 360 + 360) % 360 - 180;
+
+    if (folded === -180) {
+        folded = 180;
+    }
+
+    return folded;
 }
 
 function unitVector(degrees) {
@@ -1174,7 +1214,7 @@ function unitVector(degrees) {
             magnitude,
             angle: finite(geometry?.angle)
         };
-        }
+    }
 
     /*
      * The same force, pointing the other way.
@@ -1242,11 +1282,37 @@ function unitVector(degrees) {
          * force lives in the direction, which is why this is a rotation by
          * 180 degrees rather than a negation.
          */
-        const radians = ((vector.angle + 180) * Math.PI) / 180;
+        /*
+         * THE REVERSED VECTOR, THROUGH THE SHARED COMPONENT CLEANING.
+         *
+         * `unitVector` zeroes the arithmetic sliver that `Math.sin(180 deg)`
+         * leaves behind, so a force pointing exactly west is stored with
+         * `forceY` of exactly 0 rather than 1.22e-14. Writing the raw sine here
+         * - as this did - put that sliver into the stored components, and
+         * anything asking which WAY the force points then answered "up and to
+         * the left" for a force that is straight left: the panel printed a
+         * non-zero Y component for a horizontal force, and the reversal did not
+         * look clean in the data even though the arrow was drawn correctly.
+         */
+        const reversed = unitVector(vector.angle + 180);
 
-        geometry.angle = vector.angle + 180;
-        geometry.forceX = Math.cos(radians) * vector.magnitude;
-        geometry.forceY = Math.sin(radians) * vector.magnitude;
+        /*
+         * THE ANGLE IS NORMALISED TO (-180, 180].
+         *
+         * A half turn is periodic, so `angle + 180 + 180` describes the same
+         * direction as `angle` - but it is stored as `angle + 360`, and the
+         * Features panel prints the stored number. Two reversals therefore
+         * showed the student "397 deg" where they started at "37 deg": the
+         * drawing was right and the number beside it had drifted a whole turn
+         * for no reason they could see.
+         *
+         * Folding the result back into one turn fixes that without changing the
+         * direction the components express, so the arrow, the components and
+         * the panel all keep agreeing.
+         */
+        geometry.angle = normaliseAngle(vector.angle + 180);
+        geometry.forceX = reversed.x * vector.magnitude;
+        geometry.forceY = reversed.y * vector.magnitude;
 
         /*
          * `position` MIRRORS `start` and is read by some of the panel and by
@@ -1503,28 +1569,30 @@ function unitVector(degrees) {
          * cleaned with `zeroIfAxis`, so a force drawn straight along an axis
          * lands exactly on it rather than a sliver off it.
          */
+        /*
+         * WHICH END CARRIES THE HEAD.
+         *
+         * The arrow is drawn from the application point outward along the
+         * FORCE's own direction, so the head is at the tip. A reversal rotates
+         * that direction by half a turn, which puts the tip on the opposite
+         * side of the application point - so the head crosses over and the tail
+         * stays where the force acts, which is exactly what reversing a force
+         * means.
+         *
+         * THERE IS NO "reversed" BRANCH ANY MORE. One used to sit here,
+         * deciding between `tail: start` and `tail: tip` by comparing the
+         * vector's components against the direction they were derived from -
+         * which is the same angle, so the comparison was `magnitude > 0` and the
+         * branch could never fire. It was dead code that read as though it did
+         * something, which is worse than no code: it suggested the arrowhead
+         * case was handled here when in fact the rotation below is what does it.
+         */
         const tip = {
             x: start.x + zeroIfAxis(Math.cos(radians)) * reach,
             y: start.y + zeroIfAxis(Math.sin(radians)) * reach,
         };
 
-        /*
-         * WHICH END CARRIES THE HEAD.
-         *
-         * The arrow is drawn from the application point outward, so the head
-         * is normally at the tip and the tail at `start`. A REVERSED force is
-         * the same line read the other way - the head goes to `start` and the
-         * tail to the tip - so the drawing stays put and only the arrowhead
-         * moves, exactly as a Distributed Load reversal does.
-         */
-        const reversed =
-            vector.fx * zeroIfAxis(Math.cos(radians)) +
-                vector.fy * zeroIfAxis(Math.sin(radians)) <
-            0;
-
-        return reversed
-            ? { tail: tip, head: start }
-            : { tail: start, head: tip };
+        return { tail: start, head: tip };
     }
 
     /*

@@ -1,4 +1,4 @@
-# Datum — Programmer's Code Map
+# DAETUM — Programmer's Code Map
 
 Where things live, and which file owns which behaviour. Start here when you
 need to change something and don't yet know which module is responsible.
@@ -635,7 +635,7 @@ Three INDEPENDENT visibility controls — none implies anything about the others
 | **Tools Hide** | the Tools panel | its own arrow, on the left rail |
 | **Features Hide** | the Features panel | its own arrow, on the right rail |
 
-It does **not** hide the Datum header, the document name, or the Written
+It does **not** hide the DAETUM header, the document name, or the Written
 Solution / Engineering Drawing tabs. State lives on `editorState.topBarHidden`
 (session only, never saved) and the CSS class `body.datum-topbar-hidden` is the
 one place "hidden" is defined.

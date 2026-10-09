@@ -5,7 +5,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Datum</title>
+    <title>DAETUM</title>
+
+    <!--
+        THE APPLICATION VERSION.
+
+        Declared here so the About dialog can state it rather than invent one -
+        a version number is the first thing anybody quotes when reporting a
+        problem, and a made-up one is worse than none because it sends the
+        reader after a build that does not exist.
+
+        It matches `version` in package.json. There is deliberately no build
+        step rewriting this: the two are changed together, and the About dialog
+        says "not recorded in this build" rather than guessing if this tag is
+        ever missing.
+    -->
+    <meta name="version" content="1.0.0">
+
     <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg">
 
     <script
@@ -25,21 +41,66 @@
 <body>
 
 
-    <!-- HEADER -->
+    <!--
+        ========================================================
+        BAND 1: THE APPLICATION AND DOCUMENT BAR
+        ========================================================
+
+        THREE AREAS, LEFT TO RIGHT:
+
+            LEFT    the DAETUM mark and wordmark - the identity
+            MIDDLE  the current document's name, with the unsaved mark
+            RIGHT   the two workspace tabs, Written Solution and
+                    Engineering Drawing
+
+        THE TABS LIVE IN THE HEADER rather than in the page beneath it.
+        "Which document and which workspace am I in" is ONE question, so the
+        two answers sit on one line: the document name in the middle, the
+        workspace on the right. The tabs used to be a full-width strip of their
+        own below the header, which read as a third, unrelated row.
+
+        The right column is the WIDTH OF THE TWO TABS and the middle column is
+        the space between the brand and them, so the document name has the room
+        and TRUNCATES with an ellipsis rather than ever reaching the tabs.
+    -->
 
     <header class="header">
 
-        <h1>
-            Datum
-        </h1>
+        <!--
+            THE IDENTITY: A MARK AND THE WORDMARK.
+
+            The mark is drawn inline so it follows the accent through the theme
+            - `currentColor` means the glyph is the same green as the wordmark
+            beside it, and neither needs a second colour defined for dark mode.
+
+            It is a DIVIDING INSTRUMENT, not a letter: two legs, a joint and a
+            measured span, which is what the application is for. A wordmark
+            alone would name the product; a mark and a wordmark together give the
+            header something to be recognised BY at a glance, which is what makes
+            an application look established rather than assembled.
+        -->
+        <div class="header-identity">
+            <span class="header-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" focusable="false">
+                    <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+                        d="M3 20V8M11 20V4M19 20v-9"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+                        d="M1.5 21.5h21"/>
+                </svg>
+            </span>
+
+            <h1 class="header-wordmark">
+                DAETUM
+            </h1>
+        </div>
 
         <!--
             THE CURRENT DOCUMENT'S NAME.
 
             Secondary information, so it is smaller than the application name
-            and sits in the middle of the header rather than beside the brand -
-            centred by the layout, not by a margin, so its position does not
-            depend on how wide "Datum" happens to be.
+            and sits between the brand and the workspace tabs rather than beside
+            the brand - it names the drawing, not the application, and it must
+            not compete with the heading for attention.
 
             The BASE name only: a file called triangle.enggdraw reads
             "triangle" here. The extension belongs to the file, not to the way
@@ -58,29 +119,28 @@
                 class="header-document-dirty"
                 id="headerDocumentDirty"
                 aria-label="Unsaved changes"
+                title="Unsaved changes"
                 hidden
-            >*</span>
+            ></span>
         </div>
 
-    </header>
+        <!--
+            THE WORKSPACE TABS: WHERE THE STUDENT IS.
 
+            Two tabs in ONE navigation group, at the far right of Band 1. They
+            are NOT in the menu bar and are NOT the toolset selector: this
+            chooses between the written half of the submission and the drawing
+            half, which is a different question from which toolset is armed.
 
-    <main class="page">
-
-
-        <!-- =========================
-             TABS
-        ========================= -->
-
-        <!-- =================================================
-             ENGINEERING DRAWING TAB
-        ================================================== -->
-
-        <div class="tabs">
+            `data-tab` names the section each one shows; `app/tabs.js` owns the
+            switching, including the redraw a newly-visible canvas needs.
+        -->
+        <nav class="tabs" aria-label="Workspace">
 
             <button
                 class="tab active"
                 data-tab="writing"
+                aria-current="page"
             >
                 Written Solution
             </button>
@@ -92,11 +152,32 @@
                 Engineering Drawing
             </button>
 
-        </div>
+        </nav>
+
+    </header>
+
+
+    <main class="page">
+
+
+        <!--
+            THE WORKSPACE TABS HAVE MOVED INTO BAND 1.
+
+            They are the right-hand third of the application and document bar
+            now, beside the document name they belong with, rather than a
+            full-width strip of their own here. The switching behaviour is
+            unchanged - `app/tabs.js` still keys on `.tab[data-tab]` wherever
+            the buttons live.
+        -->
 
 
         <!-- =================================================
-             WRITTEN SOLUTION TAB
+             WRITTEN SOLUTION WORKSPACE
+
+             LEFT organises the solution, CENTRE is where it is written,
+             RIGHT shows the typeset document. There is ONE source - what the
+             student types - and the outline and the preview are both derived
+             from it, so the three views cannot disagree.
         ================================================== -->
 
         <section
@@ -104,125 +185,265 @@
             class="review-content active"
         >
 
-            <div class="column-headings">
+            <div
+                class="solution-workspace"
+                id="solutionWorkspace"
+                data-layout="split"
+            >
 
-                <div class="column-heading">
-                    Submitted Written Solution
-                </div>
+                <!-- ==========================================
+                     THE DOCUMENT TOOLBAR
 
-                <div class="column-heading">
-                    LaTeX Source Code
-                </div>
+                     The CONTEXTUAL toolbar: the controls that belong to
+                     writing a solution, directly under the application header
+                     - document name, save state, editing actions, insertion,
+                     compiling, layout, zoom and export. The application header
+                     itself is untouched above it.
+                =========================================== -->
+                <div
+                    class="solution-toolbar"
+                    role="toolbar"
+                    aria-label="Solution document"
+                >
 
-                <div class="column-heading">
-                    Rendered Solution
-                </div>
+                    <div class="solution-toolbar-group solution-toolbar-document">
 
-            </div>
+                        <span class="solution-doc-label">Solution</span>
 
-            <div class="review-grid">
-
-
-                <!-- HANDWRITING -->
-
-                <div class="panel">
-
-                    <div class="handwritten-area">
-
-                        <img
-                            id="writingImage"
-                            alt="Uploaded handwritten solution"
-                            style="display: none;"
+                        <input
+                            id="solutionDocumentName"
+                            class="solution-doc-name"
+                            type="text"
+                            value="Untitled"
+                            aria-label="Solution name"
+                            autocomplete="off"
                         >
 
-                        <p id="writingImageMessage">
-                            Upload a handwritten solution
-                        </p>
+                        <span
+                            id="solutionSaveStatus"
+                            class="solution-save-status"
+                            aria-live="polite"
+                        ></span>
 
                     </div>
 
-                    <input
-                        type="file"
-                        id="writingImageUpload"
-                        accept="image/*"
-                    >
+                    <span class="solution-divider" aria-hidden="true"></span>
 
-                </div>
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool" id="solutionUndo" title="Undo" aria-label="Undo">Undo</button>
+                        <button type="button" class="solution-tool" id="solutionRedo" title="Redo" aria-label="Redo">Redo</button>
+                    </div>
 
-
-                <!-- CODE -->
-
-                <div class="panel">
-
-                    <textarea
-                        class="code-editor"
-                        id="writingCode"
-                    ></textarea>
-
-                    <button
-                        class="update-button"
-                        data-action="render-solution"
-                    >
-                        Update Output
-                    </button>
+                    <span class="solution-divider" aria-hidden="true"></span>
 
                     <!--
-                        Drawing Reference test interface.
+                        INSERTION TOOLS.
 
-                        A placeholder for the written-solution
-                        editor: it inserts a reference to a SHEET into
-                        the source and shows what that sheet currently
-                        contains. The sheet is chosen here by name for
-                        the user's benefit, but what is stored is its
-                        permanent id - which is why the figure keeps
-                        working after the sheet is renamed or moved.
+                        Each inserts a real LaTeX construct at the caret - the
+                        maths, fraction, Greek letter, matrix and table a
+                        student should not have to memorise. They are the SAME
+                        text a student could type, so what is inserted is
+                        editable rather than a special object.
                     -->
-                    <div class="reference-panel">
+                    <div
+                        class="solution-toolbar-group solution-insert-tools"
+                        id="solutionInsertTools"
+                    >
+                        <button type="button" class="solution-tool" data-insert="insert-inline-math" title="Inline maths">Maths</button>
+                        <button type="button" class="solution-tool" data-insert="insert-equation" title="Numbered equation">Equation</button>
+                        <button type="button" class="solution-tool" data-insert="insert-fraction" title="Fraction">Fraction</button>
+                        <button type="button" class="solution-tool" data-insert="insert-vector" title="Vector">Vector</button>
+                        <button type="button" class="solution-tool" data-insert="insert-matrix" title="Matrix">Matrix</button>
+                        <button type="button" class="solution-tool" data-insert="insert-cases" title="Piecewise">Cases</button>
+                        <button type="button" class="solution-tool" data-insert="insert-greek" title="Greek letter">Greek</button>
+                        <button type="button" class="solution-tool" data-insert="insert-section" title="Section">Section</button>
+                        <button type="button" class="solution-tool" data-insert="insert-problem" title="Problem">Problem</button>
+                        <button type="button" class="solution-tool" data-insert="insert-list" title="List">List</button>
+                        <button type="button" class="solution-tool" data-insert="insert-table" title="Table">Table</button>
+                        <button type="button" class="solution-tool" data-insert="insert-figure" title="Insert a drawing from a sheet" id="solutionInsertFigure">Drawing</button>
+                    </div>
 
-                        <h3 class="reference-panel-heading">
-                            Drawing Reference
-                        </h3>
+                    <span class="solution-divider" aria-hidden="true"></span>
 
-                        <label class="reference-field">
-                            Sheet
-                            <select id="referenceSheetSelect"></select>
-                        </label>
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool solution-tool-primary" id="solutionCompile" title="Compile the preview now">Compile</button>
+                    </div>
 
-                        <label class="reference-field">
-                            Caption
-                            <input
-                                id="referenceCaption"
-                                type="text"
-                                placeholder="Free Body Diagram"
-                                autocomplete="off"
-                            >
-                        </label>
+                    <div class="solution-toolbar-spacer"></div>
+
+                    <!--
+                        LAYOUT MODES.
+
+                        Split, Write and Read are three ways of looking at the
+                        SAME document; switching never touches the source, the
+                        caret or an unsaved change.
+                    -->
+                    <div
+                        class="solution-toolbar-group solution-modes"
+                        id="solutionLayoutModes"
+                        role="group"
+                        aria-label="Layout"
+                    >
+                        <button type="button" class="solution-tool" data-layout-mode="split" aria-pressed="true" title="Editor and preview">Split</button>
+                        <button type="button" class="solution-tool" data-layout-mode="write" aria-pressed="false" title="Editor only">Write</button>
+                        <button type="button" class="solution-tool" data-layout-mode="read" aria-pressed="false" title="Preview only">Read</button>
+                    </div>
+
+                    <span class="solution-divider" aria-hidden="true"></span>
+
+                    <div class="solution-toolbar-group solution-zoom">
+                        <button type="button" class="solution-tool solution-tool-icon" id="solutionZoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+                        <span id="solutionZoomValue" class="solution-zoom-value" aria-live="polite">100%</span>
+                        <button type="button" class="solution-tool solution-tool-icon" id="solutionZoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+                    </div>
+
+                    <span class="solution-divider" aria-hidden="true"></span>
+
+                    <div class="solution-toolbar-group">
+                        <button type="button" class="solution-tool" id="solutionExportPdf" title="Export the compiled document as PDF">Export PDF</button>
+                    </div>
+
+                </div>
+
+                <!-- ==========================================
+                     LEFT: THE SOLUTION STRUCTURE
+                =========================================== -->
+                <aside
+                    class="solution-nav"
+                    id="solutionNavPanel"
+                    aria-label="Solution structure"
+                >
+
+                    <div class="solution-panel-head">
+                        <span class="solution-panel-title">Structure</span>
 
                         <button
-                            id="referenceInsert"
-                            class="update-button reference-insert"
                             type="button"
+                            class="solution-panel-toggle"
+                            id="solutionNavToggle"
+                            aria-expanded="true"
+                            title="Collapse the structure panel"
                         >
-                            Insert Reference
+                            Hide
                         </button>
+                    </div>
+
+                    <div class="solution-panel-body" id="solutionNavBody">
+
+                        <div class="solution-tree" id="solutionStructureTree"></div>
+
+                        <!--
+                            FILES, kept distinct from DOCUMENT STRUCTURE.
+
+                            A drawing sheet is a file; a section is a heading.
+                            They are listed apart on purpose, so "Beam" in this
+                            panel can only ever mean one of them.
+                        -->
+                        <div class="solution-section-head">Drawings</div>
+
+                        <div class="solution-tree" id="solutionFilesTree"></div>
+
+                    </div>
+
+                </aside>
+
+                <!-- The left divider. A real draggable separator, and a
+                     `separator` role so it is reachable and resizable by
+                     keyboard as well as by pointer. -->
+                <div
+                    class="solution-splitter"
+                    id="solutionSplitterNav"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize the structure panel"
+                    tabindex="0"
+                ></div>
+
+                <!-- ==========================================
+                     CENTRE: THE EDITOR
+                =========================================== -->
+                <div class="solution-editor-panel">
+
+                    <div class="solution-panel-head solution-editor-head">
+                        <span class="solution-panel-title">Source</span>
+
+                        <span class="solution-editor-hint">
+                            LaTeX \u2014 compile with the button, or let the preview catch up
+                        </span>
+                    </div>
+
+                    <div class="solution-editor-body">
+
+                        <pre
+                            class="solution-gutter"
+                            id="solutionEditorGutter"
+                            aria-hidden="true"
+                        ></pre>
+
+                        <textarea
+                            class="solution-editor"
+                            id="solutionEditor"
+                            spellcheck="false"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            aria-label="Solution source"
+                        ></textarea>
 
                     </div>
 
                 </div>
 
+                <!-- The right divider. -->
+                <div
+                    class="solution-splitter"
+                    id="solutionSplitterPreview"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize the preview panel"
+                    tabindex="0"
+                ></div>
 
-                <!-- OUTPUT -->
+                <!-- ==========================================
+                     RIGHT: THE TYPESET DOCUMENT
+                =========================================== -->
+                <div class="solution-preview-panel" id="solutionPreviewPanel">
 
-                <div class="panel">
+                    <div class="solution-panel-head">
+                        <span class="solution-panel-title">Preview</span>
 
-                    <div
-                        class="output"
-                        id="writingOutput"
-                    >
+                        <span
+                            class="solution-compile-state"
+                            id="solutionPreviewState"
+                            aria-live="polite"
+                            hidden
+                        ></span>
+                    </div>
+
+                    <div class="solution-preview-scroll">
+
+                        <div
+                            class="solution-preview-stage"
+                            id="solutionPreviewStage"
+                        >
+                            <!--
+                                THE PAPER.
+
+                                The rendered document keeps its OWN page
+                                background and typography - it is the finished
+                                sheet, not a themed panel - while everything
+                                around it follows the DAETUM theme. See the CSS
+                                for why the paper is light in both themes.
+                            -->
+                            <article
+                                class="solution-paper"
+                                id="solutionPreview"
+                            ></article>
+
+                        </div>
+
                     </div>
 
                 </div>
-
 
             </div>
 
@@ -240,130 +461,136 @@
         >
             <!-- Shared CAD workspace: toolsets change, canvas and inspector persist. -->
             <div class="drawing-workspace">
-                <div class="drawing-app-toolbar" aria-label="Global drawing tools">
-                    <div class="drawing-app-toolbar-group" aria-label="File">
-                        <span class="drawing-app-toolbar-group-label">File</span>
-                        <button type="button" data-file-action="new" title="New drawing (Ctrl+N)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5"/></svg>New</button>
-                        <button type="button" data-file-action="open" title="Open an .enggdraw file"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h5l2 2h7v8H3z"/></svg>Open</button>
-                        <button type="button" data-file-action="save" title="Save (Ctrl+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h9l3 3v11H4zM7 3v5h6V3M7 17v-5h6v5"/></svg>Save</button>
-                        <button type="button" data-file-action="save-as" title="Save as a Datum drawing, PNG or JPG (Ctrl+Shift+S)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3h7l5 5v9H4zM11 3v5h5M6 8h8"/></svg>Save As</button>
-                        <button type="button" data-file-action="print" title="Print the drawing (Ctrl+Shift+P)"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 7V3h8v4M6 14H4V9h12v5h-2M6 12h8v5H6z"/></svg>Print</button>
-                    </div>
-                    <div class="drawing-app-toolbar-group" aria-label="History">
-                        <span class="drawing-app-toolbar-group-label">History</span>
-                        <button id="drawingUndo" type="button" title="Undo"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 6L3 10l4 4M4 10h7a5 5 0 0 1 5 5"/></svg>Undo</button>
-                        <button id="drawingRedo" type="button" title="Redo"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 6l4 4-4 4M16 10H9a5 5 0 0 0-5 5"/></svg>Redo</button>
-                    </div>
-                    <div class="drawing-app-toolbar-group" aria-label="Modify">
-                        <span class="drawing-app-toolbar-group-label">Modify</span>
-                        <button type="button" data-global-tool="move" title="Move selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Move</button>
-                        <button type="button" data-global-tool="rotate" title="Rotate selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10a6 6 0 1 1-2-4.5M16 4v3h-3"/></svg>Rotate</button>
-                        <button type="button" data-global-tool="mirror" title="Mirror selected geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M7 6L3 10l4 4M13 6l4 4-4 4"/></svg>Mirror</button>
-                        <button type="button" data-global-tool="trim" title="Trim geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M5 15L15 5M4 4l3 1-1 3"/></svg>Trim</button>
-                        <button type="button" data-global-tool="extend" title="Extend geometry"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h9M9 7l3 3-3 3M15 4v12"/></svg>Extend</button>
-                    </div>
-                    <div class="drawing-app-toolbar-group" aria-label="Draw order">
-                        <span class="drawing-app-toolbar-group-label">Order</span>
-                        <!--
-                          Draw order changes what is drawn ON TOP of what. It is
-                          purely visual: nothing about selection, hit testing or
-                          the drawing's own geometry is affected, so a feature
-                          sent to the back can still be picked by clicking it.
-                        -->
-                        <button type="button" data-draw-order="front" title="Bring the selected features to the front"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l6 3-6 3-6-3 6-3zM4 11l6 3 6-3"/></svg>Front</button>
-                        <button type="button" data-draw-order="forward" title="Bring the selected features forward one step"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 6l5 3-5 3-5-3 5-3zM10 13l3 2-3 2-3-2 3-2z"/></svg>Forward</button>
-                        <button type="button" data-draw-order="backward" title="Send the selected features backward one step"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l3 2-3 2-3-2 3-2zM10 10l5 3-5 3-5-3 5-3z"/></svg>Backward</button>
-                        <button type="button" data-draw-order="back" title="Send the selected features to the back"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 14l6-3-6-3-6 3 6 3zM4 6l6-3 6 3"/></svg>Back</button>
-                    </div>
-                    <div class="drawing-app-toolbar-group" aria-label="View">
-                        <span class="drawing-app-toolbar-group-label">View</span>
-                        <button type="button" data-global-tool="pan" title="Pan the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14M10 3l-2 2M10 3l2 2M10 17l-2-2M10 17l2-2M3 10l2-2M3 10l2 2M17 10l-2-2M17 10l-2 2"/></svg>Pan</button>
-                        <button type="button" data-global-tool="zoom" title="Zoom the view"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M9 4a5 5 0 1 1 0 10A5 5 0 0 1 9 4zM13 13l4 4M7 9h4M9 7v4"/></svg>Zoom</button>
-                        <!--
-                            ONE Fit COMMAND.
+                <!--
+                    ========================================================
+                    BAND 2: THE MAIN MENU BAR
+                    ========================================================
 
-                            Fit works out its own target: the selection
-                            if there is one, and the whole active sheet
-                            if there is not. The student is never asked
-                            to choose between two fits, because there is
-                            only one thing they mean by it - show me
-                            what I am looking at.
+                    File, Edit, Insert, View, Tools, Help - one row, directly
+                    beneath the application and document bar, above the toolset
+                    selector. Six labels and nothing else: no Command Search
+                    (that is Band 4), no extra top-level menus, no decorative
+                    carets.
 
-                            The title says so, because the behaviour
-                            depends on state the button cannot show.
-                        -->
-                        <button type="button" data-global-tool="fit" title="Fit: the selected features if any, otherwise the whole sheet"><svg class="drawing-global-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>Fit</button>
-                    </div>
-                    <div id="drawingGlobalToolGroups" class="drawing-app-toolbar-groups"></div>
-                </div>
+                    It is its own row of the workspace grid. It used to share a
+                    row with a global tool bar that has since been removed, so
+                    the wrapper that survived only to keep the grid's child
+                    count at six is no longer needed - the bar itself is the
+                    second of the four bands and takes the second grid row.
 
-                <nav class="drawing-toolbar" aria-label="Engineering toolsets">
-                    <span class="drawing-workspace-title">EnggDraw</span>
-                    <button class="drawing-category active" data-category="GEOMETRY">GEOMETRY</button>
-                    <button class="drawing-category" data-category="ANNOTATE">ANNOTATE</button>
-                    <button class="drawing-category" data-category="STATICS">STATICS</button>
-                    <button class="drawing-category" data-category="DYNAMICS">DYNAMICS</button>
-                    <button class="drawing-category" data-category="FLUIDS">FLUIDS</button>
-                    <button class="drawing-category" data-category="THERMODYNAMICS">THERMODYNAMICS</button>
-                    <button class="drawing-category" data-category="HEAT TRANSFER">HEAT TRANSFER</button>
-                    <button class="drawing-category" data-category="SOLID MECHANICS">SOLID MECHANICS</button>
-                    <button class="drawing-category" data-category="MECHANICAL DESIGN">MECHANICAL DESIGN</button>
-                    <button class="drawing-category" data-category="CONTROLS">CONTROLS</button>
-                    <button class="drawing-category" data-category="MATH / ANALYSIS">MATH / ANALYSIS</button>
-                </nav>
+                    The menu bar is built by script: a menu's items change with
+                    the state (Undo greys out, a visibility item's label flips),
+                    so static markup would have to be kept in step by hand. See
+                    `editor/menu-commands.js` for the six menus and
+                    `ui/menubar/menu-bar.js` for how they behave.
 
-                <div class="drawing-style-strip" aria-label="Drawing style controls">
-                    <label>Thickness <select id="drawingThickness"><option value="0.25">0.25 mm</option><option value="0.5" selected>0.50 mm</option><option value="0.75">0.75 mm</option><option value="1">1.00 mm</option></select></label>
-                    <label>Color <input id="drawingColor" type="color" value="#000000" aria-label="Drawing color"></label>
-                    <label>Line Type <select id="drawingLineType"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="center">Center</option><option value="construction">Construction</option></select></label>
-                    <button class="drawing-status-toggle active" id="drawingGridToggle" type="button" aria-pressed="true">Grid ON</button>
-                    <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" aria-pressed="true">Snap ON</button>
+                    IT SURVIVES THE DRAWING'S OWN HIDE CONTROL. That control
+                    folds away the DRAWING's chrome - the toolset bar and the
+                    style strip - not the application's menu, so the menu stays
+                    reachable at every width. See
+                    `body.datum-topbar-hidden` in `styles/editor.css`.
+                -->
+                <div
+                    id="datumMenuBar"
+                    class="datum-menubar"
+                    aria-label="Main menu"
+                ></div>
 
                     <!--
-                        The three display settings.
+                        THE GLOBAL TOOL BAR IS GONE.
 
-                        Grid and Snap change HOW the drawing is made; these
-                        change how it is READ. That is why they are separate
-                        toggles rather than one "Display" switch: a student
-                        hiding dimensions while still showing force
-                        magnitudes is doing something a single switch could
-                        not express.
+                        It held New, Open, Save, Save As, Print, Undo, Redo,
+                        Move, Rotate, Mirror, Trim, Extend, the draw-order
+                        controls, Pan, Zoom and Fit - and every one of those is
+                        a COMMAND, which is exactly what a menu bar is for. Two
+                        rows of File/Save/Undo on one screen is how a student
+                        ends up unsure which one is real, so the bar has been
+                        removed and the commands live in the menus:
 
-                        Each starts ON, because that is the behaviour a
-                        drawing has always had - see displaySettingsOf in
-                        the annotation model for why an absent setting must
-                        read as on rather than off.
+                            File   New, Open, Save, Save As, Print
+                            Edit   Undo, Redo, Cut, Copy, Paste, Select All, Delete
+                            Insert Image, Table, Text Box, Drawing / Diagram
+                            View   Pan, Zoom In, Zoom Out, Fit, the display switches
+                            Tools  Drawing Settings, Precision & Snapping,
+                                   Measurement & Inspection, Keyboard Shortcuts,
+                                   and the Modify tools
+
+                        NOTHING WAS LOST. Every command that was on the bar is
+                        reachable from a menu, each calling the same function
+                        the button called - so the tool that arms is the tool
+                        the button armed.
+
+                        WHAT REMAINS IS BAND 4 BELOW, which is a row of
+                        SETTINGS rather than commands - a command search, undo
+                        and redo, then thickness, colour, line type, grid, snap,
+                        dimensions, magnitudes and vector scale. Those stay on
+                        screen because they are adjusted constantly while drawing
+                        and a menu click for each one would be friction with
+                        nothing gained.
                     -->
-                    <button class="drawing-status-toggle active" id="drawingDimensionsToggle" type="button" aria-pressed="true">Dimensions ON</button>
-                    <button class="drawing-status-toggle active" id="drawingMagnitudesToggle" type="button" aria-pressed="true">Magnitudes ON</button>
+
+                <!--
+                    ========================================================
+                    BAND 3: THE WORKSPACE AND TOOLSET SELECTOR
+                    ========================================================
+
+                    One row, beneath the menu bar and above the quick-access
+                    toolbar, in the fixed order the specification gives:
+                    Geometry, Annotate, Statics, Dynamics, Fluids,
+                    Thermodynamics, Heat Transfer, Solid Mechanics, Mechanical
+                    Design, Controls, Math / Analysis.
+
+                    IT CHOOSES A TOOLSET AND NOTHING ELSE. It is not the
+                    workspace tabs (those are in Band 1) and not the main menu -
+                    the menu offers application commands, this changes which
+                    collection of drawing tools the Tools panel shows.
+
+                    ONE ROW THAT SCROLLS. Eleven named toolsets do not fit a
+                    narrow window, so the row scrolls horizontally rather than
+                    wrapping onto a second line, which would take height from the
+                    drawing. `styles/editor.css` owns that.
+                -->
+                <nav class="drawing-toolbar" aria-label="Engineering toolsets">
+                    <!--
+                        THE TOOLSETS SCROLL; THE HIDE CONTROL DOES NOT.
+
+                        Eleven named toolsets do not fit a narrow window, so they
+                        live in their own horizontally-scrolling row
+                        (`.drawing-toolbar-scroll`). The Hide button, which sits
+                        at the far right, is a SIBLING of that scroller rather
+                        than a child of it - so it is never pushed off the edge
+                        by the toolsets it shares the bar with.
+                    -->
+                    <div class="drawing-toolbar-scroll" role="group" aria-label="Toolsets">
+                        <button class="drawing-category active" data-category="GEOMETRY">GEOMETRY</button>
+                        <button class="drawing-category" data-category="ANNOTATE">ANNOTATE</button>
+                        <button class="drawing-category" data-category="STATICS">STATICS</button>
+                        <button class="drawing-category" data-category="DYNAMICS">DYNAMICS</button>
+                        <button class="drawing-category" data-category="FLUIDS">FLUIDS</button>
+                        <button class="drawing-category" data-category="THERMODYNAMICS">THERMODYNAMICS</button>
+                        <button class="drawing-category" data-category="HEAT TRANSFER">HEAT TRANSFER</button>
+                        <button class="drawing-category" data-category="SOLID MECHANICS">SOLID MECHANICS</button>
+                        <button class="drawing-category" data-category="MECHANICAL DESIGN">MECHANICAL DESIGN</button>
+                        <button class="drawing-category" data-category="CONTROLS">CONTROLS</button>
+                        <button class="drawing-category" data-category="MATH / ANALYSIS">MATH / ANALYSIS</button>
+                    </div>
 
                     <!--
                         THE DRAWING BARS' OWN HIDE CONTROL.
 
-                        IT LIVES ON THIS ROW, AT ITS FAR RIGHT.
+                        IT LIVES ON THE TOOLSET BAR, AND THE TOOLSET BAR IS ONE
+                        OF THE BARS IT HIDES - which is the point. Pressing Hide
+                        folds the whole top bar away, INCLUDING this button, and
+                        the Show control that takes its place sits at the very
+                        top of the drawing area, exactly where the bar was. So
+                        the control stays under the pointer: press Hide here and
+                        Show appears in the same place, and pressing that brings
+                        the bar back under the same pointer again.
 
-                        This strip is the last row of the drawing's chrome, and
-                        it is always present - unlike the two bars above it,
-                        which this button is for. So the control that hides them
-                        sits on the one row that does not hide, which is what
-                        keeps it reachable at every width: a control placed on a
-                        bar it collapses would disappear with it, and one placed
-                        inside a horizontally-scrolling bar would slide off the
-                        edge on a narrow screen.
-
-                        `margin-left: auto` pushes it to the trailing edge of
-                        the row however many controls precede it, and it is
-                        `flex: 0 0 auto` so it never shrinks into a neighbour.
-
-                        IT HIDES ONLY THE DRAWING'S TWO TOP BARS - the global
-                        tool bar and the tool-type bar. It does NOT hide the
-                        Datum header, the document name or the Written Solution /
-                        Engineering Drawing tabs, and it does not touch the Tools
-                        or Features panels: three independent hide controls, as
-                        the other two are.
-
-                        It names the ACTION ("Hide"), not the state. The way
-                        back is the Show control on the canvas's top edge.
+                        THE MENU BAR (Band 2) IS NOT HIDDEN. It is the
+                        application's menu, not the drawing's chrome, and it
+                        stays reachable at every width - which is also why it is
+                        a separate grid row from the bar this button folds away.
                     -->
                     <button
                         class="drawing-topbar-hide"
@@ -378,6 +605,281 @@
                         </svg>
                         <span class="header-hide-text">Hide</span>
                     </button>
+                </nav>
+
+                <!--
+                    ========================================================
+                    BAND 4: COMMAND SEARCH AND THE ICON-FIRST QUICK-ACCESS
+                    TOOLBAR
+                    ========================================================
+
+                    The order left to right is mandatory and is the order the
+                    work happens in: find the command, step back if it was
+                    wrong, adjust how the drawing is being made, then adjust
+                    how it is read.
+
+                        Search  Undo  Redo  |  Thickness  Color  Line Type
+                        |  Grid  Snap  Dimensions  Magnitudes  Vector Scale
+
+                    ICON-FIRST. Every control except Command Search and Vector
+                    Scale is represented by its ICON rather than by a word: a
+                    toolbar of eleven labelled controls was a paragraph of
+                    small text, and the labels were repeating what the icons
+                    and the tooltips already said. Command Search stays a text
+                    field because it has to be typed into, and Vector Scale
+                    keeps its value visible because the selected scale is
+                    information the student reads at a glance.
+
+                    NOTHING IS LOST WITH THE WORDS. Every icon-only control
+                    carries a `title` (the tooltip) and an `aria-label` (its
+                    accessible name), so each one is named on hover and to a
+                    screen reader. The three property controls also keep their
+                    `<select>` and `<input>` underneath, so the full value list
+                    is still reachable.
+
+                    THE SEPARATORS SEPARATE FAMILIES: history actions | drawing
+                    properties | display and annotation controls. There is no
+                    separator among Grid, Snap, Dimensions, Magnitudes and
+                    Vector Scale - they are one related group and read as one.
+
+                    THREE KINDS OF CONTROL, THREE BEHAVIOURS: actions (Undo,
+                    Redo) never stay lit; value selectors (Thickness, Color,
+                    Line Type, Vector Scale) show a real value without looking
+                    toggled on; toggles (Grid, Snap, Dimensions, Magnitudes)
+                    show a persistent on/off state.
+
+                    THE DRAWING'S HIDE CONTROL IS ON THE TOOLSET BAR ABOVE,
+                    not here - see `editor/workspace-layout.js`.
+                -->
+                <div class="drawing-style-strip" aria-label="Command search and quick-access controls">
+                    <label class="drawing-command-search" aria-label="Search commands">
+                        <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" class="drawing-command-search-icon"><circle fill="none" stroke="currentColor" stroke-width="1.6" cx="9" cy="9" r="5"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12.8 12.8L17 17"/></svg>
+                        <input
+                            type="search"
+                            id="drawingCommandSearch"
+                            data-command-search
+                            placeholder="Search commands…"
+                            aria-label="Search commands"
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                        <kbd class="drawing-command-search-key" title="Focus the search field">Ctrl+K</kbd>
+                    </label>
+
+                    <!--
+                        UNDO AND REDO, immediately after the search.
+
+                        These are the application's own history - the same
+                        commands the Edit menu and Ctrl+Z use - so there is one
+                        history with three doors onto it, not three histories.
+
+                        The ids are kept (`drawingUndo`, `drawingRedo`) because
+                        `updateHistoryControls` disables them by id, and the Edit
+                        menu reads the same can-undo/can-redo state.
+
+                        ACTIONS, NOT TOGGLES: they give hover, focus and a brief
+                        pressed feedback, and never stay highlighted after a
+                        click.
+                    -->
+                    <button class="drawing-toolbar-icon-button" id="drawingUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">
+                        <svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 6L3 10l4 4"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4 10h7a4 4 0 0 1 4 4v1"/></svg>
+                    </button>
+                    <button class="drawing-toolbar-icon-button" id="drawingRedo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo">
+                        <svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M13 6l4 4-4 4"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M16 10H9a4 4 0 0 0-4 4v1"/></svg>
+                    </button>
+
+                    <span class="drawing-style-strip-divider" aria-hidden="true"></span>
+
+                    <!--
+                        THICKNESS, COLOUR AND LINE TYPE: VALUE CONTROLS.
+
+                        Each is icon-first. The ICON carries the meaning and is
+                        drawn from the CURRENT VALUE, so the control states its
+                        own setting without a word beside it:
+
+                          Thickness  a stroke whose bar thickness IS the value
+                          Color      the swatch IS the value (the real drawing
+                                     colour, never the interface accent)
+                          Line Type  a line drawn in the actual pattern
+
+                        THE SELECT IS STILL THE CONTROL. It is visually hidden
+                        but present and focusable, so the full list of supported
+                        values is reachable by keyboard, by a screen reader, and
+                        by clicking the icon - which opens it. That keeps the
+                        existing values, units and validation exactly as they
+                        were; nothing here re-implements a picker.
+
+                        A VALUE CONTROL NEVER LOOKS TOGGLED. It takes hover,
+                        focus and an open-state treatment, and nothing else - a
+                        permanent green background would claim a state the
+                        drawing does not have.
+                    -->
+                    <!--
+                        =========================================================
+                        THE THREE LINE PROPERTIES: THICKNESS, COLOUR, LINE TYPE
+                        =========================================================
+
+                        THREE IDENTICAL CONTROLS. Each is the same box - one
+                        `<select>` (or the colour input) laid invisibly over one
+                        icon - so the three are the same size, the same shape and
+                        the same distance apart, and nothing about one of them is
+                        special.
+
+                        THE ICONS ARE FIXED ARTWORK, NOT PREVIEWS. The thickness
+                        and line-type icons are plain, static drawings: they label
+                        the control rather than re-drawing themselves from the
+                        value. Live previews were the source of most of the trouble
+                        here - the icon changed size and shape as the value moved,
+                        so the three buttons stopped looking like a set - and the
+                        VALUE IS ALREADY ON THE TOOLTIP and in the dropdown, which
+                        is where it belongs.
+
+                        The colour control shows the current colour in the drop,
+                        because a colour swatch has to show the colour. That is the
+                        one place it is genuinely the value.
+                    -->
+                    <div class="drawing-strip-field drawing-strip-icon-control">
+                        <select id="drawingThickness" class="drawing-strip-icon-select" title="Line thickness" aria-label="Line thickness">
+                            <option value="0.25">0.25 mm</option>
+                            <option value="0.5" selected>0.50 mm</option>
+                            <option value="0.75">0.75 mm</option>
+                            <option value="1">1.00 mm</option>
+                        </select>
+                        <span class="drawing-strip-icon" aria-hidden="true">
+                            <svg viewBox="0 0 20 20" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M5 7h10"/><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M5 13h10"/></svg>
+                        </span>
+                    </div>
+
+                    <div class="drawing-strip-field drawing-strip-icon-control">
+                        <label class="drawing-strip-colour" title="Drawing colour">
+                            <input id="drawingColor" type="color" value="#193335" aria-label="Drawing colour" title="Drawing colour">
+                            <span class="drawing-strip-icon" aria-hidden="true">
+                                <svg viewBox="0 0 20 20" width="18" height="18"><path class="drawing-strip-icon-fill" stroke="none" d="M10 5.4c1.6 2.2 3.4 4 3.4 5.8a3.4 3.4 0 0 1-6.8 0c0-1.8 1.8-3.6 3.4-5.8z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M10 5.4c1.6 2.2 3.4 4 3.4 5.8a3.4 3.4 0 0 1-6.8 0c0-1.8 1.8-3.6 3.4-5.8z"/></svg>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="drawing-strip-field drawing-strip-icon-control">
+                        <select id="drawingLineType" class="drawing-strip-icon-select" title="Line type" aria-label="Line type">
+                            <option value="solid">Solid</option>
+                            <option value="dashed">Dashed</option>
+                            <option value="center">Center</option>
+                            <option value="construction">Construction</option>
+                        </select>
+                        <span class="drawing-strip-icon" aria-hidden="true">
+                            <!--
+                                LINE TYPE: A RULE DRAWN IN THE SELECTED PATTERN.
+
+                                The dash pattern IS the value, so solid, dashed, centre
+                                and construction each read straight off the icon - the
+                                control shows what is selected rather than merely naming
+                                itself. `stroke-dasharray` is set on this path by
+                                `style-controls.js` from the real line type.
+                            -->
+                            <svg viewBox="0 0 20 20" width="18" height="18"><path id="drawingLineTypeStroke" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3.5 10h13"/></svg>
+                        </span>
+                    </div>
+
+                    <span class="drawing-style-strip-divider" aria-hidden="true"></span>
+
+                    <!--
+                        GRID, SNAP, DIMENSIONS, MAGNITUDES: ICON-ONLY TOGGLES.
+
+                        Each has TWO PERSISTENT VISUAL STATES, and the state is
+                        read from the real shared setting - `state.grid.visible`,
+                        `state.snap.enabled` and the two `state.display` flags -
+                        never from a decorative flag of its own.
+
+                        THE STATE IS NOT COLOUR ALONE. An "on" toggle carries a
+                        filled surface, a border and a brighter icon as well as
+                        the green, so it is still readable in a monochrome view
+                        and to a student who cannot distinguish the green. The
+                        `aria-pressed` attribute states it for a screen reader,
+                        and the tooltip is kept up to date with ON/OFF.
+
+                        Grid and Snap change HOW the drawing is made; Dimensions
+                        and Magnitudes change how it is READ. They are four
+                        independent switches, so "magnitudes without dimensions"
+                        is a state the row can express.
+                    -->
+                    <button class="drawing-status-toggle active" id="drawingGridToggle" type="button" data-toggle-name="Grid" aria-pressed="true" title="Grid: on" aria-label="Grid">
+                        <!-- GRID: a ruled sheet - the grid the drawing sits on. -->
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect fill="none" stroke="currentColor" stroke-width="1.5" x="3.5" y="3.5" width="13" height="13" rx="1"/><path fill="none" stroke="currentColor" stroke-width="1.5" d="M3.5 8h13M3.5 12h13M8 3.5v13M12 3.5v13"/></svg>
+                    </button>
+                    <button class="drawing-status-toggle active" id="drawingSnapToggle" type="button" data-toggle-name="Snap" aria-pressed="true" title="Snap: on" aria-label="Snap">
+                        <!--
+                            SNAP: A POINT LOCKING ONTO A TARGET.
+
+                            A small ring marks the thing being snapped TO, and a node
+                            with a short lead marks the point being snapped. It reads as
+                            "snap this to that" in the same clean, geometric language as
+                            the Grid and Vector Scale icons beside it - where the old
+                            magnet was a dense pictogram with three curves and did not
+                            belong to the same set.
+                        -->
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle fill="none" stroke="currentColor" stroke-width="1.5" cx="12.5" cy="7.5" r="3"/><circle fill="currentColor" stroke="none" cx="6" cy="14" r="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M7.2 12.8L9.8 10.2"/></svg>
+                    </button>
+                    <button class="drawing-status-toggle active" id="drawingDimensionsToggle" type="button" data-toggle-name="Dimensions" aria-pressed="true" title="Dimensions: on" aria-label="Dimensions">
+                        <!--
+                            DIMENSIONS: ONE DIMENSION LINE, drawn the way a size is
+                            written on an engineering drawing - two extension lines, a
+                            line between them, and an arrowhead at each end. The doubled
+                            version before it said the same thing twice and read as noise at
+                            18px; one clean dimension says it once, clearly.
+                        -->
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4.5 4v12M15.5 4v12"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M4.5 10h11"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M7 8L4.5 10L7 12M13 8L15.5 10L13 12"/></svg>
+                    </button>
+                    <button class="drawing-status-toggle active" id="drawingMagnitudesToggle" type="button" data-toggle-name="Magnitudes" aria-pressed="true" title="Magnitudes: on" aria-label="Magnitudes">
+                        <!--
+                            MAGNITUDES: A FORCE ARROW WITH ITS VALUE.
+
+                            One horizontal arrow on a baseline, with a short tick above
+                            it for the number that is written beside a force. Read on its
+                            own it says "a vector and its value", which is exactly what
+                            this toggle shows and hides - and it is distinct from the
+                            Dimension icon, which carries extension lines rather than a
+                            value tick.
+                        -->
+                        <svg class="drawing-toolbar-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M3 14h11"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M11 11.5L14 14L11 16.5"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M8 4.5v3.5M8 6.5h5"/></svg>
+                    </button>
+
+                    <!--
+                        VECTOR SCALE: THE FINAL CONTROL.
+
+                        It KEEPS ITS VALUE VISIBLE. Unlike the four toggles
+                        before it, this is a VALUE SELECTOR and the selected
+                        scale is information the student reads at a glance -
+                        requiring the dropdown to be opened to learn the current
+                        scale would make the control useless as a readout.
+
+                        THE SELECT STAYS THE CONTROL. The visible box shows the
+                        icon, the CURRENT VALUE and a chevron; the `<select>`
+                        sits on top of it, transparent, so the native dropdown,
+                        its options and the existing `change` handler are all
+                        exactly what they were. Nothing about the scaling logic
+                        is replaced.
+
+                        IT CHANGES THE PICTURE, NEVER THE PHYSICS. A 500 N force
+                        is 500 N whatever the scale; only the drawn length of
+                        its arrow moves.
+                    -->
+                    <div class="drawing-vector-scale" title="Vector Scale - how large force and load arrows are drawn. This is display only and never changes a magnitude.">
+                        <span class="drawing-vector-scale-icon" aria-hidden="true">
+                            <!--
+                                VECTOR SCALE: TWO ARROWS OF DIFFERENT LENGTHS, side by side
+                                - the same vector drawn larger and smaller, which is exactly
+                                what this control changes. A single arrow would read as
+                                "a vector"; two at different scales read as SCALE.
+                            -->
+                            <svg viewBox="0 0 20 20" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 6.5h11"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M10.5 3.8l2.7 2.7-2.7 2.7"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 13.5h6"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6.2 11.6l1.9 1.9-1.9 1.9"/></svg>
+                        </span>
+                        <select id="drawingVectorScale" aria-label="Vector Scale"></select>
+                        <span class="drawing-vector-scale-value" id="drawingVectorScaleValue" aria-hidden="true">1×</span>
+                        <span class="drawing-vector-scale-chevron" aria-hidden="true">
+                            <svg viewBox="0 0 16 16" width="12" height="12"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6.5l4 4 4-4"/></svg>
+                        </span>
+                        <input id="drawingVectorScaleCustom" class="drawing-vector-scale-custom" type="number" step="any" min="0" aria-label="Custom vector scale" placeholder="e.g. 3" hidden>
+                    </div>
                 </div>
 
                 <!--
@@ -413,30 +915,35 @@
                     <!--
                         THE WAY BACK, ONCE THE TOP BAR IS HIDDEN.
 
-                        Lives ON the canvas rather than in the bar it restores,
-                        because it must be reachable while that bar does not
-                        exist. It is a slim strip along the canvas's top edge,
-                        hidden entirely while the top bar is shown - so it costs
-                        nothing until it is needed, and the drawing keeps every
-                        pixel it reclaimed.
+                        A THIN LINE ACROSS THE WHOLE TOP, with the Show control
+                        at the RIGHT - the same corner the Hide button held on
+                        the toolset bar, so the pointer that pressed Hide is
+                        already over the way back.
 
-                        It is deliberately NOT a floating overlay: an overlay
-                        would sit ON TOP of the work, which is the opposite of
-                        what hiding the bar was for.
+                        The line is not a floating overlay covering the work: it
+                        takes its own row above the canvas, full width.
+
+                        The arrow points UP, the direction the bar comes back
+                        from, and the label reads "Top Bar" - the name of the
+                        thing that returns - rather than repeating the word
+                        "Show", which the up arrow already says.
                     -->
-                    <button
-                        class="drawing-topbar-show"
-                        id="drawingTopBarShow"
-                        type="button"
-                        title="Show the top bar"
-                        aria-controls="drawing"
-                        hidden
-                    >
-                        <svg viewBox="0 0 16 16" aria-hidden="true">
-                            <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        <span>Show Top Bar</span>
-                    </button>
+                    <div class="drawing-topbar-show-row">
+                        <button
+                            class="drawing-topbar-show"
+                            id="drawingTopBarShow"
+                            type="button"
+                            title="Show the top bar"
+                            aria-label="Show the top bar"
+                            aria-controls="drawing"
+                            hidden
+                        >
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M3 10l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>Top Bar</span>
+                        </button>
+                    </div>
 
                     <div class="drawing-canvas" aria-label="Engineering drawing canvas">
                     </div>

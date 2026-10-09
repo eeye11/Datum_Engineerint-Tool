@@ -150,7 +150,7 @@ const DEFINITIONS = {
   ],
 
   /*
-   * A Circle has one meaningful dimension. Datum dimensions a
+   * A Circle has one meaningful dimension. DAETUM dimensions a
    * circle by its Diameter, so the creation popup asks the same
    * - one quantity, and it is the one the drawing already uses.
    */

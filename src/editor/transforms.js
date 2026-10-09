@@ -673,6 +673,32 @@ export function trimSegmentAtCursor(target, clickPoint, objects) {
         enggDrawingState.addObject(drawingState, tail);
     }
 
+    /*
+     * A TRIM THAT CHANGED NOTHING IS NOT REPORTED AS A TRIM.
+     *
+     * Every branch above either moves an end or splits the line, so reaching
+     * here means one of them did. The check is a guard against a future case
+     * being added without a way to act on it: better to say nothing happened
+     * than to say "Trimmed" over an unchanged drawing.
+     */
+    const startMoved =
+        g.start.x !== segment.from.x || g.start.y !== segment.from.y;
+
+    const endMoved =
+        g.end.x !== segment.to.x || g.end.y !== segment.to.y;
+
+    const changed = removesBothEnds
+        ? startMoved || endMoved
+        : true;
+
+    if (!changed) {
+        setToolMessage(
+            "Nothing crosses this line here, so there is nothing to trim"
+        );
+
+        return false;
+    }
+
     enggDrawingState.commitDrawingChange(drawingState, previous);
 
     cancelModifySession();
@@ -830,8 +856,21 @@ function intersectionsAlongLine(lineObject, objects) {
 
             const t = segmentParameter(g.start, g.end, hit);
 
-            /* Only crossings ON the line divide it. */
-            if (t < -1e-9 || t > 1 + 1e-9) {
+            /*
+             * ONLY A CROSSING IN THE INTERIOR DIVIDES THE LINE.
+             *
+             * A crossing exactly AT an end does not cut anything: the line has
+             * no piece on one side of it to remove, because the line itself
+             * stops there. Recording it as a stop made `stops` read
+             * `[start, start, end]`, and the zero-length first piece was then
+             * skipped - so the WHOLE LINE became the "last piece" and trimming
+             * near it shortened the line to its own start. A click meant to trim
+             * nothing changed the drawing.
+             *
+             * The tolerance is the same 1e-9 the segment maths uses elsewhere,
+             * so "at the end" means the same thing everywhere.
+             */
+            if (t <= 1e-9 || t >= 1 - 1e-9) {
                 return;
             }
 

@@ -90,7 +90,13 @@ console.log("\n  the picker LABEL never reaches a filename\n");
     "EnggDraw (",
     "(*.enggdraw)",
     "EnggDraw (*.enggdraw)",
+    /*
+     * The label names the FORMAT, never the product - both the former name and
+     * the current one are forbidden in a filename, so a later edit cannot
+     * reintroduce either as a file type.
+     */
     "Datum Drawing",
+    "DAETUM Drawing",
   ];
 
   const names = [

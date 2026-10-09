@@ -201,7 +201,18 @@ function createDrawingState() {
              */
         },
         styleDefaults: {
-            stroke: "#000000",
+            stroke: themeLineColour,
+
+            /*
+             * HAS THE STUDENT CHOSEN A COLOUR OF THEIR OWN?
+             *
+             * `false` means the stroke above is only the THEME's default, so a
+             * later theme change may re-point it (affecting new features only).
+             * The colour picker sets this `true` the moment a colour is chosen
+             * with nothing selected, from which point the choice is preserved
+             * across theme changes - the precedence in §4.6.
+             */
+            strokeExplicit: false,
             fill: "none",
             lineWidth: 0.5,
             lineType: "solid",
@@ -310,9 +321,66 @@ function createDrawingState() {
     };
 }
 
+/*
+ * ========================================================
+ * THE DEFAULT DRAWING LINE COLOUR, AND WHERE IT COMES FROM
+ * ========================================================
+ *
+ * A NEWLY drawn feature gets a stroke when the student has not chosen one. That
+ * value is no longer a fixed literal: it follows the INTERFACE THEME - a dark
+ * teal-charcoal on the light sheet, an ice-white on the dark one - so a default
+ * line is always legible against the paper it lands on.
+ *
+ * WHY A SETTABLE VALUE RATHER THAN AN IMPORT.
+ *
+ * `core` is the model: it has no DOM and no theme. Reading `theme.js` from here
+ * would make the model depend on the interface, so instead the EDITOR hands the
+ * current theme's default in (`setThemeLineColour`, called when the theme is
+ * applied). Core stays pure, and the value it stores is just a colour.
+ *
+ * THE PRECEDENCE, stated once so there is no second opinion:
+ *
+ *   1. an EXPLICIT stroke on the style       - the student's own choice, kept
+ *   2. `styleDefaults.stroke`, when the user has marked it explicit
+ *      (`styleDefaults.strokeExplicit !== false`)               - a saved choice
+ *   3. the theme default                      - `themeLineColour`
+ *
+ * The fallback literal is the LIGHT default, so a module-load check or a pure
+ * geometry test - which never sets a theme - still draws a real, dark line.
+ */
+const LIGHT_LINE_COLOUR = "#193335";
+
+let themeLineColour = LIGHT_LINE_COLOUR;
+
+/*
+ * The stroke a NEW feature gets. `overrides.stroke` wins when present, so an
+ * explicit colour - the eyedropper, the colour picker, a saved file - is never
+ * replaced by the theme default.
+ */
+function resolveDefaultStroke(overrides = {}) {
+    if (overrides && overrides.stroke) {
+        return overrides.stroke;
+    }
+
+    return themeLineColour;
+}
+
+/*
+ * Called by the editor when the theme changes, with the theme's own default line
+ * colour. It affects only features created AFTERWARDS: nothing re-stamps the
+ * existing objects, because the theme must never recolour the drawing.
+ */
+function setThemeLineColour(colour) {
+    if (typeof colour === "string" && /^#[0-9a-fA-F]{6}$/.test(colour)) {
+        themeLineColour = colour;
+    }
+
+    return themeLineColour;
+}
+
 function createStyle(overrides = {}) {
     return {
-        stroke: "#000000",
+        stroke: resolveDefaultStroke(overrides),
         fill: "none",
         lineWidth: 0.5,
         lineType: "solid",
@@ -1825,49 +1893,33 @@ function removeObjectsAndDescendants(
  * sheet, so emptying this one says nothing about any other: a
  * second sheet with its own calibration keeps it.
  *
- * WHAT COUNTS AS GEOMETRY
- * -----------------------
- * Things a student DREW that have a LENGTH: the bodies, the shapes,
- * the construction geometry, the reference geometry.
+ * WHAT DECIDES IT: THE LAST LENGTH FEATURE.
+ * ----------------------------------------
+ * The scale is DEFINED by a Length - the first dimension states what a drawn
+ * distance really is - so it is the LENGTH FEATURES that hold it, not the raw
+ * geometry. When the last of them is deleted the scale has nothing left behind
+ * it, and a beam still sitting on the sheet does not change that: the thing that
+ * declared what the beam MEASURED is what has gone.
  *
- * Not the things that merely describe what was drawn. A dimension,
- * a moment, a load, a support or an analysis diagram is a reading of
- * some geometry, and deleting that geometry already takes it with
- * it - the deletion above removes descendants, and these are exactly
- * the kind of dependent that has a parent. If they were counted
- * here, a sheet holding a lone orphaned annotation would keep a
- * calibration alive with no drawing behind it, and the sheet would
- * never reset.
- *
- * AND NOT A FORCE. This is a LENGTH scale - the relationship between
- * a sheet's drawing units and real lengths - so only geometry that
- * HAS a length can hold one. A Point Force carries a magnitude in
- * newtons, not a distance: a force left alone on an otherwise empty
- * sheet is a sheet with no length on it, and a length scale there
- * would be calibrating something that is not present. The rule is
- * the one the first-length calibration already follows - the first
- * valid force magnitude does not establish the length scale - and it
- * is symmetric, because a sheet that could not be emptied while a
- * lone force sat on it would never reset.
+ * That is the rule the first-length calibration already follows, read from the
+ * other end, and it is why this asks about Length features rather than about
+ * whether any geometry remains.
  */
-const SCALE_HOLDING_TYPES = new Set([
-    "line",
-    "polyline",
-    "triangle",
-    "polygon",
-    "circle",
-    "arc",
-    "rectangle",
-    "beam",
-    "truss",
-    "cable",
-    "shaft",
-    "rigid-body",
-    "particle",
-    "reference-line",
-    "reference-point",
-    "coordinate-system",
-    "point"
+
+/*
+ * THE FEATURES THAT CAN DEFINE THE SCALE.
+ *
+ * A measured dimension is the ONE feature that states what a drawn distance is
+ * really worth, so it is the one that establishes the sheet's scale - and when
+ * the last one is deleted the scale has nothing left behind it.
+ *
+ * A `variable-dimension` is deliberately absent: it names a symbol (`L`, `L/2`)
+ * rather than declaring a measurement, and a variable has never been able to
+ * calibrate a sheet. Counting it here would keep a stale scale alive behind a
+ * feature that never established it.
+ */
+const SCALE_DEFINING_TYPES = new Set([
+    "dimension"
 ]);
 
 function resetScaleIfSheetIsEmpty(state) {
@@ -1875,14 +1927,53 @@ function resetScaleIfSheetIsEmpty(state) {
         return false;
     }
 
-    const holdsGeometry =
-        (state.objects || []).some(object =>
-            SCALE_HOLDING_TYPES.has(object.type)
-        );
+    const objects = state.objects || [];
 
-    if (holdsGeometry) {
+    /*
+     * ========================================================
+     * THE LAST LENGTH FEATURE TAKES THE SCALE WITH IT
+     * ========================================================
+     *
+     * The scale is DEFINED by a Length - the first dimension states what a
+     * drawn distance really is - so when the last of those goes, the
+     * definition has nothing left behind it and is reset. The NEXT Length the
+     * student makes becomes the new defining one, exactly as the first ever
+     * did.
+     *
+     * THIS IS ASKED FIRST, BEFORE THE GEOMETRY TEST BELOW, because it is the
+     * narrower and more precise question: a sheet may still carry a beam and a
+     * load while every Length has been deleted, and the requirement is that the
+     * scale resets then too - not only when the sheet is swept completely bare.
+     *
+     * WHAT COUNTS AS A LENGTH FEATURE. The structured kinds that state a
+     * measured length between geometry: a `dimension`. A `variable-dimension`
+     * is deliberately NOT one - it names a symbol (`L`, `L/2`) rather than
+     * declaring what the drawing measures, and a variable has never been able
+     * to establish a scale.
+     */
+    const holdsLengthFeature = objects.some(object =>
+        SCALE_DEFINING_TYPES.has(object.type)
+    );
+
+    if (holdsLengthFeature) {
         return false;
     }
+
+    /*
+     * NO LENGTH FEATURE REMAINS, so the scale goes.
+     *
+     * The geometry test that used to be the whole condition is subsumed by
+     * this one and is not asked separately. Its question - "is any drawn
+     * geometry left?" - was the right question while the scale was held by the
+     * GEOMETRY itself. Now that a Length DEFINES the scale, a sheet can keep
+     * every beam it ever drew and still have no scale to relate them to, because
+     * the feature that declared what they measured is gone.
+     *
+     * Leaving the geometry test in would in fact be the bug: a beam with no
+     * dimension on it would keep a calibration whose only justification has been
+     * deleted, and the next Length the student drew would be measured against a
+     * scale they can no longer see the source of.
+     */
 
     /*
      * Left in the HISTORY SNAPSHOT rather than applied here.
@@ -2923,6 +3014,8 @@ const enggDrawingState = {
         onDocumentChanged = handler;
     },
     createStyle,
+    resolveDefaultStroke,
+    setThemeLineColour,
     createGeometryObject,
     geometryFactories,
     addObject,

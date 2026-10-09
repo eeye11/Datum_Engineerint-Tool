@@ -78,7 +78,7 @@ function reportError(operation, error, context = {}) {
 
     if (verbose() && typeof console !== "undefined" && console.error) {
         console.error(
-            `[Datum] ${entry.operation} failed:`,
+            `[DAETUM] ${entry.operation} failed:`,
             entry.message,
             context,
             error

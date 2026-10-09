@@ -186,7 +186,7 @@ function isGenerated(kind) {
  * that kind describes, and it is what decides whether a box can be produced
  * for a feature at all. A list written anywhere else is a list that can fall
  * behind - and it did, immediately: a list naming "distributed-load" and
- * "moment" would offer the switch to features Datum does not have
+ * "moment" would offer the switch to features DAETUM does not have
  * (they are "load" and "moment") and so offer it to nothing at all, while
  * omitting the support and connection labels the table does carry.
  *

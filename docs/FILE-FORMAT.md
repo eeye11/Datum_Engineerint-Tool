@@ -1,6 +1,6 @@
 # The `.enggdraw` file format
 
-A `.enggdraw` file is the **authoritative, editable** Datum document: every
+A `.enggdraw` file is the **authoritative, editable** DAETUM document: every
 feature keeps its real type, geometry, parent and parameters, so opening a
 file gives back a drawing that can be selected, dragged, edited and saved
 again. It is JSON, UTF-8, with the media type

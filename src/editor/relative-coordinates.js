@@ -400,3 +400,75 @@ export function relativeCoordinateRows(
         )
     ]);
 }
+
+/*
+ * ========================================================
+ * THE ABSOLUTE POSITION ROWS, ONLY WHEN THERE IS NO PARENT
+ * ========================================================
+ *
+ * A feature attached to a body is positioned ALONG that body: one number, a
+ * distance measured on the member, whose height and orientation follow from the
+ * member and the feature's own direction. That is the "Relative To" row set,
+ * and on its own it fully describes where the feature is.
+ *
+ * The absolute X and Y pair is a DIFFERENT question - where on the sheet - and
+ * it only means something when there is no body to be measured along. A force
+ * placed in free space has two coordinates and nothing else; a force on a beam
+ * has one, and its height off the beam is a consequence rather than a choice.
+ *
+ * SHOWING BOTH WAS REDUNDANT AND WRONG. While they were both on the panel,
+ * every absolute Y field was an invitation to move the feature ACROSS its own
+ * member - something the relative model does not store and the renderer does
+ * not honour, so the number could be typed and the drawing would not follow it.
+ * A control that accepts a value and changes nothing is the worst kind: it
+ * looks like a property.
+ *
+ * SO THE Y (and the absolute pair with it) IS OFFERED ONLY WHEN THERE IS NO
+ * PARENT. Nothing is left behind - no disabled field, no empty row - because an
+ * absent fact is shown by an absent row.
+ */
+export function absolutePositionRows(
+    object,
+    helpers
+) {
+    const parent =
+        relativeParentOf(object);
+
+    /*
+     * ATTACHED: the relative rows already state where it is, and there is no
+     * second coordinate for the student to set.
+     */
+    if (parent && relativeParentOrigin(parent)) {
+        return [];
+    }
+
+    const { coordinate, section } = helpers;
+
+    const geometry = object?.geometry || {};
+
+    /*
+     * FREE: the absolute pair IS the placement, so both ordinates are offered.
+     * The report that an absent Y was removed applies only to the ATTACHED
+     * case; a free feature genuinely has two coordinates.
+     */
+    const anchor =
+        geometry.position ||
+        geometry.start;
+
+    if (
+        !anchor ||
+        !Number.isFinite(anchor.x) ||
+        !Number.isFinite(anchor.y)
+    ) {
+        return [];
+    }
+
+    const label =
+        geometry.position ? "Position" : "Application Point";
+
+    return [
+        section("POSITION"),
+        coordinate(`${label} X`, "position.x", anchor.x, "mm", true),
+        coordinate(`${label} Y`, "position.y", anchor.y, "mm", true)
+    ];
+}

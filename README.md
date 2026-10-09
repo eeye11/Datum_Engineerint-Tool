@@ -1,18 +1,18 @@
-# Datum
+# DAETUM
 
-Datum is where an engineering student writes up a solution: the **written
+DAETUM is where an engineering student writes up a solution: the **written
 working** (LaTeX, usually produced by the OCR tool from a handwritten page)
 and the **drawings** it refers to — free body diagrams, beams and trusses,
 loads and supports, dimensions, and shear-force, bending-moment and
 axial-force diagrams. The two are submitted together to the autograder.
 
 ```
-handwritten page ─► OCR ─► LaTeX ─► Datum ─► submission ─► autograder
+handwritten page ─► OCR ─► LaTeX ─► DAETUM ─► submission ─► autograder
 ```
 
 ## For students
 
-Open Datum in a web browser. Nothing to install.
+Open DAETUM in a web browser. Nothing to install.
 
 - **Written Solution** — paste or correct your LaTeX on the left, see it
   rendered on the right. Put a drawing in your solution with *Insert Reference*.
@@ -21,7 +21,7 @@ Open Datum in a web browser. Nothing to install.
   always says what the current tool expects next. `Esc` cancels, `Ctrl+Z`
   undoes.
 - **Save** keeps your work as a `.enggdraw` file you can open again later.
-  Datum also keeps a recovery copy in your browser in case the tab closes.
+  DAETUM also keeps a recovery copy in your browser in case the tab closes.
 
 ## For developers
 
@@ -79,7 +79,7 @@ and [docs/TOOL-MAP.md](docs/TOOL-MAP.md) to find where a toolbar command lives.
 
 ## For other tools
 
-Datum exposes a small, versioned API — in the page as `window.datum`, and to
+DAETUM exposes a small, versioned API — in the page as `window.datum`, and to
 an embedding page over `postMessage` — for reading and loading documents,
 rendering a sheet to SVG, and reading or setting the LaTeX solution. See
 [docs/INTEGRATION.md](docs/INTEGRATION.md). The saved-file format is
@@ -87,7 +87,7 @@ specified in [docs/FILE-FORMAT.md](docs/FILE-FORMAT.md).
 
 ## Design principles
 
-- **Datum documents; it does not solve.** The analysis tools help a student
+- **DAETUM documents; it does not solve.** The analysis tools help a student
   draw and label their own reasoning. Nothing works out an unknown or
   reports a solution.
 - **A dimension measures geometry; an annotation states meaning.** A beam's

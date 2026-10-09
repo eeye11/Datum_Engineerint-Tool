@@ -6,13 +6,13 @@ import enggBodyFrames from "../core/geometry/body-frames.js";
 import enggDrawingState from "../core/model/drawing-state.js";
 import enggLoadProfile from "../features/analysis/load-profile.js";
 import enggDrawingRotationalArrow from "../features/analysis/rotational-arrow.js";
+import enggAnnotate from "../features/annotations/annotate-model.js";
 import { renderCurrentDrawing } from "./canvas-render.js";
 import { drawingProperties } from "./dom.js";
-import { drawingState, editorState } from "./editor-state.js";
+import { drawingState } from "./editor-state.js";
 import { forcePanelModes, trianglePanelModes } from "./feature-panel-markup.js";
 import { renderProperties } from "./feature-panel.js";
 import { openAnalysisEditorFor } from "./feature-tree.js";
-import enggDimensions from "../core/scale/dimensions.js";
 import { currentPropertyValue, setRigidBodyShape } from "./property-inputs.js";
 import { updateFeatureProperty } from "./property-update.js";
 import { setToolMessage } from "./toolbar-render.js";
@@ -54,103 +54,6 @@ export function bindFeaturePropertyControls(object) {
      * Feature Tree, the selection and this panel all
      * show the same name.
      */
-    drawingProperties.querySelectorAll('[data-statics-vector-scale]').forEach(select => {
-        select.addEventListener('change', () => {
-            /*
-             * The CUSTOM entry is not a scale - it is the request to type
-             * one. It reveals the field and changes nothing else, so
-             * picking it by mistake leaves the sheet exactly as it was
-             * rather than snapping every arrow back to true length.
-             */
-            if (
-                select.value ===
-                    enggLoadProfile.CUSTOM_VECTOR_SCALE
-            ) {
-                editorState.staticsCustomScaleOpen = true;
-
-                renderProperties();
-                return;
-            }
-
-            editorState.staticsCustomScaleOpen = false;
-
-            applyVectorScale(
-                Number(select.value)
-            );
-        });
-    });
-
-    /*
-     * THE CUSTOM SCALE, APPLIED.
-     *
-     * A typed value is stored in the same place as a listed one and read
-     * back the same way, so nothing downstream needs to know it was typed.
-     * The only thing that treats it differently is the range check: a
-     * length multiplier has to be positive and has to be drawable, so a
-     * zero, a negative number or a value too large to see is refused and
-     * the field is redrawn rather than leaving a scale that cannot be
-     * drawn.
-     */
-    const applyCustomVectorScale = () => {
-        const field = drawingProperties.querySelector(
-            '[data-statics-vector-custom]'
-        );
-
-        const requested = Number(field?.value);
-
-        const usable =
-            Number.isFinite(requested) &&
-            requested >= enggLoadProfile.MIN_VECTOR_SCALE &&
-            requested <= enggLoadProfile.MAX_VECTOR_SCALE;
-
-        if (!usable) {
-            renderProperties();
-            return;
-        }
-
-        editorState.staticsCustomScaleOpen = false;
-
-        applyVectorScale(requested);
-    };
-
-    drawingProperties
-        .querySelectorAll('[data-statics-vector-custom]')
-        .forEach(input => {
-            input.addEventListener('keydown', event => {
-                if (event.key === 'Enter') {
-                    applyCustomVectorScale();
-                }
-            });
-        });
-
-    drawingProperties
-        .querySelectorAll('[data-statics-vector-apply]')
-        .forEach(button => {
-            button.addEventListener('click', () => {
-                applyCustomVectorScale();
-            });
-        });
-
-    /*
-     * One place that commits a scale, so the dropdown and the custom field
-     * cannot disagree about what a change does.
-     *
-     * Only the two redraws happen. No feature is touched: the stored
-     * magnitudes, units, directions and attachment points are left exactly
-     * as they are, and changing this setting must not add an undo step,
-     * because nothing about the drawing's engineering content has changed -
-     * only how large its arrows are drawn.
-     */
-    function applyVectorScale(value) {
-        drawingState.statics.vectorScale = value;
-
-        setToolMessage(
-            `Vector scale ${value}×`
-        );
-
-        renderProperties();
-        renderCurrentDrawing();
-    }
 
     /*
      * Reverse Direction turns a load's force vectors around.
@@ -256,6 +159,56 @@ export function bindFeaturePropertyControls(object) {
 
             renderProperties();
             renderCurrentDrawing();
+        });
+    });
+
+    /*
+     * =========================================================
+     * THE FEATURE'S LABEL
+     * =========================================================
+     *
+     * The text drawn BESIDE a feature on the sheet - "AB", "x", "C" - which is a
+     * different thing from its NAME (what it is called in a schedule). This field
+     * had NO HANDLER AT ALL: the input was rendered in the panel and nothing ever
+     * read it, for Line or for Point, so typing in it did nothing. That is the
+     * whole of the reported fault, and this is the whole of the fix.
+     *
+     * IT IS A TEXT FIELD, so it follows the SAME shape as the feature name below:
+     * commit on `change` (blur or Enter), snapshot first so one edit is one step
+     * back, then repaint the canvas and the panel. Committing on `change` rather
+     * than on every keystroke is deliberate - a label is a word, not a number,
+     * and re-rendering the drawing per letter would be both noisy and slow.
+     *
+     * AN EMPTY VALUE IS A REAL EDIT. Clearing the field REMOVES the label and
+     * keeps the feature - which is why this does not return early on a blank the
+     * way the name field does (a feature must keep a name; it need not keep a
+     * label).
+     */
+    drawingProperties.querySelectorAll('[data-object-label]').forEach(input => {
+        input.addEventListener('change', () => {
+            const previous =
+                enggDrawingState.snapshotDrawing(
+                    drawingState
+                );
+
+            const changed = updateFeatureProperty(
+                object,
+                'label',
+                input.value
+            );
+
+            if (!changed) {
+                renderProperties();
+                return;
+            }
+
+            enggDrawingState.commitDrawingChange(
+                drawingState,
+                previous
+            );
+
+            renderCurrentDrawing();
+            renderProperties();
         });
     });
 
@@ -574,13 +527,90 @@ export function bindFeaturePropertyControls(object) {
         /*
      * The arc radius of a Moment.
      *
-     * This is a PRESENTATION control and is written as its own field
-     * on the geometry rather than as a style, so that it can never be
-     * confused with the magnitude: resizing the curve touches this
-     * one number and nothing else. The position, the sense of
-     * rotation, the magnitude and the parent are all left exactly as
-     * they were, which is what makes a resized moment the same
-     * moment that is merely easier to read.
+     * A PRESENTATION control, written as its own field on the geometry rather
+     * than as a style, so it can never be confused with the magnitude: resizing
+     * the curve touches this one number and nothing else.
+     */
+    /*
+     * ADDING AND REMOVING A BEND ON A LEADER OR CALLOUT.
+     *
+     * These are edits to the annotation's PATH - one ordered list of
+     * attachment, bends, endpoint - and each is ONE committed change, so undo
+     * takes back the whole edit rather than half of it. The model does the
+     * splicing (`addLeaderBend` / `removeLeaderBend`) so the path stays
+     * continuous: a new bend lands at the midpoint of the segment it splits, so
+     * the drawn line does not jump, and removing one reconnects its neighbours.
+     */
+    drawingProperties
+        .querySelectorAll('[data-annotate-add-bend]')
+        .forEach(button => {
+            button.addEventListener('click', () => {
+                if (!enggAnnotate?.addLeaderBend) {
+                    return;
+                }
+
+                const previous =
+                    enggDrawingState.snapshotDrawing(drawingState);
+
+                /*
+                 * THE FIRST SEGMENT IS SPLIT BY DEFAULT, so a line with no
+                 * bends gains one in the middle of its span and the student
+                 * then drags it. Once bends exist the LAST segment is the one
+                 * the student is extending, which is where a pen is carried next.
+                 */
+                const bends = Array.isArray(object.geometry?.bends)
+                    ? object.geometry.bends.length
+                    : 0;
+
+                enggAnnotate.addLeaderBend(object, bends);
+
+                enggDrawingState.commitDrawingChange(drawingState, previous);
+
+                setToolMessage("Bend added - drag it to route the leader");
+
+                renderProperties();
+                renderCurrentDrawing();
+            });
+        });
+
+    drawingProperties
+        .querySelectorAll('[data-annotate-remove-bend]')
+        .forEach(button => {
+            button.addEventListener('click', () => {
+                if (!enggAnnotate?.removeLeaderBend) {
+                    return;
+                }
+
+                const bends = Array.isArray(object.geometry?.bends)
+                    ? object.geometry.bends
+                    : [];
+
+                if (!bends.length) {
+                    return;
+                }
+
+                const previous =
+                    enggDrawingState.snapshotDrawing(drawingState);
+
+                /*
+                 * THE LAST BEND GOES. It is the one the student added most
+                 * recently, so removing is the inverse of adding and a student
+                 * who over-bent simply presses it the same number of times.
+                 */
+                enggAnnotate.removeLeaderBend(object, bends.length - 1);
+
+                enggDrawingState.commitDrawingChange(drawingState, previous);
+
+                setToolMessage("Bend removed");
+
+                renderProperties();
+                renderCurrentDrawing();
+            });
+        });
+
+    /*
+     * The arc radius of a Moment: a presentation control written as its own
+     * field on the geometry, touching nothing but how large the curve is drawn.
      */
     drawingProperties.querySelectorAll('[data-arc-radius]').forEach(input => {
         input.addEventListener('change', () => {
@@ -615,8 +645,28 @@ export function bindFeaturePropertyControls(object) {
 
     /*
      * Select-based statics properties, such as a moment's
-     * direction. These are not style values, so they are
-     * written straight onto the geometry.
+     * direction.
+     *
+     * EVERY SELECT GOES THROUGH THE ONE SETTER.
+     *
+     * This handler used to write `object.geometry[key] = select.value ===
+     * "true"` for every select whose data-property was not `direction` - which
+     * is right for a boolean select and WRONG for every other one. A unit select
+     * carries a STRING ("kN", "kN\u00b7m", "kN/m"), so choosing kN wrote
+     * `geometry.forceUnit = false` and the unit never changed at all: the
+     * dropdown snapped back on the next repaint, silently, with no error
+     * anywhere. It is exactly the defect that made a Moment's unit control look
+     * decorative.
+     *
+     * `updateFeatureProperty` is the ONE place a panel field is written to the
+     * model, and it already knows how each unit is stored - through
+     * `setForceUnit`, `setMomentUnit`, `setLoadUnit`, or the dimension's own
+     * `displayUnit`. Routing every select through it means a unit cannot be
+     * written as a boolean, a new unit-bearing feature gets the same treatment
+     * for free, and the read-only value beside the unit reconciles through the
+     * same path the input fields use. The one field that is genuinely a boolean
+     * on the geometry - `direction` - is still handled here, because it is a
+     * WORD and not a boolean at all (see below).
      */
     drawingProperties.querySelectorAll('select[data-property]').forEach(select => {
         select.addEventListener('change', () => {
@@ -630,19 +680,24 @@ export function bindFeaturePropertyControls(object) {
             /*
              * A DIRECTION IS A WORD, not a flag.
              *
-             * Every other select here writes a boolean, because every
-             * other one reads one. The rotational features do not: they
-             * store "CCW" or "CW", so that the feature states its own
-             * sense instead of leaving a reader to invert a boolean -
-             * and a select that wrote `"true"` into that field would
-             * leave the moment with a direction nothing can read.
+             * Every other select's value is a string the setter understands,
+             * but a direction is stored as "CCW" or "CW" so the feature states
+             * its own sense rather than leaving a reader to invert a boolean.
              */
-            object.geometry[key] =
-                key === "direction"
-                    ? select.value === "CW"
-                        ? "CW"
-                        : "CCW"
-                    : select.value === "true";
+            if (key === 'direction') {
+                object.geometry[key] =
+                    select.value === 'CW' ? 'CW' : 'CCW';
+            } else {
+                /*
+                 * THE SETTER OWNS THE WRITE. A select's value is handed over as
+                 * the string it is, so a unit is stored as the unit.
+                 */
+                updateFeatureProperty(
+                    object,
+                    key,
+                    select.value
+                );
+            }
 
             enggDrawingState.commitDrawingChange(
                 drawingState,

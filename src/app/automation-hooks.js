@@ -7,7 +7,7 @@
  * window global, so they simply read window.enggDrawing and friends. These
  * handles keep exactly those names available for that tooling.
  *
- * This is not an integration API. Code that embeds Datum or exchanges
+ * This is not an integration API. Code that embeds DAETUM or exchanges
  * documents with it should use src/api/ instead, which is versioned and
  * documented; these names may change whenever the internals do.
  */
