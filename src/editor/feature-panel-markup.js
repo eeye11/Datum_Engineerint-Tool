@@ -766,13 +766,73 @@ export function featurePropertyMarkup(object) {
          */
         const converts = isLength && unit === "mm";
 
-        const shown = converts ? mmOf(value).value : value;
+        const mm = converts ? mmOf(value) : { value, unit };
+
+        /*
+         * ====================================================
+         * A COORDINATE CAN BE READ AND ENTERED IN ANY LENGTH UNIT
+         * ====================================================
+         *
+         * `mmOf` converts the stored WORLD value into millimetres, which is the
+         * sheet's own unit. That used to be the end of it: every X and Y was
+         * captioned "mm" with no way to read it in cm, m or inches - so a student
+         * working in inches had to convert by hand for every field.
+         *
+         * The unit below is therefore a DISPLAY unit, sitting on top of the
+         * millimetres rather than replacing them:
+         *
+         *     world -> mmOf -> mm -> convertValue(length, mm, chosen)
+         *
+         * and entering a value runs the same chain backwards in the setter. The
+         * GEOMETRY NEVER MOVES: changing the unit changes which number the same
+         * physical position is written as, which is what `convertValue` exists
+         * for. A position of 25.4 mm reads "25.4" in mm and "1" in inches, and
+         * the drawing is in the same place either way.
+         *
+         * THE CHOSEN UNIT IS PER FEATURE, stored on the geometry beside the
+         * values it displays - the same shape a dimension's `displayUnit` already
+         * uses. It is a READING preference, so it travels in the document with
+         * the drawing rather than being a global setting that would move when the
+         * student opened a second sheet.
+         */
+        const displayUnits = enggQuantities
+            ? enggQuantities.unitsFor("length")
+            : [];
+
+        const chosenUnit = converts
+            ? (object.lengthUnit || mm.unit)
+            : unit;
+
+        const shown = converts
+            ? enggQuantities.convertValue(
+                  mm.value,
+                  "length",
+                  "mm",
+                  chosenUnit
+              )
+            : mm.value;
+
+        /*
+         * A UNIT ROW IS ONLY OFFERED FOR A PHYSICAL LENGTH. An angle is not a
+         * length, so an angle row keeps the plain"°" it has always had.
+         */
+        const lengthUnitControl =
+            converts && panels && panels.unitSelect
+                ? panels.unitSelect({
+                      property: "lengthUnit",
+                      units: displayUnits,
+                      current: chosenUnit,
+                      label: `${label} unit`,
+                      disabled: fixed(key),
+                  })
+                : null;
 
         const field = panels.scalar({
             label,
             key,
             value: shown,
-            unit: converts ? mmOf(value).unit : unit,
+            unit: converts ? chosenUnit : unit,
+            unitControl: lengthUnitControl,
             disabled: fixed(key),
 
             /*

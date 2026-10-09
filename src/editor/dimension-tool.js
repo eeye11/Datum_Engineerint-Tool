@@ -652,9 +652,58 @@ export function openDimensionValuePrompt(object) {
         expression: variable,
         units: variable ? undefined : MEASURED_UNITS,
 
+        /*
+         * ====================================================
+         * THE PREVIEW WHILE THE STUDENT IS STILL TYPING
+         * ====================================================
+         *
+         * The popup reported nothing as the value changed, so a size was chosen
+         * blind: the drawing only moved once the edit was confirmed. This draws
+         * the PROPOSED result as it is typed, and takes it back if the edit is
+         * abandoned - which is the whole difference between a preview and an
+         * edit.
+         *
+         * IT IS SAVED AND RESTORED, NOT COMMITTED.
+         *
+         * The snapshot below is the state BEFORE the first preview, and it is what
+         * `onCancel` and the close path restore from. Nothing goes through
+         * `commitDrawingChange` while previewing, so the HISTORY never sees a
+         * preview: an abandoned edit leaves no undo step behind, and a confirmed
+         * one is a single step from the geometry as it was.
+         *
+         * A VARIABLE IS NOT PREVIEWED THIS WAY. It carries the student's own
+         * symbol rather than a measurement, and nothing about the drawing follows
+         * from it - so there is nothing to draw, and no geometry is touched.
+         */
+        onPreview: (draft) => {
+            if (variable) {
+                return;
+            }
+
+            if (!previewSnapshot) {
+                previewSnapshot = enggDrawingState.snapshotDrawing(drawingState);
+            }
+
+            previewGeometryValue(object, drawingState, draft);
+
+            renderCurrentDrawing();
+        },
+
         onConfirm: (confirmed) => {
+            /*
+             * A CONFIRMED EDIT IS NOT A PREVIEW ANY MORE.
+             *
+             * The snapshot taken for the preview is DISCARDED (not restored), so
+             * nothing later can roll back an edit the student confirmed - and the
+             * undo step is taken from the geometry as it was BEFORE the preview
+             * began, which is what makes one edit one step back even though the
+             * preview moved the drawing many times.
+             */
             const previous =
+                previewSnapshot ||
                 enggDrawingState.snapshotDrawing(drawingState);
+
+            previewSnapshot = null;
 
             if (variable) {
                 /*
@@ -743,11 +792,122 @@ export function openDimensionValuePrompt(object) {
         },
 
         onCancel: () => {
+            /*
+             * AN ABANDONED EDIT PUTS THE DRAWING BACK.
+             *
+             * The preview moved real geometry, so cancelling has to restore the
+             * snapshot taken before the first keystroke - otherwise Escape would
+             * leave the geometry at whatever the last preview drew, which is an
+             * edit the student did not make and never confirmed.
+             */
+            restorePreview();
+
             setToolMessage("Dimension edit cancelled");
 
             renderCurrentDrawing();
         }
     });
+
+    return true;
+}
+
+/*
+ * ========================================================
+ * THE PREVIEW, AND HOW IT IS UNDONE
+ * ========================================================
+ *
+ * A preview writes the PROPOSED value through the very same path a committed
+ * edit uses (`applyDimensionValue`), so what is drawn while typing is exactly
+ * what will be drawn on confirmation - not an approximation that could differ.
+ *
+ * The state before the first preview is kept in `previewSnapshot`, and it is the
+ * ONE thing `restorePreview` needs: putting the geometry back is the drawing
+ * system's own restore, so this module does not have to know which fields the
+ * preview touched.
+ */
+let previewSnapshot = null;
+
+function previewGeometryValue(object, state, draft) {
+    if (!draft) {
+        return;
+    }
+
+    /*
+     * THE POPUP REPORTS A READ VALUE, not a raw string.
+     *
+     * `readLoadValue` has already turned the field into `{ value, unit }` - or
+     * into a symbol, which carries no number - and a preview is only meaningful
+     * for the numeric case. A symbol edits the dimension's TEXT, which the
+     * renderer reads on the next frame anyway, so there is nothing to move.
+     *
+     * A HALF-TYPED VALUE IS NOT A VALUE. An empty or non-finite field leaves the
+     * preview exactly as it was rather than collapsing the geometry to zero - the
+     * same rule the numeric setters follow.
+     */
+    /*
+     * THE POPUP REPORTS A READ VALUE, NOT A RAW STRING.
+     *
+     * `readLoadValue` has already turned the field into `{ value, unit }` - or
+     * into a SYMBOL, which carries no number - and a preview is only meaningful
+     * for the numeric case. In expression mode it reports `{ text }` instead, and
+     * that is read the same way `onConfirm` reads it, so a preview and a commit
+     * cannot interpret the same keystrokes differently.
+     *
+     * A HALF-TYPED VALUE IS NOT A VALUE. An empty or non-finite field leaves the
+     * preview exactly as it was rather than collapsing the geometry to zero - the
+     * same rule the numeric setters follow.
+     */
+    /*
+     * TWO SHAPES, BOTH FROM THE SAME POPUP: `{ text }` in expression mode, and
+     * `readLoadValue`'s `{ value, unit }` otherwise. A SYMBOL reports a `text`
+     * that does not read as a number, and is correctly ignored here - it changes
+     * what the dimension SAYS, not where the geometry is.
+     */
+    const numeric =
+        typeof draft.value === "number"
+            ? draft.value
+            : readStaticsValue(draft.text ?? "", draft.unit).value;
+
+    const unit = draft.unit;
+
+    if (!Number.isFinite(numeric)) {
+        return;
+    }
+
+    const millimetres =
+        numeric *
+        (enggQuantities?.LENGTH_UNITS?.[unit]?.mm ?? 1);
+
+    if (!Number.isFinite(millimetres)) {
+        return;
+    }
+
+    enggDimensionEdit.applyDimensionValue(object, state, millimetres);
+}
+
+/*
+ * Take the preview back off the drawing. Safe to call when there was none.
+ */
+function restorePreview() {
+    if (!previewSnapshot) {
+        return false;
+    }
+
+    const snapshot = previewSnapshot;
+
+    previewSnapshot = null;
+
+    /*
+     * A SNAPSHOT IS A DOCUMENT, NOT A BARE LIST.
+     *
+     * `snapshotDrawing` returns `{ objects, sheets? }`, and `restoreObjects`
+     * wants the OBJECTS inside it - which is exactly how Undo calls it
+     * (`entry.objects || entry`). Passing the wrapper was a real fault: it left
+     * `state.objects` as an object rather than an array, so the very next lookup
+     * threw. The fallback keeps a bare list working, so the two shapes are both
+     * accepted rather than the caller having to know which it holds.
+     */
+    enggDrawingState.restoreObjects(drawingState, snapshot.objects || snapshot);
 
     return true;
 }

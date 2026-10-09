@@ -173,6 +173,24 @@ let openPopup = null;
 let closeCurrent = null;
 
 /*
+ * THE OPEN POPUP'S POINTER LISTENER.
+ *
+ * Held so `close()` can take it off the document again - see the note where it
+ * is registered. One popup can be open at a time, so one reference is enough.
+ */
+let pointerListener = null;
+
+/*
+ * AND THE OPEN POPUP'S ESCAPE LISTENER, held for the same reason.
+ *
+ * Escape is caught on the DOCUMENT so it works whether or not anything inside
+ * the popup has focus; a listener on the document outlives the popup unless it
+ * is removed, so `close()` takes this one off by the same reference the pointer
+ * listener uses.
+ */
+let escapeListener = null;
+
+/*
  * A confirmation that has just happened, and whether the keyboard
  * event that caused it has finished travelling.
  *
@@ -555,6 +573,43 @@ function open(options = {}) {
     options.onConfirm?.(values);
   };
 
+  /*
+   * =========================================================
+   * WHERE THE POINTER WENT, WHICH IS NOT WHERE FOCUS WENT
+   * =========================================================
+   *
+   * The dismissal used to be decided by `popup.contains(document.activeElement)`,
+   * and that is the fault. `activeElement` can only ever be a FOCUSABLE element:
+   * clicking a label, the padding, the gap between rows or any other inert part
+   * of the popup blurs the input and leaves focus on `<body>`, which the popup
+   * does not contain - so a click INSIDE the popup read as a click OUTSIDE it and
+   * the question closed under the student's hand. That is exactly the reported
+   * "you have to click one specific part of the control".
+   *
+   * So the question asked here is the right one: DID THE PRESS LAND IN THE POPUP?
+   * A `pointerdown` listener records the answer in the capture phase - before any
+   * blur can fire - and the blur handlers consult it. A press that lands inside
+   * keeps the popup; only a press that genuinely lands elsewhere dismisses it,
+   * which is the behaviour that was wanted all along.
+   */
+  let pointerInside = false;
+
+  const onPointerDown = (event) => {
+    pointerInside = popup.contains(event.target);
+  };
+
+  document.addEventListener("pointerdown", onPointerDown, true);
+
+  const pressWasInsidePopup = () => pointerInside;
+
+  /*
+   * The listener belongs to the DOCUMENT, so it must come off with the popup -
+   * otherwise closing and reopening the editor would leave one stale listener per
+   * closed popup, each still writing to a detached `pointerInside`. `close()` is
+   * the module's own teardown and removes it by this reference.
+   */
+  pointerListener = onPointerDown;
+
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -594,10 +649,7 @@ function open(options = {}) {
     }
 
     window.setTimeout(() => {
-      if (
-        openPopup !== popup ||
-        popup.contains(document.activeElement)
-      ) {
+      if (openPopup !== popup || pressWasInsidePopup()) {
         return;
       }
 
@@ -618,14 +670,22 @@ function open(options = {}) {
     }
 
     window.setTimeout(() => {
-      if (
-        openPopup === popup &&
-        !popup.contains(document.activeElement)
-      ) {
-        closeIt();
-      } else if (openPopup === popup) {
-        input.focus();
+      if (openPopup !== popup) {
+        return;
       }
+
+      if (pressWasInsidePopup()) {
+        /*
+         * The pointer is still inside the popup - the student clicked a label,
+         * the padding or another control - so the question stands and the number
+         * takes focus back for the keyboard flow.
+         */
+        input.focus();
+
+        return;
+      }
+
+      closeIt();
     }, 0);
   });
 
@@ -656,6 +716,37 @@ function open(options = {}) {
     advance();
   });
 
+  /*
+   * ESCAPE CANCELS FROM ANYWHERE IN THE POPUP, FOCUSED OR NOT.
+   *
+   * The number's own handler above catches Escape only while the INPUT holds
+   * focus. Clicking any part of the popup that cannot take focus - its padding,
+   * its label, a blank corner - blurs the input, and from that moment there is no
+   * focused element inside the popup for a keydown to reach it through. Escape
+   * then did nothing at all, which is how "the popup will not close" happens to
+   * a student who simply clicked the wrong few pixels first.
+   *
+   * So Escape is also caught ON THE DOCUMENT, for as long as this popup is the
+   * open one. It is the same close the input's handler performs, into the same
+   * single `closeIt`, so the two paths cannot behave differently - and the
+   * listener is removed by `close()` with the popup.
+   */
+  const onDocumentKeyDown = (event) => {
+    if (event.key !== "Escape" || openPopup !== popup) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    closeIt();
+  };
+
+  document.addEventListener("keydown", onDocumentKeyDown, true);
+
+  /* Registered on the document, so it must come off with the popup. */
+  escapeListener = onDocumentKeyDown;
+
   renderStep();
 
   return popup;
@@ -672,6 +763,25 @@ function close() {
   if (openPopup) {
     openPopup.remove();
     openPopup = null;
+  }
+
+  /*
+   * AND THE POPUP'S OWN POINTER LISTENER COMES OFF WITH IT.
+   *
+   * It is registered on the DOCUMENT, so leaving it behind would keep one stale
+   * listener per closed popup alive for the life of the page, each still writing
+   * to the `pointerInside` of a popup that no longer exists.
+   */
+  if (pointerListener) {
+    document.removeEventListener("pointerdown", pointerListener, true);
+
+    pointerListener = null;
+  }
+
+  if (escapeListener) {
+    document.removeEventListener("keydown", escapeListener, true);
+
+    escapeListener = null;
   }
 
   closeCurrent = null;

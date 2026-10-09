@@ -114,8 +114,62 @@ export function updateFeatureProperty(object, key, value) {
             key.startsWith('rigidCentre.') ||
             key.startsWith('points.'));
 
+    /*
+     * ========================================================
+     * THE DISPLAY UNIT A LENGTH FIELD IS BEING READ IN
+     * ========================================================
+     *
+     * A coordinate can be READ in mm, cm, m, inches or feet. That choice is
+     * stored on the feature (`object.lengthUnit`), and the panel shows the
+     * number in it - so an entry typed while the field reads "in" is INCHES,
+     * and has to become millimetres before the scale turns it into world units:
+     *
+     *     typed -> [ display unit -> mm ] -> worldLengthOf -> world
+     *
+     * WITHOUT THIS the two halves disagree: the panel would divide by 25.4 to
+     * show inches, and the setter would multiply the typed inches by the scale
+     * as though they were millimetres - so editing a field moved the feature by
+     * a factor of 25.4. That is the defect this closes, and it is why the
+     * conversion is here rather than in the panel.
+     *
+     * IT WRITES THE UNIT TOO. `lengthUnit` is itself a property, so changing the
+     * selector is one undoable edit like any other, and it persists in the
+     * document with the drawing.
+     */
+    if (key === 'lengthUnit') {
+        const unit = String(value ?? '');
+
+        /*
+         * A UNIT THE LENGTH QUANTITY DOES NOT HAVE IS REFUSED, not stored - so a
+         * coordinate can never be left asking to be read in a force or a moment.
+         * The check is the shared table's, not a local list of names.
+         */
+        if (unit && !enggQuantities.isUnitFor('length', unit)) {
+            return false;
+        }
+
+        /*
+         * MILLIMETRES ARE STORED AS ABSENT. mm is the sheet's own unit and the
+         * state every geometry feature was in before this field existed, so
+         * leaving it off keeps the saved shape of an untouched drawing identical
+         * - the same convention a dimension's `displayUnit` already follows.
+         */
+        object.lengthUnit = unit && unit !== 'mm' ? unit : undefined;
+
+        return true;
+    }
+
+    const displayUnit =
+        object.lengthUnit && enggQuantities.isUnitFor('length', object.lengthUnit)
+            ? object.lengthUnit
+            : 'mm';
+
+    const millimetres = isLengthCoordinate
+        ? enggQuantities.convertValue(value, 'length', displayUnit, 'mm')
+        : value;
+
     const worldValue = isLengthCoordinate
-        ? worldLengthOf(value)
+        ? worldLengthOf(millimetres)
         : value;
 
     /*
