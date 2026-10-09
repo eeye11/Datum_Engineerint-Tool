@@ -490,11 +490,6 @@
                     reachable at every width. See
                     `body.datum-topbar-hidden` in `styles/editor.css`.
                 -->
-                <div
-                    id="datumMenuBar"
-                    class="datum-menubar"
-                    aria-label="Main menu"
-                ></div>
 
                     <!--
                         THE GLOBAL TOOL BAR IS GONE.
@@ -592,6 +587,8 @@
                         stays reachable at every width - which is also why it is
                         a separate grid row from the bar this button folds away.
                     -->
+                </nav>
+
                     <button
                         class="drawing-topbar-hide"
                         id="headerHideButton"
@@ -605,7 +602,6 @@
                         </svg>
                         <span class="header-hide-text">Hide</span>
                     </button>
-                </nav>
 
                 <!--
                     ========================================================
@@ -651,6 +647,8 @@
                     THE DRAWING'S HIDE CONTROL IS ON THE TOOLSET BAR ABOVE,
                     not here - see `editor/workspace-layout.js`.
                 -->
+                <div class="drawing-menu-controls-bar">
+                    <div id="datumMenuBar" class="datum-menubar" aria-label="Main menu"></div>
                 <div class="drawing-style-strip" aria-label="Command search and quick-access controls">
                     <label class="drawing-command-search" aria-label="Search commands">
                         <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" class="drawing-command-search-icon"><circle fill="none" stroke="currentColor" stroke-width="1.6" cx="9" cy="9" r="5"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12.8 12.8L17 17"/></svg>
@@ -882,6 +880,8 @@
                     </div>
                 </div>
 
+                </div>
+
                 <!--
                     The tool panel's own column, holding a single
                     hide/show arrow. The arrow is a SIBLING of the
@@ -911,7 +911,6 @@
                     </aside>
                 </div>
 
-                <div class="drawing-canvas-area">
                     <!--
                         THE WAY BACK, ONCE THE TOP BAR IS HIDDEN.
 
@@ -923,10 +922,8 @@
                         The line is not a floating overlay covering the work: it
                         takes its own row above the canvas, full width.
 
-                        The arrow points UP, the direction the bar comes back
-                        from, and the label reads "Top Bar" - the name of the
-                        thing that returns - rather than repeating the word
-                        "Show", which the up arrow already says.
+                        A small white Show tab with a downward arrow restores
+                        the top toolbar.
                     -->
                     <div class="drawing-topbar-show-row">
                         <button
@@ -939,12 +936,13 @@
                             hidden
                         >
                             <svg viewBox="0 0 16 16" aria-hidden="true">
-                                <path d="M3 10l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
-                            <span>Top Bar</span>
+                            <span>Show</span>
                         </button>
                     </div>
 
+                <div class="drawing-canvas-area">
                     <div class="drawing-canvas" aria-label="Engineering drawing canvas">
                     </div>
                 </div>
