@@ -117,12 +117,12 @@ export const toolIcons = {
 	Truss: drawingIcon(`<path ${iconStroke} d="M3 6h14M3 6l14 8M17 6L3 14M3 14h14M8 6v8M12 6v8"/>`),
 	Cable: drawingIcon(`<path ${iconStroke} d="M3 5c5 8 9 8 14 0"/><circle ${iconStroke} cx="3" cy="5" r="1.2"/><circle ${iconStroke} cx="17" cy="5" r="1.2"/>`),
 	"Point Force": drawingIcon(`<path ${iconStroke} d="M10 15V5"/><path ${iconStroke} d="M10 3l-3 4h6z"/><circle ${iconStroke} cx="10" cy="16.5" r="1.2"/>`),
-	"Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 5h16M6 6v7M10 6v7M14 6v7M6 10.5l-2 3h4zM10 10.5l-2 3h4zM14 10.5l-2 3h4z"/>`),
-	"Varying Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 5h16M3 6l2 4M7 6l2 7M10 6l2 10M13 6l2 7M17 6l2 4"/>`),
+	"Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 16h16M2 18h16M3 4h14M3 4v10M6.5 4v10M10 4v10M13.5 4v10M17 4v10"/><path ${iconStroke} d="M2 13l1 1 1-1M5.5 13l1 1 1-1M9 13l1 1 1-1M12.5 13l1 1 1-1M16 13l1 1 1-1"/>`),
+	"Varying Distributed Load": drawingIcon(`<path ${iconStroke} d="M2 16h16M2 18h16M3 11l7-7h7M3 11v3M6.5 7.5V14M10 4v10M13.5 4v10M17 4v10"/><path ${iconStroke} d="M2 13l1 1 1-1M5.5 13l1 1 1-1M9 13l1 1 1-1M12.5 13l1 1 1-1M16 13l1 1 1-1"/>`),
 	"Applied Moment": drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 5.6a4.4 4.4 0 0 1 3.7 2"/><path ${iconStroke} d="M10 14.4a4.4 4.4 0 0 1-3.7-2"/><path ${iconStroke} d="M12.6 5.2l3 1.7-1.7 3"/><path ${iconStroke} d="M7.4 14.8l-3-1.7 1.7-3"/>`),
 	"Pin Support": drawingIcon(`<path ${iconStroke} d="M4 14h12M7 14l3-6 3 6"/><path ${iconStroke} d="M4 17h12"/><circle ${iconStroke} cx="10" cy="9" r="1.6"/>`),
 	"Roller Support": drawingIcon(`<path ${iconStroke} d="M5 11h10M7 11l3-6 3 6"/><circle ${iconStroke} cx="7" cy="13.5" r="1.5"/><circle ${iconStroke} cx="13" cy="13.5" r="1.5"/><path ${iconStroke} d="M4 17h12"/>`),
-	"Fixed Support": drawingIcon(`<path ${iconStroke} d="M8 3v12M8 15h6"/><path ${iconStroke} d="M8 15l-2.5 3M8 15l2.5 3"/><path ${iconStroke} d="M4 3v12M8 6h4M8 9h4M8 12h4"/>`),
+	"Fixed Support": drawingIcon(`<path ${iconStroke} d="M6 2v16M6 8h12v4H6M6 3L2 7M6 7l-4 4M6 11l-4 4M6 15l-3 3"/>`),
 	"Smooth Support": drawingIcon(`<path ${iconStroke} d="M5 12h10"/><path ${iconStroke} d="M8 12a2 2 0 0 1 4 0"/><path ${iconStroke} d="M4 15h12"/><path ${iconStroke} d="M4 17h12"/>`),
 	"Pin Connection": drawingIcon(`<path ${iconStroke} d="M3 10h5M12 10h5"/><circle ${iconStroke} cx="10" cy="10" r="3"/><circle ${iconStroke} cx="10" cy="10" r="1"/>`),
 	"Fixed Connection": drawingIcon(`<path ${iconStroke} d="M3 7h3v6H3zM14 7h3v6h-3zM6 8h8v4H6z"/><path ${iconStroke} d="M8 10h4M10 8v4"/>`),
@@ -187,27 +187,22 @@ export const toolIcons = {
 	"Resultant": drawingIcon(`<path ${iconStroke} d="M10 10L3 4M10 10L3 16"/><path ${iconStroke} d="M10 10h7"/><path ${iconStroke} d="M15 8l3 2-3 2"/><path ${iconStroke} d="M1.5 2.5l3 3M1.5 17.5l3-3"/>`),
 
 	/*
-	 * SFD: a shear profile. Staircase top and bottom, so it reads as
-	 * a JUMPING diagram at twenty pixels, and the axis runs the full
-	 * width beneath it.
+	 * SFD: a stepped shear profile with positive and negative regions
+	 * on either side of the zero baseline.
 	 */
-	"Shear Force (SFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M4 4v12h4V4zM8 6v8h4V6zM12 8v4h4V8z"/>`),
+	"Shear Force (SFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M3 10V4h5v3h4v9h5v-6"/>`),
 
 	/*
-	 * BMD: a moment profile, drawn as a smooth bow over a full-width
-	 * axis. The curve is the point - a BMD is the one of the three
-	 * that is continuous, and the stroke is genuinely smooth here
-	 * where the SFD is explicitly stepped.
+	 * BMD: a linear segment followed by a quadratic curve, returning
+	 * to the zero baseline.
 	 */
-	"Bending Moment (BMD)": drawingIcon(`<path ${iconStroke} d="M2 14h16"/><path ${iconStroke} d="M2 14C5 6 7 6 10 6s5 0 8 8"/>`),
+	"Bending Moment (BMD)": drawingIcon(`<path ${iconStroke} d="M2 15h16"/><path ${iconStroke} d="M2 15L8 6Q12 0 18 15"/>`),
 
 	/*
-	 * AFD: axial force as tension and compression blocks, set about
-	 * a heavy member axis. Rectangular and paired, with a member line
-	 * through the middle, which is how an axial diagram is drawn and
-	 * how it reads as normal force rather than shear.
+	 * AFD: a constant axial-force block above the zero baseline,
+	 * with outward arrows indicating tension along the member.
 	 */
-	"Axial Force (AFD)": drawingIcon(`<path ${iconStroke} d="M2 10h16"/><path ${iconStroke} d="M3 5h5v5H3zM12 10h5v5h-5z"/>`),
+	"Axial Force (AFD)": drawingIcon(`<path ${iconStroke} d="M2 11h16M4 11V4h12v7M3 16h14M5 14l-2 2 2 2M15 14l2 2-2 2"/>`),
 	Particle: drawingIcon(`<circle ${iconStroke} cx="10" cy="10" r="2"/><path ${iconStroke} d="M10 3v5M10 12v5M3 10h5M12 10h5"/>`),
 	"Rigid Body": drawingIcon(`<rect ${iconStroke} x="5" y="5" width="10" height="10"/><circle ${iconStroke} cx="10" cy="10" r="2"/>`),
 	Velocity: drawingIcon(`<path ${iconStroke} d="M3 14h12M11 7l5 7-5 1"/>`),

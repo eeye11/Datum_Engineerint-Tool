@@ -89,7 +89,7 @@ export function renderToolButton(tool) {
 
     const submenuCaret =
         tool.submenu
-            ? ' <span class="drawing-tool-caret" aria-hidden="true">▾</span>'
+            ? ' <span class="drawing-tool-caret" aria-hidden="true"><svg viewBox="0 0 12 12" focusable="false"><path d="M2.5 4.25L6 7.75l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
             : "";
 
     return `
